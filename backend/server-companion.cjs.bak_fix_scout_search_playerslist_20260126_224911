@@ -1,0 +1,1212 @@
+﻿/**
+ * Companion Sorare — backend propre
+ * - /health
+ * - /public-user-cards-page?identifier=darkflow&first=20&after=...&enrich=1
+ * - /public-player?slug=...
+ * - /scout/cards?first=20&eurOnly=1&q=mbappe&rarities=limited,rare&maxEur=50&sort=eur_asc
+ * - /scout/watchlist (GET/POST/DELETE)
+ * - /scout/alerts (GET/POST/DELETE)
+ *
+ * Node >= 18 (fetch dispo). Recommandé: Node 20.
+ */
+
+const express = require("express");
+const cors = require("cors");
+
+
+
+require("dotenv").config();
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// ----------------------------
+// Config
+// ----------------------------
+const PORT = Number(process.env.PORT || 3000);
+const HOST = process.env.HOST || "0.0.0.0";
+
+// IMPORTANT: endpoint GraphQL (on force federation)
+const SORARE_GQL = "https://api.sorare.com/graphql";
+
+
+const SORARE_APIKEY = process.env.SORARE_APIKEY || process.env.SORARE_API_KEY || "";
+const SORARE_JWT    = process.env.SORARE_JWT || "";
+
+const SORARE_JWT_AUD = process.env.SORARE_JWT_AUD || "";
+const HAS_SORARE_KEY = Boolean(SORARE_APIKEY || SORARE_JWT);
+
+function sorareHeaders() {
+  const h = { "content-type": "application/json" }
+const SORARE_OAUTH_UID = process.env.SORARE_OAUTH_UID || "";
+const SORARE_OAUTH_SECRET = process.env.SORARE_OAUTH_SECRET || "";
+const SORARE_OAUTH_REDIRECT_URI = process.env.SORARE_OAUTH_REDIRECT_URI || "http://localhost:3000/auth/sorare/callback";
+const OAUTH_TOKEN_FILE = dataFile("sorare_oauth.json");
+
+function readOAuthToken() {
+  return readJson(OAUTH_TOKEN_FILE, null);
+}
+
+function hasSorareAuth() {
+  const t = readOAuthToken();
+  return Boolean(SORARE_APIKEY || SORARE_JWT || (t && t.access_token));
+}
+;
+  if (SORARE_JWT) h["authorization"] = "Bearer " + SORARE_JWT;
+  
+  if (SORARE_JWT_AUD) h["JWT-AUD"] = SORARE_JWT_AUD;
+if (SORARE_APIKEY) {
+    // Sorare docs: header APIKEY
+    h["APIKEY"] = SORARE_APIKEY;
+  }
+    // OAuth access token fallback (si pas d'APIKEY/JWT)
+  if (!h["authorization"] && !SORARE_APIKEY) {
+    const t = readOAuthToken();
+    if (t && t.access_token) h["authorization"] = "Bearer " + t.access_token;
+  }
+  // OAuth access token fallback (si pas d'APIKEY/JWT)
+  if (!h["authorization"] && !SORARE_APIKEY) {
+    const t = readOAuthToken();
+    if (t && t.access_token) h["authorization"] = "Bearer " + t.access_token;
+  }
+
+  return h;
+}
+// ----------------------------
+// Utils: Disk JSON
+// ----------------------------
+function dataFile(name) {
+  const path = require("path");
+  return path.join(__dirname, "data", name);
+}
+
+function readJson(file, fallback) {
+  try {
+    const fs = require("fs");
+    if (!fs.existsSync(file)) return fallback;
+    const raw = fs.readFileSync(file, "utf8");
+    if (!raw) return fallback;
+    return JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJson(file, obj) {
+  try {
+    const fs = require("fs");
+    const path = require("path");
+    const dir = path.dirname(file);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(obj, null, 2), "utf8");
+  } catch {}
+}
+
+// ----------------------------
+// Disk cache (scout)
+// ----------------------------
+function scoutCacheFile() {
+  return dataFile("scout_cache.json");
+}
+
+function scoutCacheRead() {
+  const j = readJson(scoutCacheFile(), {});
+  // support old formats too:
+  // { last: {key, items, ts}, byKey: {key: payload} }
+  // OR { key, items, cachedAt } (ancien)
+  if (j && typeof j === "object") {
+    if (j.byKey || j.last) {
+      return { last: j.last || null, byKey: j.byKey || {} };
+    }
+    if (j.key && Array.isArray(j.items)) {
+      const payload = { key: j.key, items: j.items, ts: Date.now() };
+      return { last: payload, byKey: { [j.key]: payload } };
+    }
+  }
+  return { last: null, byKey: {} };
+}
+
+function scoutCacheWrite(c) {
+  writeJson(scoutCacheFile(), c);
+}
+
+function scoutCacheGet(key) {
+  const c = scoutCacheRead();
+  if (c.byKey && c.byKey[key]) return c.byKey[key];
+  return c.last || null;
+}
+
+function scoutCacheSet(key, payload) {
+  const c = scoutCacheRead();
+  c.byKey = c.byKey || {};
+  c.byKey[key] = payload;
+  c.last = payload;
+  scoutCacheWrite(c);
+}
+
+// ----------------------------
+// Sorare GraphQL helper
+// ----------------------------
+async function sorareGraphQL(query, variables) {
+  const res = await fetch(SORARE_GQL, {
+    method: "POST",
+    headers: sorareHeaders(),
+    body: JSON.stringify({ query, variables: variables || {} }),
+  });
+
+  // ex: 429, 502...
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    const err = new Error(`Sorare HTTP ${res.status}`);
+    err.status = res.status;
+    err.body = txt;
+    throw err;
+  }
+
+  const json = await res.json();
+  if (json.errors && json.errors.length) {
+    const err = new Error(json.errors[0]?.message || "Sorare GraphQL error");
+    err.graphQLErrors = json.errors;
+    err.data = json.data;
+    throw err;
+  }
+  return json.data;
+}
+
+// ----------------------------
+// Identifier -> slug (user)
+// ----------------------------
+function resolveUserSlug(identifier) {
+  const s = String(identifier || "").trim();
+  if (!s) return "";
+
+  // URL sorare club
+  // ex: https://sorare.com/fr/football/my-club/darkflow
+  // ex: https://sorare.com/fr/football/clubs/darkflow
+  const m1 = s.match(/sorare\.com\/[^\/]+\/football\/my-club\/([^\/\?#]+)/i);
+  if (m1) return m1[1];
+  const m2 = s.match(/sorare\.com\/[^\/]+\/football\/clubs\/([^\/\?#]+)/i);
+  if (m2) return m2[1];
+
+  // sinon on suppose slug direct
+  return s.replace(/^@/, "");
+}
+
+// ----------------------------
+// anyCards enrichment (robuste avec fallbacks)
+// ----------------------------
+async function fetchAnyCards(slugs) {
+  const uniq = Array.from(new Set((slugs || []).filter(Boolean)));
+  if (!uniq.length) return [];
+
+  const queries = [
+    // "riche" (peut échouer si certains champs n'existent pas)
+    `
+      query AnyCards($slugs:[String!]) {
+        anyCards(slugs:$slugs) {
+          slug
+          rarityTyped
+          seasonYear
+          serialNumber
+          anyPositions
+          pictureUrl
+          anyTeam { name slug }
+          anyPlayer { displayName slug }
+        }
+      }
+    `,
+    // fallback 1 (retire slug player/team si ça casse)
+    `
+      query AnyCards($slugs:[String!]) {
+        anyCards(slugs:$slugs) {
+          slug
+          rarityTyped
+          seasonYear
+          serialNumber
+          anyPositions
+          pictureUrl
+          anyTeam { name }
+          anyPlayer { displayName }
+        }
+      }
+    `,
+    // fallback 2 (minimal)
+    `
+      query AnyCards($slugs:[String!]) {
+        anyCards(slugs:$slugs) {
+          slug
+          rarityTyped
+          seasonYear
+          anyPositions
+        }
+      }
+    `,
+  ];
+
+  let lastErr = null;
+  for (const q of queries) {
+    try {
+      const data = await sorareGraphQL(q, { slugs: uniq });
+      return (data && data.anyCards) ? data.anyCards : [];
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error("anyCards failed");
+}
+
+// ----------------------------
+// Live single sale offers (public) + EUR best-effort
+// ----------------------------
+async function fetchLiveSingleSaleOffers(lastN) {
+  const N = Math.max(1, Math.min(Number(lastN || 50), 200));
+
+  // Sans clé: on réduit la complexité (pas de pictureUrl)
+  const qEur_PUBLIC = `
+    query Live($last:Int!) {
+      tokens {
+        liveSingleSaleOffers(last:$last) {
+          nodes {
+            id
+            senderSide {
+              anyCards { slug }
+              amounts { eurCents }
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  const qEur_REAL = `
+    query Live($last:Int!) {
+      tokens {
+        liveSingleSaleOffers(last:$last) {
+          nodes {
+            id
+            senderSide {
+              anyCards { slug pictureUrl }
+              amounts { eurCents }
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  const qWei_PUBLIC = `
+    query Live($last:Int!) {
+      tokens {
+        liveSingleSaleOffers(last:$last) {
+          nodes {
+            id
+            senderSide {
+              anyCards { slug }
+              amounts { wei }
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  const qWei_REAL = `
+    query Live($last:Int!) {
+      tokens {
+        liveSingleSaleOffers(last:$last) {
+          nodes {
+            id
+            senderSide {
+              anyCards { slug pictureUrl }
+              amounts { wei }
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  const qEur = hasSorareAuth() ? qEur_REAL : qEur_PUBLIC;
+  const qWei = HAS ? qWei_REAL : qWei_PUBLIC;
+
+  try {
+    const data = await sorareGraphQL(qEur, { last: N });
+    const nodes = data?.tokens?.liveSingleSaleOffers?.nodes || [];
+    return { nodes, eurMode: "eurCents" };
+  } catch (e) {
+    const data2 = await sorareGraphQL(qWei, { last: N });
+    const nodes2 = data2?.tokens?.liveSingleSaleOffers?.nodes || [];
+    return { nodes: nodes2, eurMode: "weiOnly" };
+  }
+}
+
+// ----------------------------
+// Routes
+// ----------------------------
+app.get("/health", (req, res) => res.json({ ok: true }));
+
+// Public user cards (paged)
+app.get("/public-user-cards-page", async (req, res) => {
+  try {
+    const identifier = String(req.query.identifier || "").trim();
+    const HAS = hasSorareAuth();
+  const first = Math.max(1, Math.min(Number(req.query.first || 20), HAS ? 50 : 10));
+    const after = req.query.after ? String(req.query.after) : null;
+    const enrich = String(req.query.enrich || "0") === "1";
+
+    const slug = resolveUserSlug(identifier);
+    if (!slug) return res.status(400).json({ error: "identifier missing" });
+
+    // Query minimal (robuste)
+    const q1 = `
+      query UserCards($slug:String!, $first:Int!, $after:String) {
+        user(slug:$slug) {
+          slug
+          nickname
+          cards(first:$first, after:$after) {
+            nodes { slug pictureUrl }
+            pageInfo { endCursor hasNextPage }
+          }
+        }
+      }
+    `;
+
+    let userData;
+    try {
+      userData = await sorareGraphQL(q1, { slug, first, after });
+    } catch (e) {
+      // fallback sans pictureUrl si ça casse
+      const q2 = `
+        query UserCards($slug:String!, $first:Int!, $after:String) {
+          user(slug:$slug) {
+            slug
+            nickname
+            cards(first:$first, after:$after) {
+              nodes { slug }
+              pageInfo { endCursor hasNextPage }
+            }
+          }
+        }
+      `;
+      userData = await sorareGraphQL(q2, { slug, first, after });
+    }
+
+    const u = userData?.user;
+    if (!u) return res.status(404).json({ error: "user not found or not public" });
+
+    let cards = (u.cards?.nodes || []).map(c => ({
+      slug: c.slug,
+      pictureUrl: c.pictureUrl || null,
+    }));
+
+    // Enrich via anyCards(slugs)
+    if (enrich && cards.length) {
+      const slugs = cards.map(c => c.slug).filter(Boolean);
+      const enriched = await fetchAnyCards(slugs);
+      const map = new Map(enriched.map(x => [x.slug, x]));
+
+      cards = cards.map(c => {
+        const e = map.get(c.slug);
+        if (!e) return c;
+        return {
+          ...c,
+          pictureUrl: c.pictureUrl || e.pictureUrl || null,
+          rarity: e.rarityTyped || null,
+          seasonYear: e.seasonYear || null,
+          serialNumber: (typeof e.serialNumber === "number") ? e.serialNumber : null,
+          position: Array.isArray(e.anyPositions) ? (e.anyPositions[0] || null) : null,
+          positions: Array.isArray(e.anyPositions) ? e.anyPositions : [],
+          team: e.anyTeam?.name || null,
+          teamSlug: e.anyTeam?.slug || null,
+          playerName: e.anyPlayer?.displayName || null,
+          playerSlug: e.anyPlayer?.slug || null,
+        };
+      });
+    }
+
+    res.json({
+      slug: u.slug,
+      nickname: u.nickname || null,
+      cards,
+      pageInfo: u.cards?.pageInfo || { endCursor: null, hasNextPage: false },
+    });
+  } catch (e) {
+    res.status(500).json({
+      error: String(e.message || e),
+      status: e.status || null,
+      graphQLErrors: e.graphQLErrors || null,
+    });
+  }
+});
+
+// Public player info (best-effort, plusieurs shapes)
+  // XS_PUBLIC_PLAYER_SAFE (schema-safe)
+  app.get("/public-player", async (req, res) => {
+    try {
+      const slug = String(req.query.slug || "").trim();
+      if (!slug) return res.status(400).json({ error: "slug missing" });
+
+      const url = "https://api.sorare.com/graphql";
+      const query = `
+        query PublicPlayer($slug: String!) {
+          football {
+            player(slug: $slug) {
+              slug
+              displayName
+              anyPositions
+              activeClub { name slug }
+            }
+          }
+        }
+      `;
+      const variables = { slug };
+
+      const r = await fetch(url, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "accept": "application/json",
+        },
+        body: JSON.stringify({ query, variables }),
+      });
+
+      const text = await r.text();
+
+      if (!r.ok) {
+        return res.status(502).json({
+          error: "public-player query failed (upstream).",
+          details: "Sorare HTTP " + r.status,
+          body: text.slice(0, 3000),
+        });
+      }
+
+      let json;
+      try { json = JSON.parse(text); }
+      catch {
+        return res.status(502).json({
+          error: "public-player query failed (non-JSON).",
+          details: "Sorare returned non-JSON",
+          body: text.slice(0, 3000),
+        });
+      }
+
+      if (json.errors) {
+        return res.status(502).json({
+          error: "public-player query failed (graphql errors).",
+          details: "Sorare GraphQL errors",
+          graphQLErrors: json.errors,
+        });
+      }
+
+      const p = json && json.data && json.data.football ? json.data.football.player : null;
+      if (!p) return res.status(404).json({ error: "player not found", slug });
+
+      const position =
+        Array.isArray(p.anyPositions) && p.anyPositions[0]
+          ? (typeof p.anyPositions[0] === "string" ? p.anyPositions[0] : (p.anyPositions[0] && p.anyPositions[0].position))
+          : null;
+
+      return res.json({
+        playerSlug: p.slug,
+        playerName: p.displayName || p.slug,
+        position,
+        activeClub: p.activeClub ? { name: p.activeClub.name, slug: p.activeClub.slug } : null,
+      });
+
+    } catch (e) {
+      console.error("[public-player] error:", e && e.stack ? e.stack : e);
+      return res.status(500).json({ error: "Internal Server Error", message: String((e && e.message) ? e.message : e) });
+    }
+  });
+app.get("/public-player-old", async (req, res) => {
+  const slug = String(req.query.slug || "").trim();
+  if (!slug) return res.status(400).json({ error: "slug missing" });
+
+  const tries = [
+    // shape 1
+    `
+      query P($slug:String!) {
+        football {
+          player(slug:$slug) {
+            slug
+            displayName
+            anyPositions
+            activeClub { name slug }
+          }
+        }
+      }
+    `,
+    // shape 2
+    `
+      query P($slug:String!) {
+        footballPlayer(slug:$slug) {
+          slug
+          displayName
+          anyPositions
+          activeClub { name slug }
+        }
+      }
+    `,
+    // shape 3
+    `
+      query P($slug:String!) {
+        player(slug:$slug) {
+          ... on FootballPlayer {
+            slug
+            displayName
+            anyPositions
+            activeClub { name slug }
+          }
+        }
+      }
+    `,
+  ];
+
+  let lastErr = null;
+  for (const q of tries) {
+    try {
+      const data = await sorareGraphQL(q, { slug });
+      const p =
+        data?.football?.player ||
+        data?.footballPlayer ||
+        data?.player ||
+        null;
+
+      if (!p) continue;
+
+      return res.json({
+        slug: p.slug || slug,
+        displayName: p.displayName || null,
+        positions: Array.isArray(p.anyPositions) ? p.anyPositions : [],
+        position: Array.isArray(p.anyPositions) ? (p.anyPositions[0] || null) : null,
+        activeClub: p.activeClub ? { name: p.activeClub.name || null, slug: p.activeClub.slug || null } : null,
+      });
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+
+  return res.status(500).json({
+    error: "public-player query failed (schema mismatch).",
+    details: String(lastErr?.message || lastErr || ""),
+    graphQLErrors: lastErr?.graphQLErrors || null,
+  });
+});
+
+// Scout — cards (public market snapshot + cache)
+app.get("/scout/cards", async (req, res) => {
+  const HAS = hasSorareAuth();
+  const first = Math.max(1, Math.min(Number(req.query.first || 20), HAS ? 50 : 10));
+  const eurOnly = String(req.query.eurOnly || "0") === "1";
+  const maxEur = req.query.maxEur ? Number(req.query.maxEur) : null;
+  const qRaw = String(req.query.q || "").trim().toLowerCase();
+  const raritiesRaw = String(req.query.rarities || "").trim().toLowerCase(); // "limited,rare"
+  const sort = String(req.query.sort || "").trim().toLowerCase(); // eur_asc|eur_desc|newest
+
+  const rarities = raritiesRaw
+    ? raritiesRaw.split(",").map(s => s.trim()).filter(Boolean)
+    : [];
+
+  const cacheKey = ["scout", qRaw, rarities.join(","), eurOnly ? "eur" : "any", (Number.isFinite(maxEur) ? maxEur : ""), sort].join("|");
+  const cached = scoutCacheGet(cacheKey);
+  let fromCache = false;
+  let cacheExact = false;
+
+  try {
+    // On tire plus large, puis on filtre localement (public API limitée)
+    const lastN = HAS ? Math.min(200, Math.max(50, first * 5)) : 10; // sans auth: public-safe
+    const { nodes, eurMode } = await fetchLiveSingleSaleOffers(lastN);
+
+    // Flatten offers -> card slugs
+    const offers = [];
+    const slugs = [];
+    for (const o of (nodes || [])) {
+      const c = o?.senderSide?.anyCards?.[0];
+      if (!c?.slug) continue;
+
+      let eur = null;
+      const amt = o?.senderSide?.amounts || null;
+      if (amt) {
+        if (typeof amt.eurCents === "number") eur = amt.eurCents / 100;
+      }
+
+      offers.push({
+        offerId: o.id,
+        slug: c.slug,
+        pictureUrl: c.pictureUrl || null,
+        eur,
+        eurMode,
+      });
+      slugs.push(c.slug);
+    }
+
+    // Enrich cards (player/team/positions/rarity/seasonYear)
+    let enriched = [];
+    try {
+      enriched = await fetchAnyCards(slugs);
+    } catch {
+      enriched = [];
+    }
+    const map = new Map(enriched.map(x => [x.slug, x]));
+
+    let items = offers.map(o => {
+      const e = map.get(o.slug);
+      const rarity = e?.rarityTyped || null;
+
+      return {
+        offerId: o.offerId,
+        slug: o.slug,
+        pictureUrl: o.pictureUrl || e?.pictureUrl || null,
+        rarity,
+        seasonYear: e?.seasonYear || null,
+        serialNumber: (typeof e?.serialNumber === "number") ? e.serialNumber : null,
+        positions: Array.isArray(e?.anyPositions) ? e.anyPositions : [],
+        position: Array.isArray(e?.anyPositions) ? (e.anyPositions[0] || null) : null,
+        team: e?.anyTeam?.name || null,
+        teamSlug: e?.anyTeam?.slug || null,
+        playerName: e?.anyPlayer?.displayName || null,
+        playerSlug: e?.anyPlayer?.slug || null,
+        eur: o.eur,
+      };
+    });
+
+    // Filters
+    if (rarities.length) {
+      items = items.filter(x => x.rarity && rarities.includes(String(x.rarity).toLowerCase()));
+    }
+    if (qRaw) {
+      items = items.filter(x => {
+        const pn = String(x.playerName || "").toLowerCase();
+        const ps = String(x.playerSlug || "").toLowerCase();
+        const ts = String(x.team || "").toLowerCase();
+        return pn.includes(qRaw) || ps.includes(qRaw) || ts.includes(qRaw);
+      });
+    }
+    if (eurOnly) {
+      items = items.filter(x => typeof x.eur === "number" && Number.isFinite(x.eur));
+    }
+    if (Number.isFinite(maxEur)) {
+      items = items.filter(x => (typeof x.eur === "number" && x.eur <= maxEur));
+    }
+
+    // Sort
+    if (sort === "eur_asc") {
+      items.sort((a,b) => (a.eur ?? Infinity) - (b.eur ?? Infinity));
+    } else if (sort === "eur_desc") {
+      items.sort((a,b) => (b.eur ?? -Infinity) - (a.eur ?? -Infinity));
+    } // else "newest": keep order
+
+    // Trim to first
+    items = items.slice(0, first);
+
+    // Cache fallback if empty
+    if ((!items || items.length === 0) && cached && Array.isArray(cached.items) && cached.items.length) {
+      items = cached.items;
+      fromCache = true;
+      cacheExact = !!(cached.key && cached.key === cacheKey);
+    }
+
+    // Save cache if non-empty and not from cache
+    if (!fromCache && Array.isArray(items) && items.length) {
+      scoutCacheSet(cacheKey, { key: cacheKey, items, ts: Date.now() });
+    }
+
+    res.json({
+      key: cacheKey,
+      fromCache,
+      cacheExact,
+      count: items.length,
+      items,
+      note: "V1: liveSingleSaleOffers (public). Limite PUBLIC: first cap à 10 + last=10 pour rester sous complexity=500. Attention: rate-limit possible; filtres appliqués localement.",
+    });
+  } catch (e) {
+    // On tente cache en dernier recours
+    if (cached && Array.isArray(cached.items) && cached.items.length) {
+      fromCache = true;
+      cacheExact = !!(cached.key && cached.key === cacheKey);
+      return res.json({
+        key: cacheKey,
+        fromCache,
+        cacheExact,
+        count: cached.items.length,
+        items: cached.items,
+        note: "Fallback cache (erreur API publique).",
+        apiError: String(e.message || e),
+        apiStatus: e.status || null,
+      });
+    }
+
+    res.status(500).json({
+      error: String(e.message || e),
+      status: e.status || null,
+      graphQLErrors: e.graphQLErrors || null,
+    });
+  }
+});
+
+// ----------------------------
+// Watchlist / Alerts (simple JSON CRUD)
+// ----------------------------
+const WATCHLIST_FILE = dataFile("scout_watchlist.json");
+const ALERTS_FILE = dataFile("scout_alerts.json");
+
+app.get("/scout/watchlist", (req, res) => {
+  const list = readJson(WATCHLIST_FILE, []);
+  res.json({ items: Array.isArray(list) ? list : [] });
+});
+
+app.post("/scout/watchlist", (req, res) => {
+  const list = readJson(WATCHLIST_FILE, []);
+  const item = req.body || {};
+  const id = item.id || ("w_" + Date.now() + "_" + Math.random().toString(16).slice(2));
+  const next = Array.isArray(list) ? list : [];
+  next.push({ ...item, id });
+  writeJson(WATCHLIST_FILE, next);
+  res.json({ ok: true, id });
+});
+
+app.delete("/scout/watchlist/:id", (req, res) => {
+  const id = String(req.params.id || "");
+  const list = readJson(WATCHLIST_FILE, []);
+  const next = (Array.isArray(list) ? list : []).filter(x => String(x.id) !== id);
+  writeJson(WATCHLIST_FILE, next);
+  res.json({ ok: true });
+});
+
+app.get("/scout/alerts", (req, res) => {
+  const list = readJson(ALERTS_FILE, []);
+  res.json({ items: Array.isArray(list) ? list : [] });
+});
+
+app.post("/scout/alerts", (req, res) => {
+  const list = readJson(ALERTS_FILE, []);
+  const item = req.body || {};
+  const id = item.id || ("a_" + Date.now() + "_" + Math.random().toString(16).slice(2));
+  const next = Array.isArray(list) ? list : [];
+  next.push({ ...item, id });
+  writeJson(ALERTS_FILE, next);
+  res.json({ ok: true, id });
+});
+
+app.delete("/scout/alerts/:id", (req, res) => {
+  const id = String(req.params.id || "");
+  const list = readJson(ALERTS_FILE, []);
+  const next = (Array.isArray(list) ? list : []).filter(x => String(x.id) !== id);
+  writeJson(ALERTS_FILE, next);
+  res.json({ ok: true });
+});
+
+// ----------------------------
+/* ===== OAuth Sorare ===== */
+function _fetchAny(...args) {
+  if (typeof fetch === "function") return fetch(...args);
+  // Node < 18 fallback (optionnel)
+  return import("node-fetch").then(m => m.default(...args));
+}
+
+app.get("/auth/sorare", (req, res) => {
+  if (!SORARE_OAUTH_UID || !SORARE_OAUTH_SECRET) {
+    return res.status(400).json({ error: "OAuth non configuré: SORARE_OAUTH_UID/SECRET manquants" });
+  }
+  const u = encodeURIComponent(SORARE_OAUTH_UID);
+  const r = encodeURIComponent(SORARE_OAUTH_REDIRECT_URI);
+  const url = `https://sorare.com/oauth/authorize?client_id=${u}&redirect_uri=${r}&response_type=code&scope=public`;
+  res.redirect(url);
+});
+
+app.get("/auth/sorare/callback", async (req, res) => {
+  try {
+    const code = String(req.query.code || "").trim();
+    if (!code) return res.status(400).send("Missing ?code=");
+
+    const form = new URLSearchParams();
+    form.set("client_id", SORARE_OAUTH_UID);
+    form.set("client_secret", SORARE_OAUTH_SECRET);
+    form.set("code", code);
+    form.set("grant_type", "authorization_code");
+    form.set("redirect_uri", SORARE_OAUTH_REDIRECT_URI);
+
+    const r = await _fetchAny("https://api.sorare.com/oauth/token", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: form.toString(),
+    });
+
+    const raw = await r.text();
+    if (!r.ok) return res.status(500).send("Token exchange failed: " + r.status + "\n" + raw);
+
+    const token = JSON.parse(raw);
+    writeJson(OAUTH_TOKEN_FILE, token);
+
+    res.send("OK OAuth ✅ Token sauvegardé dans data/sorare_oauth.json. Tu peux fermer cette page.");
+  } catch (e) {
+    res.status(500).send("Callback error: " + String(e.message || e));
+  }
+});
+
+app.get("/auth/sorare/status", (req, res) => {
+  const t = readOAuthToken();
+  res.json({
+    hasAuth: hasSorareAuth(),
+    hasApiKey: Boolean(SORARE_APIKEY),
+    hasJwt: Boolean(SORARE_JWT),
+    hasOAuthToken: Boolean(t && t.access_token),
+    scope: t?.scope || null,
+    created_at: t?.created_at || null,
+  });
+});
+/* ===== /OAuth Sorare ===== */
+/* ===== OAuth Sorare (Injected) ===== */
+
+// Reads env at runtime (dotenv already loaded in your file)
+const SORARE_OAUTH_UID = process.env.SORARE_OAUTH_UID || "";
+const SORARE_OAUTH_SECRET = process.env.SORARE_OAUTH_SECRET || "";
+const SORARE_OAUTH_REDIRECT_URI = process.env.SORARE_OAUTH_REDIRECT_URI || "http://localhost:3000/auth/sorare/callback";
+const OAUTH_TOKEN_FILE = dataFile("sorare_oauth.json");
+
+function readOAuthToken() {
+  return readJson(OAUTH_TOKEN_FILE, null);
+}
+
+function hasSorareAuth() {
+  const t = readOAuthToken();
+  return Boolean(SORARE_APIKEY || SORARE_JWT || (t && t.access_token));
+}
+
+// Override sorareHeaders safely (no regex edit inside old function)
+function sorareHeaders() {
+  const h = { "content-type": "application/json", "accept": "application/json" };
+
+  if (SORARE_JWT) h["authorization"] = "Bearer " + SORARE_JWT;
+  
+  if (SORARE_JWT_AUD) h["JWT-AUD"] = SORARE_JWT_AUD;
+if (SORARE_APIKEY) {
+    // keep compatibility with existing code
+    h["APIKEY"] = SORARE_APIKEY;
+    h["X-API-Key"] = SORARE_APIKEY;
+  }
+
+  if (!h["authorization"] && !SORARE_APIKEY) {
+    const t = readOAuthToken();
+    if (t && t.access_token) h["authorization"] = "Bearer " + t.access_token;
+  }
+
+  return h;
+}
+
+function _fetchAny(...args) {
+  if (typeof fetch === "function") return fetch(...args);
+  return import("node-fetch").then(m => m.default(...args));
+}
+
+// Auth entrypoint (redirect to Sorare)
+app.get("/auth/sorare", (req, res) => {
+  if (!SORARE_OAUTH_UID || !SORARE_OAUTH_SECRET) {
+    return res.status(400).json({ error: "OAuth non configuré: SORARE_OAUTH_UID/SECRET manquants" });
+  }
+  const u = encodeURIComponent(SORARE_OAUTH_UID);
+  const r = encodeURIComponent(SORARE_OAUTH_REDIRECT_URI);
+  const url = `https://sorare.com/oauth/authorize?client_id=${u}&redirect_uri=${r}&response_type=code&scope=public`;
+  res.redirect(url);
+});
+
+// Callback: exchange code -> token
+app.get("/auth/sorare/callback", async (req, res) => {
+  try {
+    const code = String(req.query.code || "").trim();
+    if (!code) return res.status(400).send("Missing ?code=");
+
+    const form = new URLSearchParams();
+    form.set("client_id", SORARE_OAUTH_UID);
+    form.set("client_secret", SORARE_OAUTH_SECRET);
+    form.set("code", code);
+    form.set("grant_type", "authorization_code");
+    form.set("redirect_uri", SORARE_OAUTH_REDIRECT_URI);
+
+    const r = await _fetchAny("https://api.sorare.com/oauth/token", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: form.toString(),
+    });
+
+    const raw = await r.text();
+    if (!r.ok) return res.status(500).send("Token exchange failed: " + r.status + "\n" + raw);
+
+    const token = JSON.parse(raw);
+    writeJson(OAUTH_TOKEN_FILE, token);
+
+    res.send("OK OAuth ✅ Token sauvegardé dans data/sorare_oauth.json. Tu peux fermer cette page.");
+  } catch (e) {
+    res.status(500).send("Callback error: " + String(e.message || e));
+  }
+});
+
+// Status endpoint
+app.get("/auth/sorare/status", (req, res) => {
+  const t = readOAuthToken();
+  res.json({
+    hasAuth: hasSorareAuth(),
+    hasApiKey: Boolean(SORARE_APIKEY),
+    hasJwt: Boolean(SORARE_JWT),
+    hasOAuthToken: Boolean(t && t.access_token),
+    scope: t?.scope || null,
+    created_at: t?.created_at || null,
+  });
+});
+
+/* ===== /OAuth Sorare (Injected) ===== */
+
+// XS_DEBUG_ERROR_MW (dev only)
+app.use((err, req, res, next) => {
+  try { console.error('[UNHANDLED]', err && err.stack ? err.stack : err); } catch (e) {}
+  try {
+    res.status(500).json({ error: 'Internal Server Error', message: String(err && err.message ? err.message : err) });
+  } catch (e) { try { res.status(500).end(); } catch(_) {} }
+});
+
+  // XS_PUBLIC_PLAYER2 (debug endpoint)
+  app.get("/public-player2", async (req, res) => {
+    try {
+      const slug = String(req.query.slug || "").trim();
+      if (!slug) return res.status(400).json({ error: "slug missing" });
+
+      const url = "https://api.sorare.com/graphql";
+      const query = `
+        query PublicPlayer($slug: String!) {
+          football {
+            player(slug: $slug) {
+              slug
+              displayName
+              anyPositions
+              activeClub { name slug }
+            }
+          }
+        }
+      `;
+      const variables = { slug };
+
+      const r = await fetch(url, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "accept": "application/json",
+        },
+        body: JSON.stringify({ query, variables }),
+      });
+
+      const text = await r.text();
+
+      if (!r.ok) {
+        return res.status(502).json({
+          error: "Sorare upstream error",
+          status: r.status,
+          body: text.slice(0, 3000),
+        });
+      }
+
+      let json;
+      try { json = JSON.parse(text); }
+      catch {
+        return res.status(502).json({
+          error: "Sorare returned non-JSON",
+          body: text.slice(0, 3000),
+        });
+      }
+
+      if (json.errors) {
+        return res.status(502).json({
+          error: "Sorare GraphQL errors",
+          errors: json.errors,
+        });
+      }
+
+      const p = json && json.data && json.data.football ? json.data.football.player : null;
+      if (!p) return res.status(404).json({ error: "player not found", slug, data: (json && json.data) ? json.data : null });
+
+      const position = Array.isArray(p.anyPositions) && p.anyPositions[0] ? ((typeof p.anyPositions[0]==="string"?p.anyPositions[0]:(p.anyPositions[0]&&p.anyPositions[0].position)) || null) : null;
+
+      return res.json({
+        playerSlug: p.slug,
+        playerName: p.displayName || p.slug,
+        position,
+        activeClub: p.activeClub ? { name: p.activeClub.name, slug: p.activeClub.slug } : null,
+        raw: p,
+      });
+
+    } catch (e) {
+      console.error("[public-player2] error:", e && e.stack ? e.stack : e);
+      return res.status(500).json({ error: "Internal Server Error", message: String((e && e.message) ? e.message : e) });
+    }
+  });
+  // XS_SCOUT_SEARCH (schema-robust; dev)
+  // usage: /scout/search?q=mbappe&first=10
+  app.get("/scout/search", async (req, res) => {
+    try {
+      const q = String(req.query.q || "").trim();
+      const first = Math.max(1, Math.min(25, parseInt(String(req.query.first || "10"), 10) || 10));
+      if (!q) return res.status(400).json({ error: "q missing" });
+
+      const url = "https://api.sorare.com/graphql";
+
+      // Helper: call Sorare GraphQL and return {ok,json,text,status}
+      async function gqlTry(query, variables) {
+        const r = await fetch(url, {
+          method: "POST",
+          headers: { "content-type": "application/json", "accept": "application/json" },
+          body: JSON.stringify({ query, variables }),
+        });
+        const text = await r.text();
+        let json = null;
+        try { json = JSON.parse(text); } catch {}
+        const ok = r.ok && json && !json.errors;
+        return { ok, json, text, status: r.status };
+      }
+
+      // Extract helpers (safe for many shapes)
+      function normItem(slug, displayName, activeClub, anyPositions) {
+        const position =
+          Array.isArray(anyPositions) && anyPositions[0]
+            ? (typeof anyPositions[0] === "string" ? anyPositions[0] : (anyPositions[0] && anyPositions[0].position))
+            : null;
+
+        return {
+          slug: slug || null,
+          displayName: displayName || slug || null,
+          position,
+          activeClub: activeClub ? { name: activeClub.name, slug: activeClub.slug } : null,
+        };
+      }
+
+      // Candidate queries (try in order)
+      const variables = { q, first };
+
+      const candidates = [
+        {
+          name: "football.players(query)",
+          query: `
+            query ScoutSearch($q: String!, $first: Int!) {
+              football {
+                players(query: $q, first: $first) {
+                  nodes { slug displayName anyPositions activeClub { name slug } }
+                }
+              }
+            }
+          `,
+          pick: (j) => j?.data?.football?.players?.nodes,
+        },
+        {
+          name: "football.players(search)",
+          query: `
+            query ScoutSearch($q: String!, $first: Int!) {
+              football {
+                players(search: $q, first: $first) {
+                  nodes { slug displayName anyPositions activeClub { name slug } }
+                }
+              }
+            }
+          `,
+          pick: (j) => j?.data?.football?.players?.nodes,
+        },
+        {
+          name: "football.searchPlayers",
+          query: `
+            query ScoutSearch($q: String!, $first: Int!) {
+              football {
+                searchPlayers(query: $q, first: $first) {
+                  nodes { slug displayName anyPositions activeClub { name slug } }
+                }
+              }
+            }
+          `,
+          pick: (j) => j?.data?.football?.searchPlayers?.nodes,
+        },
+        {
+          // global search fallback (older style)
+          name: "search(query)",
+          query: `
+            query ScoutSearch($q: String!, $first: Int!) {
+              search(query: $q, first: $first) {
+                nodes {
+                  __typename
+                  ... on FootballPlayer { slug displayName anyPositions activeClub { name slug } }
+                  ... on Player { slug displayName anyPositions activeClub { name slug } }
+                }
+              }
+            }
+          `,
+          pick: (j) => j?.data?.search?.nodes,
+        },
+      ];
+
+      const attempts = [];
+      for (const c of candidates) {
+        const r = await gqlTry(c.query, variables);
+        attempts.push({
+          name: c.name,
+          status: r.status,
+          hasJson: !!r.json,
+          hasErrors: !!(r.json && r.json.errors),
+          error0: r.json?.errors?.[0]?.message || null,
+        });
+
+        if (r.ok) {
+          const nodes = c.pick(r.json) || [];
+          const items = (Array.isArray(nodes) ? nodes : [])
+            .map(n => {
+              // global search nodes may be mixed types
+              const slug = n?.slug;
+              const displayName = n?.displayName;
+              const activeClub = n?.activeClub;
+              const anyPositions = n?.anyPositions;
+              if (!slug) return null;
+              return normItem(slug, displayName, activeClub, anyPositions);
+            })
+            .filter(Boolean);
+
+          return res.json({
+            q,
+            engine: c.name,
+            count: items.length,
+            items,
+            attempts,
+          });
+        }
+      }
+
+      return res.status(502).json({
+        error: "scout/search upstream schema mismatch",
+        q,
+        attempts,
+        hint: "Aucun candidat n'a matché. On ajustera la query gagnante en lisant 'attempts.error0'.",
+      });
+
+    } catch (e) {
+      console.error("[scout/search] error:", e && e.stack ? e.stack : e);
+      return res.status(500).json({ error: "Internal Server Error", message: String(e?.message || e) });
+    }
+  });
+
+
+app.listen(PORT, HOST, () => {
+  console.log(`[OK] Companion backend on http://${HOST}:${PORT}`);
+  console.log(`[OK] GraphQL -> ${SORARE_GQL}`);
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

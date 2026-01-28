@@ -1,0 +1,17 @@
+﻿export const theme = {
+  colors: {
+    primary: "#E23B5B",
+    primaryDark: "#B81F3E",
+    navy: "#1C2A44",
+    bg: "#0B1020",
+    card: "#121826",
+    card2: "#0F172A",
+    text: "#E5E7EB",
+    textMuted: "rgba(229,231,235,0.70)",
+    border: "rgba(255,255,255,0.10)",
+    danger: "#EF4444",
+    white: "#FFFFFF",
+  },
+  radius: { md: 16, lg: 22, pill: 999 },
+  spacing: (n: number) => n * 8,
+};

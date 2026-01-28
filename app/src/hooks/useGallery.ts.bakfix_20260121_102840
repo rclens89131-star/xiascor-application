@@ -1,0 +1,202 @@
+﻿import { useMemo, useRef, useState } from "react";
+import { apiFetch, BASE_URL } from "../api";
+
+export type SimpleCard = {
+  id: string;
+  slug: string;
+  rarity: string | null;
+  seasonYear: number | null;
+  season: string | null;
+  playerName: string | null;
+  playerSlug: string | null;
+  teamName: string | null;
+  teamSlug: string | null;
+  position: "GK" | "DEF" | "MID" | "FWD" | null;
+  positionRaw: string | null;
+  pictureUrl?: string | null;
+  avatarUrl?: string | null;
+};
+
+export type PageInfo = { hasNextPage: boolean; endCursor: string | null };
+
+export function useGallery() {
+  const [identifier, setIdentifier] = useState("darkflow");
+  const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadingAll, setLoadingAll] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [nickname, setNickname] = useState<string | null>(null);
+  const [slug, setSlug] = useState<string | null>(null);
+  const [cards, setCards] = useState<SimpleCard[]>([]);
+  const [pageInfo, setPageInfo] = useState<PageInfo>({ hasNextPage: false, endCursor: null });
+
+  const inFlightRef = useRef(false);
+
+  const nonCommonCards = useMemo(() => {
+    return cards.filter((c) => (c.rarity || "").toLowerCase() !== "common");
+  }, [cards]);
+
+  async function loadFirstPage() {
+    const id = identifier.trim();
+    if (!id) return;
+
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
+
+    setLoading(true);
+    setError(null);
+    setNickname(null);
+    setSlug(null);
+    setCards([]);
+    setPageInfo({ hasNextPage: false, endCursor: null });
+
+    try {
+      const url = `${BASE_URL}/public-user-cards-page?identifier=${encodeURIComponent(id)}&first=25`;
+      const res = await apiFetch(url);
+      const json = await res.json();
+
+      if (!res.ok) {
+        setError(JSON.stringify(json, null, 2));
+        return;
+      }
+
+      setNickname(json.nickname ?? null);
+      setSlug(json.slug ?? null);
+      setCards(json.cards ?? []);
+      setPageInfo(json.pageInfo ?? { hasNextPage: false, endCursor: null });
+    } catch (e: any) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+      inFlightRef.current = false;
+    }
+  }
+
+  async function loadMore() {
+    const id = identifier.trim();
+    if (!id) return;
+    if (!pageInfo.hasNextPage || !pageInfo.endCursor) return;
+
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
+
+    setLoadingMore(true);
+    setError(null);
+
+    try {
+      const url =
+        `${BASE_URL}/public-user-cards-page?identifier=${encodeURIComponent(id)}` +
+        `&first=25&after=${encodeURIComponent(pageInfo.endCursor)}`;
+
+      const res = await apiFetch(url);
+      const json = await res.json();
+
+      if (!res.ok) {
+        setError(JSON.stringify(json, null, 2));
+        return;
+      }
+
+      setNickname(json.nickname ?? null);
+      setSlug(json.slug ?? null);
+
+      setCards((prev) => {
+        const seen = new Set(prev.map((c) => c.id));
+        const merged = [...prev];
+        for (const c of json.cards ?? []) {
+          if (!seen.has(c.id)) {
+            merged.push(c);
+            seen.add(c.id);
+          }
+        }
+        return merged;
+      });
+
+      setPageInfo(json.pageInfo ?? { hasNextPage: false, endCursor: null });
+    } catch (e: any) {
+      setError(String(e));
+    } finally {
+      setLoadingMore(false);
+      inFlightRef.current = false;
+    }
+  }
+
+  // ✅ NOUVEAU: charge toutes les pages proprement (anti 429)
+  async function loadAll() {
+    const id = identifier.trim();
+    if (!id) return;
+    if (loading || loadingMore || loadingAll) return;
+
+    setLoadingAll(true);
+    setError(null);
+
+    try {
+      let after: string | null = null;
+      let hasNextPage = true;
+
+      // reset
+      setNickname(null);
+      setSlug(null);
+      setCards([]);
+      setPageInfo({ hasNextPage: false, endCursor: null });
+
+      while (hasNextPage) {
+        const url =
+          `${BASE_URL}/public-user-cards-page?identifier=${encodeURIComponent(id)}` +
+          `&first=25` +
+          (after ? `&after=${encodeURIComponent(after)}` : "");
+
+        const res = await apiFetch(url);
+        const json = await res.json();
+
+        if (!res.ok) {
+          setError(JSON.stringify(json, null, 2));
+          break;
+        }
+
+        setNickname(json.nickname ?? null);
+        setSlug(json.slug ?? null);
+
+        setCards((prev) => {
+          const seen = new Set(prev.map((c) => c.id));
+          const merged = [...prev];
+          for (const c of json.cards ?? []) {
+            if (!seen.has(c.id)) {
+              merged.push(c);
+              seen.add(c.id);
+            }
+          }
+          return merged;
+        });
+
+        hasNextPage = !!json.pageInfo?.hasNextPage;
+        after = json.pageInfo?.endCursor ?? null;
+        setPageInfo(json.pageInfo ?? { hasNextPage: false, endCursor: null });
+
+        // ✅ pause pour éviter 429 (Too many requests)
+        await new Promise((r) => setTimeout(r, 350));
+
+        if (!hasNextPage || !after) break;
+      }
+    } finally {
+      setLoadingAll(false);
+    }
+  }
+
+  return {
+    identifier,
+    setIdentifier,
+    loading,
+    loadingMore,
+    loadingAll,
+    error,
+    nickname,
+    slug,
+    cards,
+    nonCommonCards,
+    pageInfo,
+    loadFirstPage,
+    loadMore,
+    loadAll,
+  };
+}

@@ -1,0 +1,98 @@
+﻿import React, { useEffect, useState } from "react";
+import { ActivityIndicator, FlatList, Image, Pressable, Text, View } from "react-native";
+
+const BASE_URL = process.env.EXPO_PUBLIC_BASE_URL || "http://127.0.0.1:3000";
+
+type MarketItem = {
+  id: string;
+  status: string;
+  eur: number | null;
+  wei: string | null;
+  card: null | {
+    assetId: string;
+    slug: string;
+    name: string;
+    rarity: string;
+    collection: string;
+    pictureUrl?: string;
+  };
+};
+
+export default function MarketScreen() {
+  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<MarketItem[]>([]);
+  const [fromCache, setFromCache] = useState(false);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const r = await fetch(`${BASE_URL}/market/offers?last=20`);
+      const j = await r.json();
+      setItems(Array.isArray(j?.items) ? j.items : []);
+      setFromCache(!!j?.fromCache);
+    } catch {
+      setItems([]);
+      setFromCache(false);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { load(); }, []);
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+        <ActivityIndicator />
+        <Text style={{ marginTop: 10 }}>Chargement marché…</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ flex: 1, padding: 12 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <Text style={{ fontSize: 20, fontWeight: "700" }}>Marché</Text>
+        <Pressable onPress={load} style={{ paddingVertical: 8, paddingHorizontal: 10, borderWidth: 1, borderRadius: 10 }}>
+          <Text>Rafraîchir</Text>
+        </Pressable>
+      </View>
+
+      <Text style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
+        Source: backend • fromCache={String(fromCache)} • items={items.length}
+      </Text>
+
+      <FlatList
+        data={items}
+        keyExtractor={(it) => it.id}
+        contentContainerStyle={{ gap: 10, paddingBottom: 20 }}
+        renderItem={({ item }) => {
+          const title = item.card?.name || item.card?.slug || "Carte";
+          const rarity = item.card?.rarity || "";
+          const price = item.eur != null ? `${item.eur} €` : (item.wei ? `${item.wei} wei` : "—");
+
+          return (
+            <View style={{ borderWidth: 1, borderRadius: 14, padding: 12, gap: 8 }}>
+              <View style={{ flexDirection: "row", gap: 12 }}>
+                {item.card?.pictureUrl ? (
+                  <Image source={{ uri: item.card.pictureUrl }} style={{ width: 72, height: 96, borderRadius: 10 }} />
+                ) : (
+                  <View style={{ width: 72, height: 96, borderRadius: 10, borderWidth: 1, alignItems: "center", justifyContent: "center" }}>
+                    <Text style={{ fontSize: 12, opacity: 0.7 }}>No img</Text>
+                  </View>
+                )}
+
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Text style={{ fontWeight: "700" }} numberOfLines={2}>{title}</Text>
+                  <Text style={{ opacity: 0.8 }}>{rarity}</Text>
+                  <Text style={{ marginTop: 6, fontSize: 16, fontWeight: "700" }}>{price}</Text>
+                  <Text style={{ fontSize: 12, opacity: 0.6 }}>{item.status}</Text>
+                </View>
+              </View>
+            </View>
+          );
+        }}
+      />
+    </View>
+  );
+}

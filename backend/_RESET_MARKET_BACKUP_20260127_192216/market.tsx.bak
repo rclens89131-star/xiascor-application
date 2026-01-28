@@ -1,0 +1,253 @@
+﻿import React, { useEffect, useMemo, useState } from "react";
+import { SafeAreaView, View, Text, Pressable, FlatList, ActivityIndicator, Alert } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const BASE_URL = process.env.EXPO_PUBLIC_BASE_URL ?? "http://127.0.0.1:3000";
+
+type TabKey = "market" | "watchlist" | "alerts";
+
+type OfferItem = {
+  id: string;
+  title: string;
+  subtitle?: string;
+};
+
+async function jsonFetch(url: string) {
+  const r = await fetch(url);
+  const txt = await r.text();
+  let data: any = null;
+  try { data = JSON.parse(txt); } catch {}
+  if (!r.ok) {
+    const msg = (data && (data.error || data.message)) ? (data.error || data.message) : txt;
+    throw new Error(msg || ("HTTP " + r.status));
+  }
+  return data;
+}
+
+export default function MarketScreen() {
+  const [activeTab, setActiveTab] = useState<TabKey>("watchlist");
+
+  const [deviceId, setDeviceId] = useState<string | null>(null);
+  const [linked, setLinked] = useState<boolean>(false);
+
+  const [marketLoaded, setMarketLoaded] = useState(false);
+  const [marketLoading, setMarketLoading] = useState(false);
+  const [marketError, setMarketError] = useState<string>("");
+
+  const [items, setItems] = useState<OfferItem[]>([]);
+
+  const theme = useMemo(() => ({
+    bg: "#0b0f14",
+    panel: "#121923",
+    stroke: "rgba(255,255,255,0.10)",
+    text: "rgba(255,255,255,0.92)",
+    muted: "rgba(255,255,255,0.60)",
+    good: "#2bd576",
+    bad: "#ff5a5a",
+  }), []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const id = await AsyncStorage.getItem("xs_device_id_v1");
+        setDeviceId(id);
+        if (id) {
+          const st = await jsonFetch(BASE_URL + "/auth/device-status?deviceId=" + encodeURIComponent(id));
+          setLinked(!!st?.linked);
+        } else {
+          setLinked(false);
+        }
+      } catch {
+        setLinked(false);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    // reset liste quand on change d’onglet
+    setItems([]);
+    setMarketError("");
+    setMarketLoaded(false);
+  }, [activeTab]);
+
+  async function loadMarketOnce() {
+    try {
+      setMarketLoading(true);
+      setMarketError("");
+
+      // ⚠️ Pour l’instant on charge le “marché public” (pas OAuth) via /scout/cards
+      // On corrigera ensuite pour utiliser les endpoints OAuth quand on aura la shape GraphQL exacte.
+      const r = await jsonFetch(BASE_URL + "/scout/cards?first=20&eurOnly=1");
+      const list = (r?.items || r?.offers || r?.cards || []).map((x: any, i: number) => {
+        const id = String(x?.id || x?.offerId || ("item-" + i));
+        const title = String(x?.playerName || x?.name || x?.cardName || id);
+        const eur = x?.eur ?? x?.priceEur ?? x?.eurCents;
+        const subtitle = eur != null ? ("Prix: " + eur) : undefined;
+        return { id, title, subtitle };
+      });
+
+      setItems(list);
+      setMarketLoaded(true);
+    } catch (e: any) {
+      setMarketError(String(e?.message || e));
+    } finally {
+      setMarketLoading(false);
+    }
+  }
+
+  async function loadWatchlist() {
+    try {
+      setMarketLoading(true);
+      setMarketError("");
+      const r = await jsonFetch(BASE_URL + "/scout/watchlist");
+      const list = (r?.items || r || []).map((x: any, i: number) => ({
+        id: String(x?.id || ("wl-" + i)),
+        title: String(x?.label || x?.name || x?.player || x?.q || "Watchlist"),
+        subtitle: x?.note ? String(x.note) : undefined,
+      }));
+      setItems(list);
+      setMarketLoaded(true);
+    } catch (e: any) {
+      setMarketError(String(e?.message || e));
+    } finally {
+      setMarketLoading(false);
+    }
+  }
+
+  async function loadAlerts() {
+    try {
+      setMarketLoading(true);
+      setMarketError("");
+      const r = await jsonFetch(BASE_URL + "/scout/alerts");
+      const list = (r?.items || r || []).map((x: any, i: number) => ({
+        id: String(x?.id || ("al-" + i)),
+        title: String(x?.label || x?.name || "Alerte"),
+        subtitle: x?.q ? ("q=" + x.q) : undefined,
+      }));
+      setItems(list);
+      setMarketLoaded(true);
+    } catch (e: any) {
+      setMarketError(String(e?.message || e));
+    } finally {
+      setMarketLoading(false);
+    }
+  }
+
+  async function onLoad() {
+    if (activeTab === "market") return loadMarketOnce();
+    if (activeTab === "watchlist") return loadWatchlist();
+    return loadAlerts();
+  }
+
+  const headerRight = useMemo(() => {
+    return (
+      <View style={{ alignItems: "flex-end" }}>
+        <Text style={{ color: linked ? theme.good : theme.muted, fontSize: 12, fontWeight: "800" }}>
+          {linked ? "Sorare: connecté" : "Sorare: non connecté"}
+        </Text>
+        {!!deviceId && (
+          <Text style={{ color: theme.muted, fontSize: 10, marginTop: 2 }}>
+            deviceId: {deviceId}
+          </Text>
+        )}
+      </View>
+    );
+  }, [deviceId, linked, theme.good, theme.muted]);
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
+      <View style={{ padding: 16, gap: 12 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <Text style={{ color: theme.text, fontSize: 22, fontWeight: "900" }}>Scout-Marché</Text>
+          {headerRight}
+        </View>
+
+        {/* Tabs */}
+        <View style={{ flexDirection: "row", gap: 10 }}>
+          {([
+            { key: "watchlist", label: "Watchlist" },
+            { key: "market", label: "Marché" },
+            { key: "alerts", label: "Alertes" },
+          ] as { key: TabKey; label: string }[]).map((t) => {
+            const active = activeTab === t.key;
+            return (
+              <Pressable
+                key={t.key}
+                onPress={() => setActiveTab(t.key)}
+                style={{
+                  flex: 1,
+                  paddingVertical: 10,
+                  borderRadius: 14,
+                  backgroundColor: active ? "rgba(255,255,255,0.10)" : theme.panel,
+                  borderWidth: 1,
+                  borderColor: theme.stroke,
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ color: theme.text, fontWeight: "900" }}>{t.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {/* Load button */}
+        <Pressable
+          onPress={onLoad}
+          style={{
+            marginTop: 4,
+            borderRadius: 16,
+            paddingVertical: 12,
+            paddingHorizontal: 14,
+            backgroundColor: "rgba(43,213,118,0.95)",
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ color: theme.bg, fontWeight: "900" }}>
+            Charger {activeTab === "market" ? "le marché" : activeTab === "watchlist" ? "la watchlist" : "les alertes"}
+          </Text>
+        </Pressable>
+
+        {marketLoading && (
+          <View style={{ marginTop: 10, flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <ActivityIndicator />
+            <Text style={{ color: theme.muted }}>Chargement…</Text>
+          </View>
+        )}
+
+        {!!marketError && (
+          <Text style={{ color: theme.bad, marginTop: 10, fontWeight: "700" }}>
+            Erreur: {marketError}
+          </Text>
+        )}
+
+        {!marketLoading && marketLoaded && (
+          <FlatList
+            data={items}
+            keyExtractor={(it) => it.id}
+            style={{ marginTop: 10 }}
+            ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+            renderItem={({ item }) => (
+              <View style={{ backgroundColor: theme.panel, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: theme.stroke }}>
+                <Text style={{ color: theme.text, fontWeight: "900" }}>{item.title}</Text>
+                {!!item.subtitle && (
+                  <Text style={{ color: theme.muted, marginTop: 4 }}>{item.subtitle}</Text>
+                )}
+              </View>
+            )}
+            ListEmptyComponent={() => (
+              <Text style={{ color: theme.muted, marginTop: 10 }}>
+                Liste vide. Clique “Charger”.
+              </Text>
+            )}
+          />
+        )}
+
+        {!marketLoaded && (
+          <Text style={{ color: theme.muted, marginTop: 10 }}>
+            Le marché ne se charge pas tout seul (anti rate-limit). Clique sur “Charger”.
+          </Text>
+        )}
+      </View>
+    </SafeAreaView>
+  );
+}

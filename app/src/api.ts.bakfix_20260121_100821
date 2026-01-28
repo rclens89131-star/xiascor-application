@@ -1,0 +1,16 @@
+﻿const NGROK_HEADERS: Record<string, string> = {
+  "ngrok-skip-browser-warning": "1",
+};
+
+// Mets ton IP locale ici si tu veux (192.168.1.19) ou garde l'env EXPO_PUBLIC_API_URL
+export const BASE_URL =
+  (process.env.EXPO_PUBLIC_API_URL as string) ?? "http://192.168.1.19:3000";
+
+export async function apiFetch(url: string, init: RequestInit = {}) {
+  const headers = {
+    ...(init.headers || {}),
+    ...NGROK_HEADERS,
+  };
+  return fetch(url, { ...init, headers });
+}
+
