@@ -1,11 +1,17 @@
 ﻿import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator,
+import {
+  ActivityIndicator,
   FlatList,
   SafeAreaView,
   Text,
   TouchableOpacity,
-  View, Image, Modal, Pressable } from "react-native";
+  View,
+  Image,
+  Modal,
+  Pressable,
+} from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { fetchScoutCards, type PageInfo as ScoutPageInfo, type ScoutOffer } from "../../src/scoutApi";
 
 type MarketOffer = {
   id: string;
@@ -21,45 +27,33 @@ type MarketOffer = {
   priceText?: string;
 };
 
-type MarketOffersResponse = {
-  ok: boolean;
-  fromCache?: boolean;
-  count?: number;   // total renvoyé par backend (après ses filtres)
-  items: MarketOffer[];
-  error?: string;
-};
-
-const BASE_URL = process.env.EXPO_PUBLIC_BASE_URL ?? "http://127.0.0.1:3000";
-
 async function getStoredDeviceId(): Promise<string | null> {
   const v = await AsyncStorage.getItem("deviceId");
   return (v && v.trim() ? v.trim() : "dev_mkwlzdch_ux00v6v0qj"); // fallback debug
 }
 
-async function fetchMarketOffers(
-  baseUrl: string,
-  deviceId: string,
-  first = 50,
-  eurOnly = true
-) {
-  const qs = new URLSearchParams();
-  qs.set("deviceId", deviceId);
-  qs.set("first", String(first));
-  if (eurOnly) qs.set("eurOnly", "1");
+const getOfferKey = (offer: MarketOffer) => String(offer.id || offer.cardSlug || "");
 
-  const url = `${baseUrl}/market/offers?${qs.toString()}`;
-  const res = await fetch(url);
-  const text = await res.text();
+function mergeOffers(prev: MarketOffer[], next: MarketOffer[]) {
+  const map = new Map<string, MarketOffer>();
+  const put = (offer: MarketOffer) => {
+    const key = getOfferKey(offer);
+    if (!key) return;
+    map.set(key, offer);
+  };
+  prev.forEach(put);
+  next.forEach(put);
+  return Array.from(map.values());
+}
 
-  let json: any;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    throw new Error(`Réponse non-JSON: ${text.slice(0, 160)}`);
-  }
-
-  if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
-  return { url, data: json as MarketOffersResponse };
+function normalizeScoutOffer(offer: ScoutOffer): MarketOffer {
+  return {
+    id: offer.offerId || offer.slug,
+    cardSlug: offer.slug,
+    pictureUrl: offer.pictureUrl ?? undefined,
+    rarity: offer.rarity ?? undefined,
+    eur: offer.eur ?? null,
+  };
 }
 
 function formatPrice(o: MarketOffer) {
@@ -101,11 +95,13 @@ export default function MarketScreen() {
   };
   const xsCloseOffer = () => setModalOpen(false);
   // XS_MARKET_V3_STATE_V1_END
-const [offers, setOffers] = useState<MarketOffer[]>([]);
+  const [offers, setOffers] = useState<MarketOffer[]>([]);
+  const [pageInfo, setPageInfo] = useState<ScoutPageInfo | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [meta, setMeta] = useState<{ fromCache?: boolean; count?: number } | null>(null);
+  const [meta, setMeta] = useState<{ note?: string } | null>(null);
 
   // UI settings
   const [first, setFirst] = useState(50);
@@ -124,23 +120,11 @@ const [offers, setOffers] = useState<MarketOffer[]>([]);
     const eurCount = offers.filter(o => typeof o.eur === "number" && o.eur !== null).length;
     return { fetched, eurCount };
   }, [offers]);
-  // XS_MARKET_V3_PREFETCH_V1_BEGIN
-  useEffect(() => {
-    try {
-      const urls = (shown || [])
-        .map((o: any) => o?.pictureUrl)
-        .filter((u: any) => typeof u === "string" && u.startsWith("http"));
-      // évite d'exploser la RAM: on précharge juste les 12 premières
-      urls.slice(0, 12).forEach((u: string) => { Image.prefetch(u); });
-    } catch {}
-  }, [shown]);
-  // XS_MARKET_V3_PREFETCH_V1_END
-
 
   const shown = useMemo(() => {
     let arr = offers.slice();
-if (footballOnly) {
-      arr = arr.filter(o => norm(o.collection) === "football");
+    if (footballOnly) {
+      arr = arr.filter(o => !o.collection || norm(o.collection) === "football");
     }
 
     if (eurOnly) {
@@ -160,26 +144,57 @@ if (footballOnly) {
 
     return arr;
   }, [offers, eurOnly, footballOnly, rarity, sortAsc]);
-
-  const loadOffers = async () => {
+  // XS_MARKET_V3_PREFETCH_V1_BEGIN
+  useEffect(() => {
     try {
-      setLoading(true);
-      setError(null);
+      const urls = (shown || [])
+        .map((o: any) => o?.pictureUrl)
+        .filter((u: any) => typeof u === "string" && u.startsWith("http"));
+      // évite d'exploser la RAM: on précharge juste les 12 premières
+      urls.slice(0, 12).forEach((u: string) => { Image.prefetch(u); });
+    } catch {}
+  }, [shown]);
+  // XS_MARKET_V3_PREFETCH_V1_END
+
+  const loadOffers = async (mode: "reset" | "more" = "reset") => {
+    if (loading || loadingMore) return;
+    if (mode === "more" && !pageInfo?.hasNextPage) return;
+    try {
+      if (mode === "reset") {
+        setLoading(true);
+        setError(null);
+        setPageInfo(null);
+      } else {
+        setLoadingMore(true);
+      }
 
       const deviceId = await getStoredDeviceId();
       if (!deviceId) throw new Error("deviceId introuvable. Connecte l'app (device login) puis réessaie.");
 
       setLastDeviceId(deviceId);
 
-      const { url, data } = await fetchMarketOffers(BASE_URL, deviceId, first, eurOnly);
-      setLastUrl(url);
+      const qs = new URLSearchParams();
+      qs.set("first", String(first));
+      if (eurOnly) qs.set("eurOnly", "1");
+      if (mode === "more" && pageInfo?.endCursor) qs.set("after", pageInfo.endCursor);
+      setLastUrl(`/scout/cards?${qs.toString()}`);
 
-      setOffers(Array.isArray(data.items) ? data.items : []);
-      setMeta({ fromCache: data.fromCache, count: data.count });
+      const data = await fetchScoutCards({
+        first,
+        after: mode === "more" ? pageInfo?.endCursor ?? null : null,
+        eurOnly,
+      });
+
+      const items = Array.isArray(data.items) ? data.items : [];
+      const normalized = items.map(normalizeScoutOffer);
+      setOffers((prev) => (mode === "reset" ? mergeOffers([], normalized) : mergeOffers(prev, normalized)));
+      setPageInfo(data.pageInfo ?? null);
+      setMeta({ note: data.note });
     } catch (e: any) {
       setError(e?.message ?? String(e));
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
@@ -376,7 +391,7 @@ if (footballOnly) {
         {/* XS_FIX_HOOKS_GATING_UI_V1_END */}
 
         <TouchableOpacity
-          onPress={loadOffers}
+          onPress={() => loadOffers("reset")}
           disabled={loading}
           style={{
             marginTop: 12,
@@ -392,7 +407,7 @@ if (footballOnly) {
         </TouchableOpacity>
 
         <Text style={{ marginTop: 10, color: "#bbb" }}>
-          affichées: {shown.length} • EUR: {stats.eurCount}/{stats.fetched} • count={meta?.count ?? "?"} • cache={meta?.fromCache ? "oui" : "non"}
+          affichées: {shown.length} • EUR: {stats.eurCount}/{stats.fetched} • next={pageInfo?.hasNextPage ? "oui" : "non"}
         </Text>
 
         <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 6 }}>
@@ -414,6 +429,7 @@ if (footballOnly) {
           <>
             {lastDeviceId ? <Text style={{ marginTop: 6, color: "#777" }}>deviceId: {lastDeviceId}</Text> : null}
             {lastUrl ? <Text style={{ marginTop: 6, color: "#777" }}>url: {lastUrl}</Text> : null}
+            {meta?.note ? <Text style={{ marginTop: 6, color: "#777" }}>note: {meta.note}</Text> : null}
           </>
         ) : null}
 
@@ -432,11 +448,22 @@ if (footballOnly) {
         numColumns={2}
         columnWrapperStyle={{ gap: 0 }}
         data={(loading && shown.length === 0) ? Array.from({ length: 6 }, (_, i) => ({ id: "sk-" + i } as any)) : shown}
-        keyExtractor={(it) => it.id}
+        keyExtractor={(it) => getOfferKey(it)}
         renderItem={renderItem}
         contentContainerStyle={{ paddingBottom: 30 }}
         refreshing={loading}
-        onRefresh={loadOffers}
+        onRefresh={() => loadOffers("reset")}
+        onEndReached={() => loadOffers("more")}
+        onEndReachedThreshold={0.6}
+        ListFooterComponent={
+          loadingMore ? (
+            <View style={{ paddingVertical: 16 }}>
+              <ActivityIndicator />
+            </View>
+          ) : (
+            <View style={{ height: 16 }} />
+          )
+        }
       />
           {/* XS_MARKET_V3_MODAL_V1_BEGIN */}
       <Modal visible={modalOpen} animationType="slide" transparent={true} onRequestClose={xsCloseOffer}>
@@ -521,12 +548,4 @@ if (footballOnly) {
 </SafeAreaView>
   );
 }
-
-
-
-
-
-
-
-
 

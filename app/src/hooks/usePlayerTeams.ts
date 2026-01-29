@@ -2,6 +2,7 @@
 import { apiFetch } from "../api";
 
 type TeamInfo = { teamName: string | null; teamSlug: string | null };
+type PublicPlayerResponse = { teamName?: string | null; teamSlug?: string | null };
 
 export function usePlayerTeams() {
   // cache { playerSlug -> TeamInfo }
@@ -20,7 +21,7 @@ export function usePlayerTeams() {
 
     const p = (async () => {
       try {
-        const data = await apiFetch(`/public-player?slug=${encodeURIComponent(playerSlug)}`);
+        const data = await apiFetch<PublicPlayerResponse>(`/public-player?slug=${encodeURIComponent(playerSlug)}`);
         const info: TeamInfo = {
           teamName: data?.teamName ?? null,
           teamSlug: data?.teamSlug ?? null,
