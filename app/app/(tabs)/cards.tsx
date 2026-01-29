@@ -29,6 +29,7 @@ export default function CardsScreen() {
   }, [cards, setGallery]);
 
   const { width } = useWindowDimensions();
+  const getCardKey = (card: any) => String(card?.slug || card?.id || "");
 
   // ✅ largeur exacte pour 2 colonnes
   const layout = useMemo(() => {
@@ -94,7 +95,7 @@ export default function CardsScreen() {
         <FlatList
           key="grid2" // ✅ force FlatList à recalculer la grille
           data={cards}
-          keyExtractor={(item: any) => String(item?.slug || item?.id)}
+          keyExtractor={(item: any) => getCardKey(item)}
           numColumns={2}
           contentContainerStyle={{ paddingHorizontal: layout.H_PADDING, paddingBottom: 120 }}
           onEndReached={() => loadMore()}
@@ -111,7 +112,7 @@ export default function CardsScreen() {
               >
                 <CardListItem
                   card={item}
-                  selected={selected.some((c) => c.slug === item.slug)}
+                  selected={selected.some((c) => getCardKey(c) === getCardKey(item))}
                   onPress={() => toggleSelected(item)}
                 />
               </View>
@@ -138,4 +139,3 @@ export default function CardsScreen() {
     </SafeAreaView>
   );
 }
-

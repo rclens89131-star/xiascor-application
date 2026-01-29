@@ -21,12 +21,13 @@ export default function PlayScreen() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
-  const pickedSlugs = useMemo(() => slots.map((s) => picked[s]).filter(Boolean) as string[], [picked]);
+  const getCardKey = (card: any) => String(card?.slug || card?.id || "");
+  const pickedKeys = useMemo(() => slots.map((s) => picked[s]).filter(Boolean) as string[], [picked]);
 
   const pickedCards = useMemo(() => {
-    const map = new Map(gallery.map((c) => [c.slug, c]));
-    return pickedSlugs.map((slug) => map.get(slug)).filter(Boolean);
-  }, [gallery, pickedSlugs]);
+    const map = new Map(gallery.map((c) => [getCardKey(c), c]));
+    return pickedKeys.map((key) => map.get(key)).filter(Boolean);
+  }, [gallery, pickedKeys]);
 
   const validation = useMemo(() => {
     const errors: string[] = [];
@@ -51,10 +52,15 @@ export default function PlayScreen() {
     setPicked(next);
   }
 
-  function tryAdd(cardSlug: string, cardPos: string) {
+  function tryAdd(cardKey: string, cardPos: string) {
+    if (!cardKey) {
+      setToast("Carte invalide");
+      setTimeout(() => setToast(null), 1500);
+      return;
+    }
     // retire si déjà présent
-    if (pickedSlugs.includes(cardSlug)) {
-      removeSlug(cardSlug);
+    if (pickedKeys.includes(cardKey)) {
+      removeSlug(cardKey);
       return;
     }
 
@@ -63,20 +69,20 @@ export default function PlayScreen() {
     const isCompatible = (slot: Slot) => slot === "FLEX" || slot === cardPos;
 
     if (!picked[want] && isCompatible(want)) {
-      setPicked((p) => ({ ...p, [want]: cardSlug }));
+      setPicked((p) => ({ ...p, [want]: cardKey }));
       return;
     }
 
     // si slot actif pas possible, tenter slot exact correspondant
     const exactSlot = (["GK","DEF","MID","FWD"] as Slot[]).find((s) => s === cardPos) as Slot | undefined;
     if (exactSlot && !picked[exactSlot]) {
-      setPicked((p) => ({ ...p, [exactSlot]: cardSlug }));
+      setPicked((p) => ({ ...p, [exactSlot]: cardKey }));
       return;
     }
 
     // sinon flex si libre
     if (!picked.FLEX) {
-      setPicked((p) => ({ ...p, FLEX: cardSlug }));
+      setPicked((p) => ({ ...p, FLEX: cardKey }));
       return;
     }
 
@@ -114,7 +120,10 @@ export default function PlayScreen() {
     }
     try {
       setSaving(true);
-      await createLineup({ name: name.trim() || "Lineup", mode: "classic", cardSlugs: pickedSlugs });
+      const cardSlugs = pickedCards
+        .map((card: any) => String(card?.slug || card?.id || ""))
+        .filter((slug) => slug);
+      await createLineup({ name: name.trim() || "Lineup", mode: "classic", cardSlugs });
       setToast("Lineup sauvegardée ✅");
       setTimeout(() => setToast(null), 1800);
     } catch (e: any) {
@@ -139,8 +148,8 @@ export default function PlayScreen() {
 
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
             {slots.map((s) => {
-              const slug = picked[s];
-              const card: any = slug ? gallery.find((c: any) => c.slug === slug) : null;
+              const key = picked[s];
+              const card: any = key ? gallery.find((c: any) => getCardKey(c) === key) : null;
               const active = activeSlot === s;
 
               return (
@@ -217,19 +226,19 @@ export default function PlayScreen() {
         </View>
 
         <Text style={{ color: theme.muted }}>
-          Liste filtrée: {activeSlot === "FLEX" ? "tous postes" : activeSlot} • Sélection: {pickedSlugs.length}/5
+          Liste filtrée: {activeSlot === "FLEX" ? "tous postes" : activeSlot} • Sélection: {pickedKeys.length}/5
         </Text>
       </View>
 
       <FlatList
         data={filteredGallery}
-        keyExtractor={(item: any) => item.id || item.slug}
+        keyExtractor={(item: any) => getCardKey(item)}
         contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 120 }}
         renderItem={({ item }: any) => (
           <CardListItem
             card={item}
-            selected={pickedSlugs.includes(item.slug)}
-            onPress={() => tryAdd(item.slug, item.position)}
+            selected={pickedKeys.includes(getCardKey(item))}
+            onPress={() => tryAdd(getCardKey(item), item.position)}
           />
         )}
         ListEmptyComponent={
@@ -241,8 +250,6 @@ export default function PlayScreen() {
     </SafeAreaView>
   );
 }
-
-
 
 
 

@@ -4,8 +4,8 @@ const base = Colors.dark ?? Colors;
 
 export const theme = {
   bg: base.background ?? "#070A12",
-  panel: base.card ?? base.background ?? "#0B1220",
-  panel2: base.card ?? base.background ?? "#0F1B33",
+  panel: base.background ?? "#0B1220",
+  panel2: base.background ?? "#0F1B33",
 
   text: base.text ?? "#EAF0FF",
   muted: base.icon ?? "rgba(234,240,255,0.65)",

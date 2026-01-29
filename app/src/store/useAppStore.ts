@@ -31,6 +31,8 @@ type State = {
   pushCopilot: (m: State["copilotMessages"][number]) => void;
 };
 
+const getCardKey = (c: SorareCard) => String(c.slug || c.id);
+
 export const useAppStore = create<State>((set, get) => ({
   identifier: "darkflow",
   setIdentifier: (v) => set({ identifier: v }),
@@ -41,8 +43,9 @@ export const useAppStore = create<State>((set, get) => ({
   selected: [],
   toggleSelected: (c) => {
     const s = get().selected;
-    const exists = s.some((x) => x.slug === c.slug);
-    if (exists) return set({ selected: s.filter((x) => x.slug !== c.slug) });
+    const key = getCardKey(c);
+    const exists = s.some((x) => getCardKey(x) === key);
+    if (exists) return set({ selected: s.filter((x) => getCardKey(x) !== key) });
     if (s.length >= 5) return;
     set({ selected: [...s, c] });
   },
