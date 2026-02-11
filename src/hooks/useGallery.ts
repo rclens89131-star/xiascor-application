@@ -1,4 +1,5 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿/* XS_GALLERY_RARITY_UNKNOWN_V1 */
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../api";
 
 type Card = any;
@@ -194,6 +195,7 @@ export function useGallery({ identifier, first = 25 }: Options) {
 
   return { cards, loading, loadingMore, error, reload, loadMore };
 }
+
 
 
 
