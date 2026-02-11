@@ -1,4 +1,5 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+﻿/* XS_PLAY_ASSIGN_COMPAT_SLOT_V2_FILEMARK */
+import React, { useEffect, useMemo, useState } from "react";
 import { FlatList, Image, Pressable, SafeAreaView, ScrollView, Switch, Text, TextInput, View } from "react-native"; /* XS_PLAY_SCROLL_HEADER_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createLineup } from "../../src/apiLineups";
@@ -76,53 +77,7 @@ function cardKey(item: any): string {
   return `fb_${xsHash32(fp)}`;
 }
 
-function cardPosCode(item: any): PosCode {
-  const rawPos =
-    item?.position ??
-    item?.playerPosition ??
-    item?.anyPosition ??
-    item?.card?.position ??
-    item?.card?.playerPosition ??
-    item?.card?.anyPosition ??
-    (Array.isArray(item?.anyPositions) ? item?.anyPositions?.[0] : null) ??
-    (Array.isArray(item?.card?.anyPositions) ? item?.card?.anyPositions?.[0] : null) ??
-    item?.player?.position ??
-    item?.card?.player?.position ??
-    "";
-
-  const raw = String(rawPos ?? "").toUpperCase().trim();
-  if (!raw) return "UNK";
-  if (raw === "GK" || raw.includes("GOAL")) return "GK";
-  if (raw === "DEF" || raw.includes("DEF")) return "DEF";
-  if (raw === "MID" || raw.includes("MID")) return "MID";
-  if (raw === "FWD" || raw.includes("FORW") || raw.includes("ATT") || raw.includes("STRIK")) return "FWD";
-  return "UNK";
-}
-
-function cardSeason(card: any): string {
-  const value = card?.seasonYear ?? card?.card?.seasonYear ?? card?.season ?? card?.card?.season ?? null;
-  return value ? String(value) : "—";
-}
-
-function cardClub(card: any): string {
-  return String(card?.teamName ?? card?.team ?? card?.club ?? card?.card?.teamName ?? card?.player?.activeClub?.name ?? "").trim();
-}
-
-function cardRarityLabel(card: any): string {
-  return String(card?.rarity ?? card?.scarcity ?? card?.card?.rarity ?? "unknown").replace("_", " ").toUpperCase();
-}
-
-function isCardCompatibleWithSlot(slot: Slot, pos: PosCode, allowGkInFlex: boolean): boolean {
-  if (slot === "GK") return pos === "GK";
-  if (slot === "DEF") return pos === "DEF";
-  if (slot === "MID") return pos === "MID";
-  if (slot === "FWD") return pos === "FWD";
-  if (slot === "FLEX") {
-    if (pos === "UNK") return false;
-    if (pos === "GK") return allowGkInFlex;
-    return true;
-  }
-  return false;
+function\ cardPosCode\(item:\ any\):\ PosCode\ \{`r`n\ \ const\ rawPos\ =`r`n\ \ \ \ item\?\.position\ \?\?`r`n\ \ \ \ item\?\.playerPosition\ \?\?`r`n\ \ \ \ item\?\.anyPosition\ \?\?`r`n\ \ \ \ item\?\.card\?\.position\ \?\?`r`n\ \ \ \ item\?\.card\?\.playerPosition\ \?\?`r`n\ \ \ \ item\?\.card\?\.anyPosition\ \?\?`r`n\ \ \ \ \(Array\.isArray\(item\?\.anyPositions\)\ \?\ item\?\.anyPositions\?\.\[0]\ :\ null\)\ \?\?`r`n\ \ \ \ \(Array\.isArray\(item\?\.card\?\.anyPositions\)\ \?\ item\?\.card\?\.anyPositions\?\.\[0]\ :\ null\)\ \?\?`r`n\ \ \ \ item\?\.player\?\.position\ \?\?`r`n\ \ \ \ item\?\.card\?\.player\?\.position\ \?\?`r`n\ \ \ \ "";`r`n`r`n\ \ const\ raw\ =\ String\(rawPos\ \?\?\ ""\)\.toUpperCase\(\)\.trim\(\);`r`n\ \ if\ \(!raw\)\ return\ "UNK";`r`n\ \ if\ \(raw\ ===\ "GK"\ \|\|\ raw\.includes\("GOAL"\)\)\ return\ "GK";`r`n\ \ if\ \(raw\ ===\ "DEF"\ \|\|\ raw\.includes\("DEF"\)\)\ return\ "DEF";`r`n\ \ if\ \(raw\ ===\ "MID"\ \|\|\ raw\.includes\("MID"\)\)\ return\ "MID";`r`n\ \ if\ \(raw\ ===\ "FWD"\ \|\|\ raw\.includes\("FORW"\)\ \|\|\ raw\.includes\("ATT"\)\ \|\|\ raw\.includes\("STRIK"\)\)\ return\ "FWD";`r`n\ \ return\ "UNK";`r`n}`r`n`r`nfunction\ cardSeason\(card:\ any\):\ string\ \{`r`n\ \ const\ value\ =\ card\?\.seasonYear\ \?\?\ card\?\.card\?\.seasonYear\ \?\?\ card\?\.season\ \?\?\ card\?\.card\?\.season\ \?\?\ null;`r`n\ \ return\ value\ \?\ String\(value\)\ :\ "—";`r`n}`r`n`r`nfunction\ cardClub\(card:\ any\):\ string\ \{`r`n\ \ return\ String\(card\?\.teamName\ \?\?\ card\?\.team\ \?\?\ card\?\.club\ \?\?\ card\?\.card\?\.teamName\ \?\?\ card\?\.player\?\.activeClub\?\.name\ \?\?\ ""\)\.trim\(\);`r`n}`r`n`r`nfunction\ cardRarityLabel\(card:\ any\):\ string\ \{`r`n\ \ return\ String\(card\?\.rarity\ \?\?\ card\?\.scarcity\ \?\?\ card\?\.card\?\.rarity\ \?\?\ "unknown"\)\.replace\("_",\ "\ "\)\.toUpperCase\(\);`r`n}`r`n`r`nfunction\ isCardCompatibleWithSlot\(slot:\ Slot,\ pos:\ PosCode,\ allowGkInFlex:\ boolean\):\ boolean\ \{`r`n\ \ if\ \(slot\ ===\ "GK"\)\ return\ pos\ ===\ "GK";`r`n\ \ if\ \(slot\ ===\ "DEF"\)\ return\ pos\ ===\ "DEF";`r`n\ \ if\ \(slot\ ===\ "MID"\)\ return\ pos\ ===\ "MID";`r`n\ \ if\ \(slot\ ===\ "FWD"\)\ return\ pos\ ===\ "FWD";`r`n\ \ if\ \(slot\ ===\ "FLEX"\)\ \{`r`n\ \ \ \ if\ \(pos\ ===\ "UNK"\)\ return\ false;`r`n\ \ \ \ if\ \(pos\ ===\ "GK"\)\ return\ allowGkInFlex;`r`n\ \ \ \ return\ true;`r`n\ \ }`r`n\ \ `n`n//\ XS_PLAY_POS_CANDIDATES_V2\ \(BEGIN\)`nfunction\ xsNormalizePosTokenV2\(v:\ any\):\ string\ \{`n\ \ const\ s\ =\ String\(v\ \?\?\ ""\)\.toUpperCase\(\)\.trim\(\);`n\ \ if\ \(!s\)\ return\ "";`n\ \ if\ \(s\.includes\("GK"\)\ \|\|\ s\.includes\("GOAL"\)\)\ return\ "GK";`n\ \ if\ \(s\ ===\ "DF"\ \|\|\ s\ ===\ "DEF"\ \|\|\ s\.includes\("DEF"\)\)\ return\ "DEF";`n\ \ if\ \(s\ ===\ "MD"\ \|\|\ s\ ===\ "MID"\ \|\|\ s\.includes\("MID"\)\)\ return\ "MID";`n\ \ if\ \(s\ ===\ "FW"\ \|\|\ s\ ===\ "FWD"\ \|\|\ s\.includes\("FOR"\)\ \|\|\ s\.includes\("ATT"\)\ \|\|\ s\.includes\("STRIK"\)\)\ return\ "FWD";`n\ \ return\ "";`n}`n`nfunction\ xsPosCandidatesV2\(item:\ any\):\ string\[]\ \{`n\ \ const\ out\ =\ new\ Set<string>\(\);`n\ \ const\ pushAny\ =\ \(x:\ any\)\ =>\ \{`n\ \ \ \ if\ \(x\ ==\ null\)\ return;`n\ \ \ \ if\ \(Array\.isArray\(x\)\)\ \{\ for\ \(const\ y\ of\ x\)\ pushAny\(y\);\ return;\ }`n\ \ \ \ const\ t\ =\ String\(x\);`n\ \ \ \ //\ split\ en\ tokens\ \(ex:\ "DF/MID",\ "DF,MD",\ etc\.\)`n\ \ \ \ const\ tokens\ =\ \[t,\ \.\.\.t\.split\(/\[\^A-Za-z]\+/\)]\.filter\(Boolean\);`n\ \ \ \ for\ \(const\ tok\ of\ tokens\)\ \{`n\ \ \ \ \ \ const\ n\ =\ xsNormalizePosTokenV2\(tok\);`n\ \ \ \ \ \ if\ \(n\)\ out\.add\(n\);`n\ \ \ \ }`n\ \ };`n`n\ \ //\ shapes\ fréquents\ \(gallery\ snapshots\ /\ card\ /\ player\)`n\ \ pushAny\(item\?\.position\);`n\ \ pushAny\(item\?\.positions\);`n\ \ pushAny\(item\?\.anyPositions\);`n\ \ pushAny\(item\?\.playerPosition\);`n\ \ pushAny\(item\?\.player\?\.position\);`n\ \ pushAny\(item\?\.player\?\.positions\);`n\ \ pushAny\(item\?\.player\?\.anyPositions\);`n\ \ pushAny\(item\?\.card\?\.position\);`n\ \ pushAny\(item\?\.card\?\.positions\);`n\ \ pushAny\(item\?\.card\?\.anyPositions\);`n\ \ pushAny\(item\?\.card\?\.player\?\.position\);`n\ \ pushAny\(item\?\.card\?\.player\?\.positions\);`n\ \ pushAny\(item\?\.card\?\.player\?\.anyPositions\);`n`n\ \ return\ Array\.from\(out\);`n}`n//\ XS_PLAY_POS_CANDIDATES_V2\ \(END\)`nreturn false;
 }
 
 function estimateCardScore(card: any): number | null {
@@ -543,7 +498,7 @@ export default function PlayScreen() {
               const pos = cardPosCode(item);
               return (
                 <View key={key} style={{ gap: 4 }}>
-                  <CardListItem card={item} selected={pickedSlugs.includes(key)} onPress={() => tryAdd(key, pos)} />
+                  <CardListItem card={item} selected={pickedSlugs.includes(key)} onPress=\{\(\)\ =>\ \{`n\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ //\ XS_PLAY_ASSIGN_COMPAT_SLOT_V2`n\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ const\ want\ =\ activeSlot;\ //\ "GK"\ \|\ "DEF"\ \|\ "MID"\ \|\ "FWD"\ \|\ "FLEX"`n\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ let\ forced\ =\ pos;`n`n\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ try\ \{`n\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ //\ si\ on\ est\ sur\ un\ slot\ strict\ \(pas\ FLEX\)\ et\ que\ la\ carte\ a\ ce\ poste\ dans\ ses\ candidats\ ->\ on\ force`n\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ if\ \(want\ &&\ want\ !==\ "FLEX"\)\ \{`n\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ const\ candidates\ =\ typeof\ xsPosCandidatesV2\ ===\ "function"\ \?\ xsPosCandidatesV2\(item\)\ :\ \[];`n\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ if\ \(Array\.isArray\(candidates\)\ &&\ candidates\.includes\(want\)\)\ \{`n\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ forced\ =\ want;`n\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ }`n\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ }`n\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ }\ catch\ \{}`n`n\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ tryAdd\(key,\ forced\);`n\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ }} />
                   {pos === "UNK" && <Text style={{ color: theme.warn, fontSize: 12 }}>position inconnue</Text>}
                 </View>
               );
@@ -554,5 +509,6 @@ export default function PlayScreen() {
     </SafeAreaView>
   );
 }
+
 
 
