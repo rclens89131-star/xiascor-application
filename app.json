@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "sorare-app",
+    "slug": "sorare-app",
+    "version": "1.0.0",
+    "scheme": "soraredash",
+    "plugins": [
+      "expo-font",
+      "expo-router"
+    ]
+  }
+}
