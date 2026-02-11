@@ -417,13 +417,15 @@ if (!next[want] && isCompatible(want)) {
         )}
         ListEmptyComponent={
           <View style={{ padding: 16 }}>
-            <Text style={{ color: theme.muted }}>Va dans “Mes cartes” pour charger ta galerie.</Text>
+            <Text style={{ color: theme.muted }}>Aucune carte compatible détectée pour ce slot (ou galerie vide). Va dans “Mes cartes” pour charger ta galerie.</Text>
           </View>
         }
       />
     </SafeAreaView>
   );
 }
+
+
 
 
 
