@@ -1,91 +1,53 @@
-﻿import React, { useMemo, useState } from "react";
-import { FlatList, Pressable, SafeAreaView, Text, TextInput, View, Image } from "react-native";
-import { theme } from "../../src/theme";
-import { useAppStore } from "../../src/store/useAppStore";
-import { CardListItem } from "../../src/components/CardListItem";
+﻿import React, { useEffect, useMemo, useState } from "react";
+import { FlatList, Image, Pressable, SafeAreaView, Switch, Text, TextInput, View } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createLineup } from "../../src/apiLineups";
+import { CardListItem } from "../../src/components/CardListItem";
+import { theme, rarityColor } from "../../src/theme";
+import { useAppStore } from "../../src/store/useAppStore";
 
 type Slot = "GK" | "DEF" | "MID" | "FWD" | "FLEX";
+type PosCode = "GK" | "DEF" | "MID" | "FWD" | "UNK";
+type Scenario = "classic" | "cap_240" | "cap_220";
+
+type HistoryItem = {
+  id: string;
+  createdAt: string;
+  name: string;
+  scenario: Scenario;
+  picked: Record<Slot, string | null>;
+  allowGkInFlex: boolean;
+  enableClubRule: boolean;
+};
+
+type PersistedPlayState = {
+  picked: Record<Slot, string | null>;
+  name: string;
+  scenario: Scenario;
+  allowGkInFlex: boolean;
+  enableClubRule: boolean;
+  history: HistoryItem[];
+};
+
 const slots: Slot[] = ["GK", "DEF", "MID", "FWD", "FLEX"];
+const SCENARIO_LABEL: Record<Scenario, string> = {
+  classic: "Classic",
+  cap_240: "Cap 240",
+  cap_220: "Cap 220",
+};
+const PLAY_PERSIST_KEY = "xs_play_lineup_v2";
+const EMPTY_PICKED: Record<Slot, string | null> = { GK: null, DEF: null, MID: null, FWD: null, FLEX: null };
 
-export default function PlayScreen() {
-  const gallery = useAppStore((s) => s.gallery);
-
-  // XS_PLAY_GALLERY_BYKEY_V1
-  const galleryByKey = React.useMemo(() => {
-    const m = new Map<string, any>();
-    for (const it of (gallery ?? [])) {
-      const k = cardKey(it);
-      if (k) m.set(k, it);
-    }
-    return m;
-  }, [gallery]);
-
-  // Slots state: slug par slot
-  const [picked, setPicked] = useState<Record<Slot, string | null>>({
-    GK: null, DEF: null, MID: null, FWD: null, FLEX: null,
-  });
-
-  const [activeSlot, setActiveSlot] = useState<Slot>("FLEX");
-  const [name, setName] = useState("GW - lineup");
-  const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
-
-  const pickedSlugs = useMemo(() => slots.map((s) => picked[s]).filter(Boolean) as string[], [picked]);
-
-  const pickedCards = useMemo(() => {
-    const map = new Map((gallery ?? []).map((c: any) => [cardKey(c), c]));
-    return pickedSlugs.map((slug) => map.get(slug)).filter(Boolean);
-  }, [gallery, pickedSlugs]);
-
-  const validation = useMemo(() => {
-    const errors: string[] = [];
-    if (!picked.GK) errors.push("Il manque un GK");
-    if (!picked.DEF) errors.push("Il manque un DEF");
-    if (!picked.MID) errors.push("Il manque un MID");
-    if (!picked.FWD) errors.push("Il manque un FWD");
-    // FLEX optionnel mais recommandé
-    return { ok: errors.length === 0, errors };
-  }, [picked]);
-
-  function reset() {
-    setPicked({ GK: null, DEF: null, MID: null, FWD: null, FLEX: null });
-    setActiveSlot("FLEX");
-    setToast("Reset OK");
-    setTimeout(() => setToast(null), 1500);
-  }
-
-  function removeSlug(slug: string) {
-    const next: any = { ...picked };
-    for (const s of slots) if (next[s] === slug) next[s] = null;
-    setPicked(next);
-  }
-
-  function normalizePos(value: string | null | undefined) {
-  const s = String(value || "").toUpperCase();
-  if (s.includes("GK") || s.includes("GOAL")) return "GK";
-  if (s.includes("DEF")) return "DEF";
-  if (s.includes("MID")) return "MID";
-  if (s.includes("FWD") || s.includes("FOR")) return "FWD";
-  return "";
-}
-
-
-// XS_PLAY_CARDKEY_HELPERS_V1: stable key + pos normalization for slots
-/* XS_PLAY_CARDKEY_FALLBACK_V1: guarantee non-empty stable key (avoid "" -> slots show "Vide") */
 function xsHash32(input: string): string {
-  let h = 2166136261; // FNV-1a 32-bit
+  let h = 2166136261;
   for (let i = 0; i < input.length; i++) {
     h ^= input.charCodeAt(i);
     h = Math.imul(h, 16777619);
   }
-  // unsigned + base36
   return (h >>> 0).toString(36);
 }
 
-// XS_PLAY_CARDKEY_HELPERS_V1: stable key + pos normalization for slots
 function cardKey(item: any): string {
-  // priorité: slug -> cardSlug -> id (+ variantes)
   const k =
     item?.slug ??
     item?.cardSlug ??
@@ -102,7 +64,6 @@ function cardKey(item: any): string {
   const key = String(k ?? "").trim();
   if (key) return key;
 
-  // fallback déterministe (évite "" et garde une stabilité raisonnable)
   const fp = [
     String(item?.pictureUrl ?? item?.card?.pictureUrl ?? ""),
     String(item?.playerName ?? item?.card?.playerName ?? ""),
@@ -112,11 +73,10 @@ function cardKey(item: any): string {
     String(item?.position ?? item?.card?.position ?? ""),
   ].join("|");
 
-  return "fb_" + xsHash32(fp);
+  return `fb_${xsHash32(fp)}`;
 }
-/* XS_PLAY_CARDPOS_FALLBACK_V1: cardPosCode must not be "" (otherwise GK/DEF/MID/FWD never match and it falls to FLEX) */
-function cardPosCode(item: any): string {
-  // Essayez plusieurs shapes (selon source: /cards, snapshots, etc.)
+
+function cardPosCode(item: any): PosCode {
   const rawPos =
     item?.position ??
     item?.playerPosition ??
@@ -131,172 +91,309 @@ function cardPosCode(item: any): string {
     "";
 
   const raw = String(rawPos ?? "").toUpperCase().trim();
-  if (!raw) return "";
-
-  // normalise vers GK/DEF/MID/FWD si possible
+  if (!raw) return "UNK";
   if (raw === "GK" || raw.includes("GOAL")) return "GK";
   if (raw === "DEF" || raw.includes("DEF")) return "DEF";
   if (raw === "MID" || raw.includes("MID")) return "MID";
   if (raw === "FWD" || raw.includes("FORW") || raw.includes("ATT") || raw.includes("STRIK")) return "FWD";
-
-  // sinon laisser brut (au cas où)
-  return raw;
+  return "UNK";
 }
-/* XS_PLAY_SLOT_MINICARD_V1: show selected card inside slots as a mini card */
-function SlotMiniCard({ card }: { card: any }) {
+
+function cardSeason(card: any): string {
+  const value = card?.seasonYear ?? card?.card?.seasonYear ?? card?.season ?? card?.card?.season ?? null;
+  return value ? String(value) : "—";
+}
+
+function cardClub(card: any): string {
+  return String(card?.teamName ?? card?.team ?? card?.club ?? card?.card?.teamName ?? card?.player?.activeClub?.name ?? "").trim();
+}
+
+function cardRarityLabel(card: any): string {
+  return String(card?.rarity ?? card?.scarcity ?? card?.card?.rarity ?? "unknown").replace("_", " ").toUpperCase();
+}
+
+function isCardCompatibleWithSlot(slot: Slot, pos: PosCode, allowGkInFlex: boolean): boolean {
+  if (slot === "GK") return pos === "GK";
+  if (slot === "DEF") return pos === "DEF";
+  if (slot === "MID") return pos === "MID";
+  if (slot === "FWD") return pos === "FWD";
+  if (slot === "FLEX") {
+    if (pos === "UNK") return false;
+    if (pos === "GK") return allowGkInFlex;
+    return true;
+  }
+  return false;
+}
+
+function estimateCardScore(card: any): number | null {
+  const candidates = [card?.expectedScore, card?.score, card?.l15, card?.avgScore, card?.card?.expectedScore, card?.card?.score];
+  for (const c of candidates) {
+    if (typeof c === "number" && Number.isFinite(c)) return c;
+  }
+  return null;
+}
+
+function SlotMiniCard({
+  slot,
+  card,
+  onRemove,
+  onSwap,
+  swapActive,
+}: {
+  slot: Slot;
+  card: any;
+  onRemove: () => void;
+  onSwap: () => void;
+  swapActive: boolean;
+}) {
   const url = String(card?.pictureUrl ?? card?.card?.pictureUrl ?? "").trim();
   const name = String(card?.playerName ?? card?.card?.playerName ?? "Unknown");
-  const rarity = String(card?.rarity ?? card?.card?.rarity ?? "").toUpperCase();
+  const pos = cardPosCode(card);
+  const season = cardSeason(card);
+  const rarityLabel = cardRarityLabel(card);
 
   return (
-    <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
-      <View
-        style={{
-          width: 46,
-          height: 64, // mini ratio proche carte
-          borderRadius: 10,
-          overflow: "hidden",
-          backgroundColor: theme.panel2,
-          borderWidth: 1,
-          borderColor: "rgba(255,255,255,0.12)",
-        }}
-      >
-        {url ? (
-          <Image source={{ uri: url }} style={{ width: "100%", height: "100%" }} resizeMode="contain" />
-        ) : (
-          <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-            <Text style={{ color: theme.muted, fontSize: 10, fontWeight: "800" }}>—</Text>
+    <View style={{ gap: 8 }}>
+      <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
+        <View style={{ width: 46, height: 64, borderRadius: 10, overflow: "hidden", backgroundColor: theme.panel2, borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" }}>
+          {url ? (
+            <Image source={{ uri: url }} style={{ width: "100%", height: "100%" }} resizeMode="contain" />
+          ) : (
+            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+              <Text style={{ color: theme.muted, fontSize: 10, fontWeight: "800" }}>—</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: theme.text, fontWeight: "900" }} numberOfLines={1}>{name}</Text>
+          <Text style={{ color: theme.muted, marginTop: 2, fontSize: 12 }} numberOfLines={1}>
+            {pos === "UNK" ? "position inconnue" : pos} • Saison {season}
+          </Text>
+
+          <View style={{ alignSelf: "flex-start", marginTop: 5, borderRadius: 10, borderWidth: 1, borderColor: rarityColor(String(card?.rarity ?? card?.card?.rarity ?? "")), paddingHorizontal: 7, paddingVertical: 2, backgroundColor: "rgba(255,255,255,0.02)" }}>
+            <Text style={{ fontSize: 10, fontWeight: "900", color: rarityColor(String(card?.rarity ?? card?.card?.rarity ?? "")) }}>
+              {rarityLabel}
+            </Text>
           </View>
-        )}
+        </View>
       </View>
 
-      <View style={{ flex: 1 }}>
-        <Text style={{ color: theme.text, fontWeight: "900" }} numberOfLines={1}>{name}</Text>
-        <Text style={{ color: theme.muted, marginTop: 2, fontSize: 12 }} numberOfLines={1}>
-          {rarity || "—"}
-        </Text>
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <Pressable onPress={onRemove} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: theme.stroke, backgroundColor: "rgba(255,255,255,0.05)" }}>
+          <Text style={{ color: theme.text, fontWeight: "900" }}>✖ remove</Text>
+        </Pressable>
+
+        <Pressable onPress={onSwap} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: swapActive ? theme.accent : theme.stroke, backgroundColor: swapActive ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.05)" }}>
+          <Text style={{ color: theme.text, fontWeight: "900" }}>↔ swap {slot}</Text>
+        </Pressable>
       </View>
     </View>
   );
 }
 
-// XS_PLAY_GALLERY_BYKEY_V1: map gallery items by stable key (slug/cardSlug/id)
+export default function PlayScreen() {
+  const gallery = useAppStore((s) => s.gallery);
 
-function tryAdd(cardSlug: string, cardPos: string) {
-  // XS_PLAY_TRYADD_ATOMIC_V1: compute from latest state (avoid stale picked/slot)
-  setPicked((prev) => {
-    /* XS_PLAY_SLOT_PROBE_V1 */
-    try {
-      console.log("[PLAY][tryAdd] tap", {
-        cardSlug,
-        cardPos,
-        activeSlot,
-        prevPicked: prev,
-        galleryLen: (gallery ?? []).length,
-        hasInMap: !!galleryByKey.get(cardSlug),
-        keyLooksEmpty: !String(cardSlug || "").trim(),
-      });
-    } catch {}
-    const next = { ...prev } as Record<Slot, string | null>;
-    const currentPickedSlugs = slots.map((s) => next[s]).filter(Boolean) as string[];
-
-    // toggle off si déjà présent
-    if (currentPickedSlugs.includes(cardSlug)) {
-      for (const s of slots) if (next[s] === cardSlug) next[s] = null;
-      return next;
+  const galleryByKey = useMemo(() => {
+    const m = new Map<string, any>();
+    for (const it of gallery ?? []) {
+      const k = cardKey(it);
+      if (k) m.set(k, it);
     }
+    return m;
+  }, [gallery]);
 
-    const want = activeSlot;
-const isCompatible = (slot: Slot) => slot === "FLEX" || slot === cardPos;
+  const [picked, setPicked] = useState<Record<Slot, string | null>>(EMPTY_PICKED);
+  const [activeSlot, setActiveSlot] = useState<Slot>("FLEX");
+  const [name, setName] = useState("GW - lineup");
+  const [scenario, setScenario] = useState<Scenario>("classic");
+  const [allowGkInFlex, setAllowGkInFlex] = useState(false);
+  const [enableClubRule, setEnableClubRule] = useState(false);
+  const [swapFrom, setSwapFrom] = useState<Slot | null>(null);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
 
-/* XS_PLAY_TRYADD_ALLOW_UNKNOWN_POS_V1:
-   Si l'utilisateur a sélectionné un slot précis (GK/DEF/MID/FWD) et qu'il est vide,
-   on autorise l'ajout même si cardPos est inconnu (""), sinon ça tombe en FLEX. */
-if (want !== "FLEX" && !next[want] && (!cardPos || isCompatible(want))) {
-  next[want] = cardSlug;
-  return next;
-}
-if (!next[want] && isCompatible(want)) {
-      next[want] = cardSlug;
-      return next;
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(PLAY_PERSIST_KEY);
+        if (!raw || !mounted) { setHydrated(true); return; }
+        const parsed = JSON.parse(raw) as Partial<PersistedPlayState>;
+        if (parsed?.picked) setPicked({ ...EMPTY_PICKED, ...parsed.picked });
+        if (typeof parsed?.name === "string") setName(parsed.name);
+        if (parsed?.scenario && ["classic", "cap_240", "cap_220"].includes(parsed.scenario)) setScenario(parsed.scenario as Scenario);
+        if (typeof parsed?.allowGkInFlex === "boolean") setAllowGkInFlex(parsed.allowGkInFlex);
+        if (typeof parsed?.enableClubRule === "boolean") setEnableClubRule(parsed.enableClubRule);
+        if (Array.isArray(parsed?.history)) setHistory(parsed.history.slice(0, 3));
+      } catch {
+        // ignore invalid local state
+      } finally {
+        if (mounted) setHydrated(true);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    const payload: PersistedPlayState = { picked, name, scenario, allowGkInFlex, enableClubRule, history };
+    AsyncStorage.setItem(PLAY_PERSIST_KEY, JSON.stringify(payload)).catch(() => null);
+  }, [hydrated, picked, name, scenario, allowGkInFlex, enableClubRule, history]);
+
+  const pickedSlugs = useMemo(() => slots.map((s) => picked[s]).filter(Boolean) as string[], [picked]);
+  const pickedCards = useMemo(() => pickedSlugs.map((slug) => galleryByKey.get(slug)).filter(Boolean), [galleryByKey, pickedSlugs]);
+
+  const missingCount = Math.max(0, 5 - pickedSlugs.length);
+
+  const hasGk = useMemo(() => pickedCards.some((c) => cardPosCode(c) === "GK"), [pickedCards]);
+
+  const sameClubViolation = useMemo(() => {
+    if (!enableClubRule) return false;
+    const counts: Record<string, number> = {};
+    for (const card of pickedCards) {
+      const club = cardClub(card);
+      if (!club) continue;
+      counts[club] = (counts[club] ?? 0) + 1;
+      if (counts[club] > 2) return true;
     }
+    return false;
+  }, [enableClubRule, pickedCards]);
 
-    const exactSlot = (["GK","DEF","MID","FWD"] as Slot[]).find((s) => s === cardPos) as Slot | undefined;
-    if (exactSlot && !next[exactSlot]) {
-      next[exactSlot] = cardSlug;
-      return next;
+  const validation = useMemo(() => {
+    const errors: string[] = [];
+    if (pickedSlugs.length !== 5) errors.push("Tu dois avoir 5 cartes");
+    if (!hasGk) errors.push("Pas de GK");
+    if (sameClubViolation) errors.push("Trop de joueurs même club");
+    return { ok: errors.length === 0, errors };
+  }, [pickedSlugs.length, hasGk, sameClubViolation]);
+
+  const scoreEstimate = useMemo(() => {
+    let total = 0;
+    let hasAny = false;
+    for (const card of pickedCards) {
+      const s = estimateCardScore(card);
+      if (typeof s === "number") { total += s; hasAny = true; }
     }
+    return hasAny ? total : null;
+  }, [pickedCards]);
 
-    if (!next.FLEX) {
-      next.FLEX = cardSlug;
-      return next;
-    }
-
-    setToast("Aucun slot disponible/compatible");
-    setTimeout(() => setToast(null), 1500);
-    return next;
-  });
-}
-
-    function slotToPos(slot: string | null | undefined) {
-    const s = String(slot || "").toUpperCase();
-    if (s === "GK" || s.includes("GOAL")) return "GK";
-    if (s === "DEF" || s.includes("DEF")) return "DEF";
-    if (s === "MID" || s.includes("MID")) return "MID";
-    if (s === "FWD" || s.includes("FOR")) return "FWD";
-    if (s.includes("FLEX")) return "FLEX";
-    return "";
-  }
+  const capRemaining = useMemo(() => {
+    const cap = scenario === "cap_240" ? 240 : scenario === "cap_220" ? 220 : null;
+    if (!cap || scoreEstimate == null) return null;
+    return cap - scoreEstimate;
+  }, [scenario, scoreEstimate]);
 
   const filteredGalleryState = useMemo(() => {
-  const want = activeSlot === "FLEX" ? "FLEX" : normalizePos(activeSlot);
-  let filtered = gallery as any[];
-  let isFallback = false;
+    const strictItems = (gallery as any[]).filter((item) => isCardCompatibleWithSlot(activeSlot, cardPosCode(item), allowGkInFlex));
+    const canFallback = activeSlot === "FLEX";
+    if ((gallery as any[]).length > 0 && strictItems.length === 0 && canFallback) {
+      return { items: gallery as any[], isFallback: true };
+    }
+    return { items: strictItems, isFallback: false };
+  }, [gallery, activeSlot, allowGkInFlex]);
 
-  if (want === "FLEX") {
-    filtered = (gallery as any[]).filter((c: any) => normalizePos(c?.position) !== "GK");
-  } else if (want) {
-    filtered = (gallery as any[]).filter((c: any) => normalizePos(c?.position) === want);
+  function showToast(message: string) {
+    setToast(message);
+    setTimeout(() => setToast(null), 1800);
   }
 
-  if (filtered.length === 0 && (gallery as any[]).length > 0) {
-    filtered = gallery as any[];
-    isFallback = true;
+  function reset() {
+    setPicked(EMPTY_PICKED);
+    setActiveSlot("FLEX");
+    setSwapFrom(null);
+    showToast("Reset OK");
   }
 
-  return { items: filtered, isFallback };
-}, [gallery, activeSlot]);  
-  function formatSlotMeta(card: any) {
-    const playerName = String(card?.playerName || card?.name || card?.player?.displayName || card?.player?.name || "").trim();
-    const club = String(card?.club || card?.team || card?.teamName || card?.player?.activeClub?.name || "").trim();
-    const position = String(card?.position || card?.player?.position || "").toUpperCase();
-    const rarity = String(card?.rarity || card?.scarcity || "").trim();
-    const priceRaw = card?.price ?? card?.lastSalePrice ?? card?.floorPrice;
-    const formattedPrice =
-      typeof priceRaw === "number"
-        ? `Ξ ${priceRaw.toFixed(4)}`
-        : String(priceRaw || "").trim();
-
-    const line1 = [club, position].filter(Boolean).join(" • ");
-    const line2 = [rarity, formattedPrice].filter(Boolean).join(" • ");
-    return { playerName, line1, line2 };
+  function removeFromSlot(slot: Slot) {
+    setPicked((prev) => ({ ...prev, [slot]: null }));
   }
 
-
-  async function save() {
-    if (!validation.ok) {
-      setToast(validation.errors[0] ?? "Validation KO");
-      setTimeout(() => setToast(null), 1800);
+  function onSlotSwapPress(slot: Slot) {
+    if (!swapFrom) {
+      setSwapFrom(slot);
+      showToast(`Mode swap actif: choisis un 2e slot (départ ${slot})`);
       return;
     }
+    if (swapFrom === slot) {
+      setSwapFrom(null);
+      showToast("Mode swap désactivé");
+      return;
+    }
+    setPicked((prev) => {
+      const next = { ...prev };
+      const first = next[swapFrom];
+      next[swapFrom] = next[slot];
+      next[slot] = first;
+      return next;
+    });
+    setSwapFrom(null);
+    showToast(`Swap ${swapFrom} ↔ ${slot} effectué`);
+  }
+
+  function onSlotPress(slot: Slot) {
+    setActiveSlot(slot);
+    if (swapFrom && swapFrom !== slot) onSlotSwapPress(slot);
+  }
+
+  function tryAdd(cardSlug: string, cardPos: PosCode) {
+    const unkAllowedInFlexFallback = activeSlot === "FLEX" && filteredGalleryState.isFallback;
+
+    if (!isCardCompatibleWithSlot(activeSlot, cardPos, allowGkInFlex)) {
+      if (cardPos === "UNK" && !unkAllowedInFlexFallback) {
+        showToast("Carte ignorée: position inconnue (mode strict)");
+      } else if (activeSlot === "FLEX" && cardPos === "GK" && !allowGkInFlex) {
+        showToast("GK interdit en FLEX (active “Autoriser GK en FLEX”)");
+      } else {
+        showToast(`Incompatible pour le slot ${activeSlot}`);
+      }
+      return;
+    }
+
+    setPicked((prev) => {
+      const next = { ...prev };
+      for (const s of slots) if (next[s] === cardSlug) next[s] = null;
+      next[activeSlot] = cardSlug;
+      return next;
+    });
+  }
+
+  function pushHistoryFromCurrent() {
+    const now = new Date().toISOString();
+    const item: HistoryItem = {
+      id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      createdAt: now,
+      name: name.trim() || "Lineup",
+      scenario,
+      picked,
+      allowGkInFlex,
+      enableClubRule,
+    };
+    setHistory((prev) => [item, ...prev].slice(0, 3));
+  }
+
+  function loadHistory(item: HistoryItem) {
+    setPicked({ ...EMPTY_PICKED, ...item.picked });
+    setName(item.name);
+    setScenario(item.scenario);
+    setAllowGkInFlex(item.allowGkInFlex);
+    setEnableClubRule(item.enableClubRule);
+    setSwapFrom(null);
+    showToast("Lineup historique rechargée");
+  }
+
+  async function save() {
+    if (!validation.ok) { showToast(validation.errors[0] ?? "Validation KO"); return; }
     try {
       setSaving(true);
-      await createLineup({ name: name.trim() || "Lineup", mode: "classic", cardSlugs: pickedSlugs });
-      setToast("Lineup sauvegardée ✅");
-      setTimeout(() => setToast(null), 1800);
+      await createLineup({ name: name.trim() || "Lineup", mode: scenario === "classic" ? "classic" : "cap", cardSlugs: pickedSlugs });
+      pushHistoryFromCurrent();
+      showToast("Lineup sauvegardée ✅");
     } catch (e: any) {
-      setToast(`Erreur: ${e?.message ?? "save KO"}`);
-      setTimeout(() => setToast(null), 2200);
+      showToast(`Erreur: ${e?.message ?? "save KO"}`);
     } finally {
       setSaving(false);
     }
@@ -307,99 +404,131 @@ if (!next[want] && isCompatible(want)) {
       <View style={{ padding: 16, gap: 12 }}>
         <Text style={{ color: theme.text, fontSize: 22, fontWeight: "900" }}>Jouer</Text>
 
-        {/* Slots */}
+        <View style={{ backgroundColor: theme.panel, borderRadius: 14, borderWidth: 1, borderColor: theme.stroke, padding: 12, gap: 10 }}>
+          <Text style={{ color: theme.text, fontWeight: "900" }}>Scénario Sorare</Text>
+          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+            {(["classic", "cap_240", "cap_220"] as Scenario[]).map((item) => {
+              const active = scenario === item;
+              return (
+                <Pressable key={item} onPress={() => setScenario(item)} style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, borderWidth: 1, borderColor: active ? "rgba(59,130,246,0.45)" : theme.stroke, backgroundColor: active ? "rgba(59,130,246,0.15)" : "rgba(255,255,255,0.03)" }}>
+                  <Text style={{ color: theme.text, fontWeight: "800" }}>{SCENARIO_LABEL[item]}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={{ color: theme.muted }}>Score estimé</Text>
+            <Text style={{ color: theme.text, fontWeight: "900" }}>{scoreEstimate == null ? "—" : scoreEstimate.toFixed(1)}</Text>
+          </View>
+          {scenario !== "classic" && (
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ color: theme.muted }}>Cap restant</Text>
+              <Text style={{ color: theme.text, fontWeight: "900" }}>{capRemaining == null ? "—" : capRemaining.toFixed(1)}</Text>
+            </View>
+          )}
+        </View>
+
         <View style={{ backgroundColor: theme.panel, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: theme.stroke }}>
           <Text style={{ color: theme.text, fontWeight: "900" }}>Slots (GK/DEF/MID/FWD/FLEX)</Text>
-          <Text style={{ color: theme.muted, marginTop: 6 }}>
-            Tap un slot → sélectionne une carte compatible dessous. (FLEX = n’importe quel poste)
+
+          <View style={{ marginTop: 10, gap: 10 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={{ color: theme.muted, flex: 1 }}>Autoriser GK en FLEX</Text>
+              <Switch value={allowGkInFlex} onValueChange={setAllowGkInFlex} />
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={{ color: theme.muted, flex: 1 }}>Activer règle club (max 2 joueurs/club)</Text>
+              <Switch value={enableClubRule} onValueChange={setEnableClubRule} />
+            </View>
+          </View>
+
+          <Text style={{ color: theme.muted, marginTop: 8 }}>
+            {missingCount > 0 ? `Il manque ${missingCount} carte${missingCount > 1 ? "s" : ""}` : "Lineup complète"} • {pickedSlugs.length}/5 cartes
           </Text>
 
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
             {slots.map((s) => {
-  const slug = picked[s];
-  const card: any = slug ? galleryByKey.get(slug) : null;
-  const isActive = activeSlot === s;
+              const slug = picked[s];
+              const card: any = slug ? galleryByKey.get(slug) : null;
+              const isActive = activeSlot === s;
+              const isSwapTarget = swapFrom === s;
 
-  return (
-    <Pressable
-      key={s}
-      onPress={() => setActiveSlot(s)}
-      style={{
-        padding: 12,
-        borderRadius: 16,
-        borderWidth: 1,
-        borderColor: isActive ? "rgba(59,130,246,0.55)" : theme.stroke,
-        backgroundColor: theme.panel,
-      }}
-    >
-      <Text style={{ color: theme.muted, fontWeight: "900", marginBottom: 8 }}>{s}</Text>
-
-      {card ? (
-        <SlotMiniCard card={card} />
-      ) : (
-        <Text style={{ color: theme.muted, fontWeight: "800" }}>Vide</Text>
-      )}
-    </Pressable>
-  );
-})}
+              return (
+                <Pressable key={s} onPress={() => onSlotPress(s)} style={{ width: "48%", padding: 12, borderRadius: 16, borderWidth: 1, borderColor: isSwapTarget ? "rgba(34,197,94,0.5)" : isActive ? "rgba(59,130,246,0.55)" : theme.stroke, backgroundColor: theme.panel }}>
+                  <Text style={{ color: theme.muted, fontWeight: "900", marginBottom: 8 }}>{s}</Text>
+                  {card ? (
+                    <SlotMiniCard slot={s} card={card} onRemove={() => removeFromSlot(s)} onSwap={() => onSlotSwapPress(s)} swapActive={swapFrom === s} />
+                  ) : (
+                    <View style={{ gap: 8 }}>
+                      <Text style={{ color: theme.muted, fontWeight: "800" }}>Vide</Text>
+                      <Pressable onPress={() => onSlotSwapPress(s)} style={{ alignSelf: "flex-start", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: swapFrom === s ? theme.accent : theme.stroke, backgroundColor: swapFrom === s ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.04)" }}>
+                        <Text style={{ color: theme.text, fontWeight: "900" }}>↔ swap {s}</Text>
+                      </Pressable>
+                    </View>
+                  )}
+                </Pressable>
+              );
+            })}
           </View>
 
-          {/* Validation */}
           <View style={{ marginTop: 10 }}>
             {validation.ok ? (
-              <Text style={{ color: theme.good, fontWeight: "900" }}>✅ Valide (slots obligatoires remplis)</Text>
+              <Text style={{ color: theme.good, fontWeight: "900" }}>✅ Valide</Text>
             ) : (
               <Text style={{ color: theme.warn, fontWeight: "900" }}>⚠️ {validation.errors.join(" • ")}</Text>
             )}
           </View>
 
-          {/* Nom + actions */}
           <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
             <View style={{ flex: 1, backgroundColor: theme.panel2, borderRadius: 14, borderWidth: 1, borderColor: theme.stroke, paddingHorizontal: 12, paddingVertical: 10 }}>
               <Text style={{ color: theme.muted, fontSize: 11 }}>Nom lineup</Text>
-              <TextInput
-                value={name}
-                onChangeText={setName}
-                placeholder="Nom"
-                placeholderTextColor={theme.muted}
-                style={{ color: theme.text, fontWeight: "800", paddingTop: 6 }}
-              />
+              <TextInput value={name} onChangeText={setName} placeholder="Nom" placeholderTextColor={theme.muted} style={{ color: theme.text, fontWeight: "800", paddingTop: 6 }} />
             </View>
 
-            <Pressable
-              onPress={reset}
-              style={{ paddingHorizontal: 12, justifyContent: "center", borderRadius: 14, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.stroke }}
-            >
+            <Pressable onPress={reset} style={{ paddingHorizontal: 12, justifyContent: "center", borderRadius: 14, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: theme.stroke }}>
               <Text style={{ color: theme.text, fontWeight: "900" }}>Reset</Text>
             </Pressable>
 
-            <Pressable
-              onPress={save}
-              disabled={saving}
-              style={{
-                paddingHorizontal: 12,
-                justifyContent: "center",
-                borderRadius: 14,
-                backgroundColor: saving ? "rgba(59,130,246,0.10)" : "rgba(59,130,246,0.18)",
-                borderWidth: 1,
-                borderColor: "rgba(59,130,246,0.35)",
-              }}
-            >
+            <Pressable onPress={save} disabled={saving} style={{ paddingHorizontal: 12, justifyContent: "center", borderRadius: 14, backgroundColor: saving ? "rgba(59,130,246,0.10)" : "rgba(59,130,246,0.18)", borderWidth: 1, borderColor: "rgba(59,130,246,0.35)" }}>
               <Text style={{ color: theme.text, fontWeight: "900" }}>{saving ? "..." : "Save"}</Text>
             </Pressable>
           </View>
 
-          {!!toast && (
-            <Text style={{ color: theme.muted, marginTop: 10, fontWeight: "800" }}>{toast}</Text>
+          {!!toast && <Text style={{ color: theme.muted, marginTop: 10, fontWeight: "800" }}>{toast}</Text>}
+        </View>
+
+        <View style={{ backgroundColor: theme.panel, borderRadius: 14, borderWidth: 1, borderColor: theme.stroke, padding: 12, gap: 8 }}>
+          <Text style={{ color: theme.text, fontWeight: "900" }}>Historique (3 derniers)</Text>
+          {history.length === 0 ? (
+            <Text style={{ color: theme.muted }}>Aucune lineup sauvegardée localement.</Text>
+          ) : (
+            history.map((item) => {
+              const filled = slots.filter((slot) => !!item.picked[slot]).length;
+              const historyCards = slots.map((slot) => item.picked[slot]).filter(Boolean) as string[];
+              const gkOk = historyCards.some((slug) => {
+                const card = galleryByKey.get(slug);
+                return cardPosCode(card) === "GK";
+              });
+
+              return (
+                <Pressable key={item.id} onPress={() => loadHistory(item)} style={{ borderRadius: 12, borderWidth: 1, borderColor: theme.stroke, padding: 10, backgroundColor: "rgba(255,255,255,0.02)" }}>
+                  <Text style={{ color: theme.text, fontWeight: "900" }} numberOfLines={1}>
+                    {item.name} • {SCENARIO_LABEL[item.scenario]}
+                  </Text>
+                  <Text style={{ color: theme.muted, marginTop: 3 }}>
+                    {new Date(item.createdAt).toLocaleString()} • {filled}/5, {gkOk ? "GK OK" : "Pas de GK"}
+                  </Text>
+                </Pressable>
+              );
+            })
           )}
         </View>
 
-        <Text style={{ color: theme.muted }}>
-          Liste filtrée: {activeSlot === "FLEX" ? "tous postes" : activeSlot} • Sélection: {pickedSlugs.length}/5
-        </Text>
+        <Text style={{ color: theme.muted }}>Liste filtrée: {activeSlot} • sélection active {pickedSlugs.length}/5</Text>
         {filteredGalleryState.isFallback && (
-          <Text style={{ color: theme.muted, marginTop: 4 }}>
-            Aucune carte pour ce poste, affichage de toute la galerie
+          <Text style={{ color: theme.warn, marginTop: 4, fontWeight: "800" }}>
+            ⚠️ Fallback: aucune carte compatible détectée, affichage complet
           </Text>
         )}
       </View>
@@ -408,39 +537,23 @@ if (!next[want] && isCompatible(want)) {
         data={filteredGalleryState.items}
         keyExtractor={(item: any) => cardKey(item)}
         contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 120 }}
-        renderItem={({ item }: any) => (
-          <CardListItem
-            card={item}
-            selected={pickedSlugs.includes(cardKey(item))}
-            onPress={() => tryAdd(cardKey(item), cardPosCode(item))}
-          />
-        )}
+        renderItem={({ item }: any) => {
+          const pos = cardPosCode(item);
+          return (
+            <View style={{ gap: 4 }}>
+              <CardListItem card={item} selected={pickedSlugs.includes(cardKey(item))} onPress={() => tryAdd(cardKey(item), pos)} />
+              {pos === "UNK" && <Text style={{ color: theme.warn, fontSize: 12 }}>position inconnue</Text>}
+            </View>
+          );
+        }}
         ListEmptyComponent={
           <View style={{ padding: 16 }}>
-            <Text style={{ color: theme.muted }}>Aucune carte compatible détectée pour ce slot (ou galerie vide). Va dans “Mes cartes” pour charger ta galerie.</Text>
+            <Text style={{ color: theme.muted }}>
+              Aucune carte compatible détectée pour ce slot (ou galerie vide). Va dans “Mes cartes” pour charger ta galerie.
+            </Text>
           </View>
         }
       />
     </SafeAreaView>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
