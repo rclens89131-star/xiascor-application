@@ -1,4 +1,4 @@
-﻿/* XS_HIDE_COMMON_CARDS_V1C */
+﻿/* XS_HIDE_COMMON_CARDS_V1D */
 /* XS_GALLERY_RARITY_UNKNOWN_V1 */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../api";
@@ -133,27 +133,27 @@ export function useGallery({ identifier, first = 25 }: Options) {
         const r = await apiFetch<any>(`/public-user-cards-page?${qs.toString()}`);
 
         const rawCards: Card[] = Array.isArray(r?.cards) ? r.cards : [];
-        const filtered = rawCards.filter(isAllowedRarity);
-\ \ \ \ \ \ \ \ // XS_HIDE_COMMON_CARDS_V1C (BEGIN)
-\ \ \ \ \ \ \ \ const xsDeriveRarityFromSlug = (slug?: string): string => {
-\ \ \ \ \ \ \ \   const s = String(slug || "").toLowerCase();
-\ \ \ \ \ \ \ \   if (s.includes("-super_rare-") || s.includes("-super-rare-") || s.includes("-superrare-")) return "super_rare";
-\ \ \ \ \ \ \ \   if (s.includes("-unique-")) return "unique";
-\ \ \ \ \ \ \ \   if (s.includes("-rare-")) return "rare";
-\ \ \ \ \ \ \ \   if (s.includes("-limited-")) return "limited";
-\ \ \ \ \ \ \ \   if (s.includes("-common-")) return "common";
-\ \ \ \ \ \ \ \   return "unknown";
-\ \ \ \ \ \ \ \ };
-\ \ \ \ \ \ \ \ 
-\ \ \ \ \ \ \ \ const xsFiltered = (filtered || [])
-\ \ \ \ \ \ \ \   .map((card: any) => {
-\ \ \ \ \ \ \ \     const existing = card?.rarity?.slug;
-\ \ \ \ \ \ \ \     if (existing) return card;
-\ \ \ \ \ \ \ \     const derived = xsDeriveRarityFromSlug(card?.slug);
-\ \ \ \ \ \ \ \     return { ...card, rarity: { ...(card?.rarity || {}), slug: derived } };
-\ \ \ \ \ \ \ \   })
-\ \ \ \ \ \ \ \   .filter((card: any) => String(card?.rarity?.slug || "unknown") !== "common");
-\ \ \ \ \ \ \ \ // XS_HIDE_COMMON_CARDS_V1C (END)
+        const filtered = rawCards.filter(isAllowedRarity);
+        // XS_HIDE_COMMON_CARDS_V1D (BEGIN)
+        const xsDeriveRarityFromSlug = (slug?: string): string => {
+          const s = String(slug || "").toLowerCase();
+          if (s.includes("-super_rare-") || s.includes("-super-rare-") || s.includes("-superrare-")) return "super_rare";
+          if (s.includes("-unique-")) return "unique";
+          if (s.includes("-rare-")) return "rare";
+          if (s.includes("-limited-")) return "limited";
+          if (s.includes("-common-")) return "common";
+          return "unknown";
+        };
+        
+        const xsFiltered = (filtered || [])
+          .map((card: any) => {
+            const existing = card?.rarity?.slug;
+            if (existing) return card;
+            const derived = xsDeriveRarityFromSlug(card?.slug);
+            return { ...card, rarity: { ...(card?.rarity || {}), slug: derived } };
+          })
+          .filter((card: any) => String(card?.rarity?.slug || "unknown") !== "common");
+        // XS_HIDE_COMMON_CARDS_V1D (END)
         // Allowlist (Limited/Rare/Super Rare/Unique)
         // Debug rareté (dans logs Metro)
         try {
