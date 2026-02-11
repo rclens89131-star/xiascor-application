@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useMemo, useState } from "react";
-import { FlatList, Image, Pressable, SafeAreaView, Switch, Text, TextInput, View } from "react-native";
+import { FlatList, Image, Pressable, SafeAreaView, ScrollView, Switch, Text, TextInput, View } from "react-native"; /* XS_PLAY_SCROLL_HEADER_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createLineup } from "../../src/apiLineups";
 import { CardListItem } from "../../src/components/CardListItem";
@@ -532,28 +532,29 @@ export default function PlayScreen() {
           </Text>
         )}
       </View>
-
-      <FlatList
-        data={filteredGalleryState.items}
-        keyExtractor={(item: any) => cardKey(item)}
-        contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 120 }}
-        renderItem={({ item }: any) => {
-          const pos = cardPosCode(item);
-          return (
-            <View style={{ gap: 4 }}>
-              <CardListItem card={item} selected={pickedSlugs.includes(cardKey(item))} onPress={() => tryAdd(cardKey(item), pos)} />
-              {pos === "UNK" && <Text style={{ color: theme.warn, fontSize: 12 }}>position inconnue</Text>}
+      <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
+        <View style={{ padding: 16, gap: 10 }}>
+          {filteredGalleryState.items.length === 0 ? (
+            <View style={{ padding: 16 }}>
+              <Text style={{ color: theme.muted }}>
+                Aucune carte compatible détectée pour ce slot (ou galerie vide). Va dans “Mes cartes” pour charger ta galerie.
+              </Text>
             </View>
-          );
-        }}
-        ListEmptyComponent={
-          <View style={{ padding: 16 }}>
-            <Text style={{ color: theme.muted }}>
-              Aucune carte compatible détectée pour ce slot (ou galerie vide). Va dans “Mes cartes” pour charger ta galerie.
-            </Text>
-          </View>
-        }
-      />
+          ) : (
+            (filteredGalleryState.items as any[]).map((item: any) => {
+              const key = cardKey(item);
+              const pos = cardPosCode(item);
+              return (
+                <View key={key} style={{ gap: 4 }}>
+                  <CardListItem card={item} selected={pickedSlugs.includes(key)} onPress={() => tryAdd(key, pos)} />
+                  {pos === "UNK" && <Text style={{ color: theme.warn, fontSize: 12 }}>position inconnue</Text>}
+                </View>
+              );
+            })
+          )}
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
+
