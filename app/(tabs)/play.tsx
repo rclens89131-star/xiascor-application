@@ -441,6 +441,9 @@ export default function PlayScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
       <View style={{ padding: 16, gap: 12 }}>
         <Text style={{ color: theme.text, fontSize: 22, fontWeight: "900" }}>Jouer</Text>
+<View style={{ marginTop: 8, padding: 10, borderRadius: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.18)", backgroundColor: "rgba(34,197,94,0.14)" }}>
+  <Text style={{ color: theme.text, fontWeight: "900" }}>XS_PLAY_UI_PROBE_BANNER_V2 ✅ (si tu vois ça, c’est la bonne version)</Text>
+</View>
 
         <View style={{ backgroundColor: theme.panel, borderRadius: 14, borderWidth: 1, borderColor: theme.stroke, padding: 12, gap: 10 }}>
           <Text style={{ color: theme.text, fontWeight: "900" }}>Scénario Sorare</Text>
@@ -570,7 +573,7 @@ export default function PlayScreen() {
           </Text>
         )}
       </View>
-      <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 320 }} /* XS_PLAY_SCROLL_PAD_V2 */>
         <View style={{ padding: 16, gap: 10 }}>
           {filteredGalleryState.items.length === 0 ? (
             <View style={{ padding: 16 }}>
@@ -610,6 +613,7 @@ export default function PlayScreen() {
     </SafeAreaView>
   );
 }
+
 
 
 
