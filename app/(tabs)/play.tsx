@@ -340,10 +340,6 @@ const posStats = useMemo(() => {
       showToast("Mode swap désactivé");
       return;
     }
-if (unkAllowedInStrictSlot) {
-  showToast("Position inconnue: ajout autorisé (UNK)");
-}
-
 setPicked((prev) => {
       const next = { ...prev };
       const first = next[swapFrom];
@@ -364,7 +360,12 @@ setPicked((prev) => {
     const unkAllowedInFlexFallback = activeSlot === "FLEX" && filteredGalleryState.isFallback;
 
     
+    
+
     const unkAllowedInStrictSlot = allowUnknownInSlots && activeSlot !== "FLEX" && cardPos === "UNK";
+    if (unkAllowedInStrictSlot) {
+      showToast("Position inconnue: ajout autorisé (UNK)");
+    }const unkAllowedInStrictSlot = allowUnknownInSlots && activeSlot !== "FLEX" && cardPos === "UNK";
     const compat = isCardCompatibleWithSlot(activeSlot, cardPos, allowGkInFlex) || unkAllowedInStrictSlot;if (!compat) {if (cardPos === "UNK" && !unkAllowedInFlexFallback) {
         showToast("Carte ignorée: position inconnue (mode strict)");
       } else if (activeSlot === "FLEX" && cardPos === "GK" && !allowGkInFlex) {
@@ -587,5 +588,6 @@ setPicked((prev) => {
     </SafeAreaView>
   );
 }
+
 
 
