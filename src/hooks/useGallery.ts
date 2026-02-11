@@ -1,4 +1,5 @@
-﻿/* XS_GALLERY_RARITY_UNKNOWN_V1 */
+﻿/* XS_HIDE_COMMON_CARDS_V1C */
+/* XS_GALLERY_RARITY_UNKNOWN_V1 */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../api";
 
@@ -133,6 +134,26 @@ export function useGallery({ identifier, first = 25 }: Options) {
 
         const rawCards: Card[] = Array.isArray(r?.cards) ? r.cards : [];
         const filtered = rawCards.filter(isAllowedRarity);
+\ \ \ \ \ \ \ \ // XS_HIDE_COMMON_CARDS_V1C (BEGIN)
+\ \ \ \ \ \ \ \ const xsDeriveRarityFromSlug = (slug?: string): string => {
+\ \ \ \ \ \ \ \   const s = String(slug || "").toLowerCase();
+\ \ \ \ \ \ \ \   if (s.includes("-super_rare-") || s.includes("-super-rare-") || s.includes("-superrare-")) return "super_rare";
+\ \ \ \ \ \ \ \   if (s.includes("-unique-")) return "unique";
+\ \ \ \ \ \ \ \   if (s.includes("-rare-")) return "rare";
+\ \ \ \ \ \ \ \   if (s.includes("-limited-")) return "limited";
+\ \ \ \ \ \ \ \   if (s.includes("-common-")) return "common";
+\ \ \ \ \ \ \ \   return "unknown";
+\ \ \ \ \ \ \ \ };
+\ \ \ \ \ \ \ \ 
+\ \ \ \ \ \ \ \ const xsFiltered = (filtered || [])
+\ \ \ \ \ \ \ \   .map((card: any) => {
+\ \ \ \ \ \ \ \     const existing = card?.rarity?.slug;
+\ \ \ \ \ \ \ \     if (existing) return card;
+\ \ \ \ \ \ \ \     const derived = xsDeriveRarityFromSlug(card?.slug);
+\ \ \ \ \ \ \ \     return { ...card, rarity: { ...(card?.rarity || {}), slug: derived } };
+\ \ \ \ \ \ \ \   })
+\ \ \ \ \ \ \ \   .filter((card: any) => String(card?.rarity?.slug || "unknown") !== "common");
+\ \ \ \ \ \ \ \ // XS_HIDE_COMMON_CARDS_V1C (END)
         // Allowlist (Limited/Rare/Super Rare/Unique)
         // Debug rareté (dans logs Metro)
         try {
@@ -159,7 +180,7 @@ export function useGallery({ identifier, first = 25 }: Options) {
           console.warn("[useGallery] allowlist filtered 0 -> fallback to non-common");
 
         }
-        setCards((prev) => (mode === "reset" ? uniqMerge([], filtered) : uniqMerge(prev, filtered)));
+        setCards((prev) => (mode === "reset" ? uniqMerge([], xsFiltered) : uniqMerge(prev, xsFiltered)));
 
         const pi = r?.pageInfo || {};
         // XS_FIX_GALLERY_PAGINATION_STOP_ON_NULL_CURSOR_V1 (BEGIN)
@@ -195,6 +216,7 @@ export function useGallery({ identifier, first = 25 }: Options) {
 
   return { cards, loading, loadingMore, error, reload, loadMore };
 }
+
 
 
 
