@@ -209,6 +209,8 @@ export default function PlayScreen() {
   const [name, setName] = useState("GW - lineup");
   const [scenario, setScenario] = useState<Scenario>("classic");
   const [allowGkInFlex, setAllowGkInFlex] = useState(false);
+/* XS_PLAY_GK_EMPTY_FIX_V2 */
+const [allowUnknownInSlots, setAllowUnknownInSlots] = useState(false);
   const [enableClubRule, setEnableClubRule] = useState(false);
   const [swapFrom, setSwapFrom] = useState<Slot | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -288,15 +290,30 @@ export default function PlayScreen() {
   }, [scenario, scoreEstimate]);
 
   const filteredGalleryState = useMemo(() => {
-    const strictItems = (gallery as any[]).filter((item) => isCardCompatibleWithSlot(activeSlot, cardPosCode(item), allowGkInFlex));
-    const canFallback = activeSlot === "FLEX";
+    const isCompatibleForFilter = (slot: Slot, pos: PosCode) => {
+  if (isCardCompatibleWithSlot(slot, pos, allowGkInFlex)) return true;
+  if (allowUnknownInSlots && slot !== "FLEX" && pos === "UNK") return true;
+  return false;
+};
+const strictItems = (gallery as any[]).filter((item) => isCompatibleForFilter(activeSlot, cardPosCode(item)));const canFallback = activeSlot === "FLEX";
     if ((gallery as any[]).length > 0 && strictItems.length === 0 && canFallback) {
       return { items: gallery as any[], isFallback: true };
     }
     return { items: strictItems, isFallback: false };
-  }, [gallery, activeSlot, allowGkInFlex]);
+  }, [gallery, activeSlot, allowGkInFlex, allowUnknownInSlots]);
 
-  function showToast(message: string) {
+const posStats = useMemo(() => {
+  const stats = { GK: 0, DEF: 0, MID: 0, FWD: 0, UNK: 0 };
+  for (const it of (gallery as any[])) {
+    const p = cardPosCode(it);
+    if (p === "GK") stats.GK++;
+    else if (p === "DEF") stats.DEF++;
+    else if (p === "MID") stats.MID++;
+    else if (p === "FWD") stats.FWD++;
+    else stats.UNK++;
+  }
+  return stats;
+}, [gallery]);function showToast(message: string) {
     setToast(message);
     setTimeout(() => setToast(null), 1800);
   }
@@ -323,7 +340,11 @@ export default function PlayScreen() {
       showToast("Mode swap désactivé");
       return;
     }
-    setPicked((prev) => {
+if (unkAllowedInStrictSlot) {
+  showToast("Position inconnue: ajout autorisé (UNK)");
+}
+
+setPicked((prev) => {
       const next = { ...prev };
       const first = next[swapFrom];
       next[swapFrom] = next[slot];
@@ -342,8 +363,9 @@ export default function PlayScreen() {
   function tryAdd(cardSlug: string, cardPos: PosCode) {
     const unkAllowedInFlexFallback = activeSlot === "FLEX" && filteredGalleryState.isFallback;
 
-    if (!isCardCompatibleWithSlot(activeSlot, cardPos, allowGkInFlex)) {
-      if (cardPos === "UNK" && !unkAllowedInFlexFallback) {
+    
+    const unkAllowedInStrictSlot = allowUnknownInSlots && activeSlot !== "FLEX" && cardPos === "UNK";
+    const compat = isCardCompatibleWithSlot(activeSlot, cardPos, allowGkInFlex) || unkAllowedInStrictSlot;if (!compat) {if (cardPos === "UNK" && !unkAllowedInFlexFallback) {
         showToast("Carte ignorée: position inconnue (mode strict)");
       } else if (activeSlot === "FLEX" && cardPos === "GK" && !allowGkInFlex) {
         showToast("GK interdit en FLEX (active “Autoriser GK en FLEX”)");
@@ -440,6 +462,11 @@ export default function PlayScreen() {
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
               <Text style={{ color: theme.muted, flex: 1 }}>Activer règle club (max 2 joueurs/club)</Text>
               <Switch value={enableClubRule} onValueChange={setEnableClubRule} />
+
+<View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+  <Text style={{ color: theme.muted, flex: 1 }}>Autoriser position inconnue (UNK) dans les slots</Text>
+  <Switch value={allowUnknownInSlots} onValueChange={setAllowUnknownInSlots} />
+</View>
             </View>
           </View>
 
@@ -526,6 +553,9 @@ export default function PlayScreen() {
         </View>
 
         <Text style={{ color: theme.muted }}>Liste filtrée: {activeSlot} • sélection active {pickedSlugs.length}/5</Text>
+<Text style={{ color: theme.muted, marginTop: 4 }}>
+  Positions détectées: GK {posStats.GK} • DEF {posStats.DEF} • MID {posStats.MID} • FWD {posStats.FWD} • UNK {posStats.UNK}
+</Text>
         {filteredGalleryState.isFallback && (
           <Text style={{ color: theme.warn, marginTop: 4, fontWeight: "800" }}>
             ⚠️ Fallback: aucune carte compatible détectée, affichage complet
@@ -557,4 +587,5 @@ export default function PlayScreen() {
     </SafeAreaView>
   );
 }
+
 
