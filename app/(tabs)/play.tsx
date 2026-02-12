@@ -179,13 +179,9 @@ function cardKey(item: any): string {
     } catch (e) {}
 
     return "";
-  } catch {}
-    // @ts-ignore
-    const envUrl = (process?.env?.EXPO_PUBLIC_BASE_URL ?? "") as string;
-    return String(envUrl ?? "").trim();
   }
 
-  function xsResolvePosFromPlayerSlug(playerSlug: string): void {
+function xsResolvePosFromPlayerSlug(playerSlug: string): void {
     // XS_BASEURL_MISSING_V1 (diagnostic léger)
     const slug = String(playerSlug ?? "").trim();
     if (!slug) return;
@@ -1008,6 +1004,7 @@ try { showToast(`TAP PICKER ${xsPickerSlot}`); } catch {}
 </SafeAreaView>
   );
 }
+
 
 
 
