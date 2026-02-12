@@ -1,6 +1,6 @@
 ﻿/* XS_PLAY_REPAIR_ESCAPED_PATCH_V1 */
 import React, { useEffect, useMemo, useState } from "react";
-import { FlatList, Image, Pressable, SafeAreaView, ScrollView, Switch, Text, TextInput, View } from "react-native"; /* XS_PLAY_SCROLL_HEADER_V1 */
+import { FlatList, Image, Pressable, SafeAreaView, ScrollView, Switch, Text, TextInput, View, Modal } from "react-native"; /* XS_PLAY_SCROLL_HEADER_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createLineup } from "../../src/apiLineups";
 import { CardListItem } from "../../src/components/CardListItem";
@@ -257,6 +257,72 @@ export default function PlayScreen() {
   const [toast, setToast] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
 
+// XS_PLAY_SLOT_PICKER_MODAL_V1 (BEGIN)
+const [xsPickerOpen, setXsPickerOpen] = useState(false);
+const [xsPickerSlot, setXsPickerSlot] = useState<Slot>("GK");
+const [xsPickerQ, setXsPickerQ] = useState("");
+
+function xsOpenPicker(slot: Slot) {
+  setXsPickerSlot(slot);
+  setXsPickerQ("");
+  setXsPickerOpen(true);
+}
+function xsClosePicker() {
+  setXsPickerOpen(false);
+  setXsPickerQ("");
+}
+
+function xsTextHay(card: any): string {
+  const a = String(card?.playerName ?? card?.card?.playerName ?? card?.player?.displayName ?? card?.card?.player?.displayName ?? "");
+  const b = String(cardClub(card) ?? "");
+  const c = String(cardSeason(card) ?? "");
+  const d = String(cardRarityLabel(card) ?? "");
+  return (a + " " + b + " " + c + " " + d).toLowerCase();
+}
+
+function xsPickerListForSlot(slot: Slot) {
+  const all = (gallery as any[]) ?? [];
+  const strict = all.filter((it) => isCardCompatibleWithSlot(slot, cardPosCode(it), allowGkInFlex));
+  const isFallback = all.length > 0 && strict.length === 0;
+  const base = isFallback ? all : strict;
+
+  const q = xsPickerQ.trim().toLowerCase();
+  const filtered = q ? base.filter((it) => xsTextHay(it).includes(q)) : base;
+
+  const pickedSet = new Set(pickedSlugs);
+  const items = filtered.filter((it) => !pickedSet.has(cardKey(it)));
+
+  return { items, isFallback };
+}
+
+function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
+  const { isFallback } = xsPickerListForSlot(slot);
+  const unkAllowedInFlexFallback = isFallback;
+
+  if (!isCardCompatibleWithSlot(slot, cardPos, allowGkInFlex)) {
+    if (cardPos === "UNK" && !unkAllowedInFlexFallback) {
+      showToast("Carte ignorée: position inconnue (mode strict)");
+    } else if (slot === "FLEX" && cardPos === "GK" && !allowGkInFlex) {
+      showToast("GK interdit en FLEX (active “Autoriser GK en FLEX”)");
+    } else {
+      showToast(`Incompatible pour le slot ${slot}`);
+    }
+    return;
+  }
+
+  setPicked((prev) => {
+    const next = { ...prev };
+    for (const s of slots) if (next[s] === cardSlug) next[s] = null;
+    next[slot] = cardSlug;
+    return next;
+  });
+
+  setActiveSlot(slot);
+  xsClosePicker();
+  showToast(`Ajouté dans ${slot}`);
+}
+// XS_PLAY_SLOT_PICKER_MODAL_V1 (END)
+
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -375,9 +441,14 @@ export default function PlayScreen() {
   }
 
   function onSlotPress(slot: Slot) {
-    setActiveSlot(slot);
-    if (swapFrom && swapFrom !== slot) onSlotSwapPress(slot);
-  }
+  setActiveSlot(slot);
+
+  // swap mode prioritaire: ne pas ouvrir le picker
+  if (swapFrom && swapFrom !== slot) { onSlotSwapPress(slot); return; }
+
+  // ouvrir le picker sur le slot tapé
+  xsOpenPicker(slot);
+}
 
   function tryAdd(cardSlug: string, cardPos: PosCode) {
     const unkAllowedInFlexFallback = filteredGalleryState.isFallback; /* XS_PLAY_FALLBACK_UNK_V3 */ if (!isCardCompatibleWithSlot(activeSlot, cardPos, allowGkInFlex)) {
@@ -610,9 +681,68 @@ export default function PlayScreen() {
           )}
         </View>
       </ScrollView>
-    </SafeAreaView>
+          {/* XS_PLAY_SLOT_PICKER_MODAL_V1 UI (BEGIN) */}
+      <Modal visible={xsPickerOpen} transparent animationType="slide" onRequestClose={xsClosePicker}>
+        <Pressable onPress={xsClosePicker} style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" }}>
+          <Pressable onPress={() => null} style={{ maxHeight: "75%", backgroundColor: "rgba(18,18,18,0.98)", borderTopLeftRadius: 18, borderTopRightRadius: 18, borderWidth: 1, borderColor: theme.stroke, padding: 14 }}>
+            {(() => {
+              const st = xsPickerListForSlot(xsPickerSlot);
+              return (
+                <View>
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                    <Text style={{ color: theme.text, fontWeight: "900", fontSize: 16 }}>
+                      Sélection {xsPickerSlot}
+                    </Text>
+                    <Pressable onPress={xsClosePicker} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: theme.stroke }}>
+                      <Text style={{ color: theme.text, fontWeight: "900" }}>Fermer</Text>
+                    </Pressable>
+                  </View>
+
+                  {st.isFallback && (
+                    <Text style={{ color: theme.muted, marginTop: 6 }}>
+                      ⚠️ Aucune carte strictement compatible détectée — affichage fallback.
+                    </Text>
+                  )}
+
+                  <View style={{ marginTop: 10 }}>
+                    <TextInput
+                      value={xsPickerQ}
+                      onChangeText={setXsPickerQ}
+                      placeholder="Rechercher joueur / club / saison / rareté…"
+                      placeholderTextColor={theme.muted}
+                      style={{ color: theme.text, borderRadius: 12, borderWidth: 1, borderColor: theme.stroke, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: "rgba(255,255,255,0.04)" }}
+                    />
+                  </View>
+
+                  <Text style={{ color: theme.muted, marginTop: 10 }}>
+                    {st.items.length} carte{st.items.length > 1 ? "s" : ""} disponible{st.items.length > 1 ? "s" : ""}
+                  </Text>
+
+                  <View style={{ marginTop: 10 }}>
+                    <FlatList
+                      data={st.items}
+                      keyExtractor={(it) => cardKey(it)}
+                      renderItem={({ item }) => (
+                        <CardListItem
+                          card={item}
+                          selected={false}
+                          onPress={() => xsTryAddToSlot(xsPickerSlot, cardKey(item), cardPosCode(item))}
+                        />
+                      )}
+                      style={{ maxHeight: 420 }}
+                    />
+                  </View>
+                </View>
+              );
+            })()}
+          </Pressable>
+        </Pressable>
+      </Modal>
+      {/* XS_PLAY_SLOT_PICKER_MODAL_V1 UI (END) */}
+</SafeAreaView>
   );
 }
+
 
 
 
