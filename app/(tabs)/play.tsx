@@ -743,13 +743,14 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
                 </View>
               );
             })()}
-          </Pressable>
+          </View>
         </Pressable>
       </Modal>
       {/* XS_PLAY_SLOT_PICKER_MODAL_V1 UI (END) */}
 </SafeAreaView>
   );
 }
+
 
 
 
