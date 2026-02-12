@@ -80,36 +80,112 @@ function cardKey(item: any): string {
 
   // XS_POS_NORM_V2_BEGIN
   function xsPosCodeFromAny(item: any): PosCode {
-    const raw =
-      item?.positionRaw ??
-      item?.position ??
-      item?.playerPosition ??
-      item?.anyPosition ??
-      item?.card?.positionRaw ??
-      item?.card?.position ??
-      item?.card?.playerPosition ??
-      item?.card?.anyPosition ??
-      item?.player?.position ??
-      item?.player?.anyPosition ??
+  const raw =
+    item?.positionRaw ??
+    item?.position ??
+    item?.playerPosition ??
+    item?.anyPosition ??
+    item?.card?.positionRaw ??
+    item?.card?.position ??
+    item?.card?.playerPosition ??
+    item?.card?.anyPosition ??
+    item?.player?.position ??
+    item?.player?.anyPosition ??
+    "";
+
+  const s0 = String(raw ?? "").trim();
+  const s = s0.toLowerCase();
+
+  // If the API literally returns "UNK", treat it as missing and try to resolve via playerSlug.
+  if (!s || s === "unk" || s === "unknown") {
+    const slug =
+      item?.playerSlug ??
+      item?.player?.slug ??
+      item?.card?.playerSlug ??
       "";
+    const key = String(slug ?? "").trim();
+    if (key) {
+      const cached = xsPosSlugCache?.get?.(key);
+      if (cached) return cached;
+      // background resolve (no await => no signature changes)
+      try { xsResolvePosFromPlayerSlug(key); } catch {}
+    }
 
-    const s = String(raw ?? "").trim().toLowerCase();
-    if (!s) return "UNK";
+    try {
+      // eslint-disable-next-line no-console
+      console.log("[XS_POS_PROBE_V3] still UNK", JSON.stringify({ raw: s0, playerSlug: key, topKeys: Object.keys(item || {}).slice(0, 25) }));
+    } catch {}
+    return "UNK";
+  }
 
-    // Common public shapes: "Goalkeeper", "Defender", "Midfielder", "Forward"
+  const code = xsPosCodeFromToken(s0);
+  if (code !== "UNK") return code;
+
+  try {
+    // eslint-disable-next-line no-console
+    console.log("[XS_POS_PROBE_V3] unmapped token", JSON.stringify({ raw: s0 }));
+  } catch {}
+  return "UNK";
+}
+  // XS_POS_NORM_V2_END
+
+  // XS_POS_RESOLVE_FROM_PLAYER_SLUG_V1_BEGIN
+  // When the API returns "UNK" for position/positionRaw, resolve via backend using playerSlug.
+  const xsPosSlugCache = new Map<string, PosCode>();
+  const xsPosSlugInflight = new Set<string>();
+
+  function xsPosCodeFromToken(token: any): PosCode {
+    const s = String(token ?? "").trim().toLowerCase();
+    if (!s || s === "unk" || s === "unknown") return "UNK";
     if (s === "gk" || s.includes("goalkeeper") || s.includes("goal")) return "GK";
     if (s === "def" || s === "df" || s.includes("defender") || s.includes("def")) return "DEF";
     if (s === "mid" || s === "mf" || s.includes("midfielder") || s.includes("mid")) return "MID";
     if (s === "fwd" || s === "fw" || s.includes("forward") || s.includes("att") || s.includes("strik")) return "FWD";
-
-    // Diagnostic léger uniquement quand UNK (aide à capter une nouvelle shape)
-    try {
-      // eslint-disable-next-line no-console
-      console.log("[XS_POS_PROBE_V2] UNK", JSON.stringify({ raw, topKeys: Object.keys(item || {}).slice(0, 25) }));
-    } catch {}
     return "UNK";
   }
-  // XS_POS_NORM_V2_END
+
+  function xsBestBaseUrl(): string {
+    // Prefer an existing BASE_URL if the file already defines it
+    // Fallback to Expo env
+    try {
+      // @ts-ignore
+      if (typeof BASE_URL === "string" && BASE_URL) return BASE_URL;
+    } catch {}
+    // @ts-ignore
+    const envUrl = (process?.env?.EXPO_PUBLIC_BASE_URL ?? "") as string;
+    return String(envUrl ?? "").trim();
+  }
+
+  function xsResolvePosFromPlayerSlug(playerSlug: string): void {
+    const slug = String(playerSlug ?? "").trim();
+    if (!slug) return;
+    if (xsPosSlugCache.has(slug)) return;
+    if (xsPosSlugInflight.has(slug)) return;
+
+    const base = xsBestBaseUrl();
+    if (!base) return;
+
+    xsPosSlugInflight.add(slug);
+
+    const url = `${base.replace(/\/+$/, "")}/public-player?slug=${encodeURIComponent(slug)}`;
+    fetch(url)
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => {
+        const token =
+          j?.position ??
+          j?.player?.position ??
+          j?.playerPosition ??
+          j?.anyPosition ??
+          "";
+        const code = xsPosCodeFromToken(token);
+        if (code !== "UNK") xsPosSlugCache.set(slug, code);
+      })
+      .catch(() => {})
+      .finally(() => {
+        xsPosSlugInflight.delete(slug);
+      });
+  }
+  // XS_POS_RESOLVE_FROM_PLAYER_SLUG_V1_END
 function cardPosCode(item: any): PosCode { return xsPosCodeFromAny(item); }
 
   // XS_PLAY_RESTORE_MISSING_HELPERS_V1_BEGIN
@@ -898,6 +974,7 @@ try { showToast(`TAP PICKER ${xsPickerSlot}`); } catch {}
 </SafeAreaView>
   );
 }
+
 
 
 
