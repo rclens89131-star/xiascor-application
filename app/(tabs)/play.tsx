@@ -145,19 +145,20 @@ function cardKey(item: any): string {
   }
 
     // XS_POS_BASEURL_ROBUST_V1
+    // XS_POS_BASEURL_ROBUST_V2 (fix syntax + robust base url on device)
   function xsBestBaseUrl(): string {
     // 1) Prefer an existing BASE_URL if the file already defines it
     try {
       // @ts-ignore
-      if (typeof BASE_URL === "string" && BASE_URL) return BASE_URL;
-    } catch {}
+      if (typeof BASE_URL === "string" && BASE_URL) return String(BASE_URL).trim();
+    } catch (e) {}
 
     // 2) Expo env via globalThis.process (more reliable than "process" in some runtimes)
     try {
       // @ts-ignore
       const v = globalThis?.process?.env?.EXPO_PUBLIC_BASE_URL;
       if (typeof v === "string" && v.trim()) return v.trim();
-    } catch {}
+    } catch (e) {}
 
     // 3) expo-constants fallback (extra / manifest)
     try {
@@ -175,7 +176,7 @@ function cardKey(item: any): string {
         extra?.baseUrl ??
         "";
       if (typeof v === "string" && v.trim()) return v.trim();
-    } catch {}
+    } catch (e) {}
 
     return "";
   } catch {}
@@ -1007,6 +1008,7 @@ try { showToast(`TAP PICKER ${xsPickerSlot}`); } catch {}
 </SafeAreaView>
   );
 }
+
 
 
 
