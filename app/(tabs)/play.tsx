@@ -199,8 +199,14 @@ function xsResolvePosFromPlayerSlug(playerSlug: string): void {
 
     const url = `${base.replace(/\/+$/, "")}/public-player?slug=${encodeURIComponent(slug)}`;
     fetch(url)
-      .then(r => (r.ok ? r.json() : null))
-      .then(j => {
+      .then(r => {
+        // XS_POS_FETCH_RES_V1 (diagnostic)
+        try {
+          // eslint-disable-next-line no-console
+          console.log("[XS_POS_FETCH_RES_V1]", JSON.stringify({ ok: r.ok, status: r.status, slug }));
+        } catch {}
+        return r.ok ? r.json() : null;
+      }).then(j => {
         const token =
           j?.position ??
           j?.player?.position ??
@@ -210,8 +216,13 @@ function xsResolvePosFromPlayerSlug(playerSlug: string): void {
         const code = xsPosCodeFromToken(token);
         if (code !== "UNK") xsPosSlugCache.set(slug, code);
       })
-      .catch(() => {})
-      .finally(() => {
+            .catch((e) => {
+        // XS_POS_FETCH_ERR_V1 (diagnostic)
+        try {
+          // eslint-disable-next-line no-console
+          console.log("[XS_POS_FETCH_ERR_V1]", String(e?.message ?? e), JSON.stringify({ slug, url }));
+        } catch {}
+      }).finally(() => {
         xsPosSlugInflight.delete(slug);
       });
   }
@@ -1004,6 +1015,7 @@ try { showToast(`TAP PICKER ${xsPickerSlot}`); } catch {}
 </SafeAreaView>
   );
 }
+
 
 
 
