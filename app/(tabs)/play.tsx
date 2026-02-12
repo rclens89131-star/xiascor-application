@@ -78,54 +78,39 @@ function cardKey(item: any): string {
   return `fb_${xsHash32(fp)}`;
 }
 
+  // XS_POS_NORM_V2_BEGIN
+  function xsPosCodeFromAny(item: any): PosCode {
+    const raw =
+      item?.positionRaw ??
+      item?.position ??
+      item?.playerPosition ??
+      item?.anyPosition ??
+      item?.card?.positionRaw ??
+      item?.card?.position ??
+      item?.card?.playerPosition ??
+      item?.card?.anyPosition ??
+      item?.player?.position ??
+      item?.player?.anyPosition ??
+      "";
+
+    const s = String(raw ?? "").trim().toLowerCase();
+    if (!s) return "UNK";
+
+    // Common public shapes: "Goalkeeper", "Defender", "Midfielder", "Forward"
+    if (s === "gk" || s.includes("goalkeeper") || s.includes("goal")) return "GK";
+    if (s === "def" || s === "df" || s.includes("defender") || s.includes("def")) return "DEF";
+    if (s === "mid" || s === "mf" || s.includes("midfielder") || s.includes("mid")) return "MID";
+    if (s === "fwd" || s === "fw" || s.includes("forward") || s.includes("att") || s.includes("strik")) return "FWD";
+
+    // Diagnostic léger uniquement quand UNK (aide à capter une nouvelle shape)
+    try {
+      // eslint-disable-next-line no-console
+      console.log("[XS_POS_PROBE_V2] UNK", JSON.stringify({ raw, topKeys: Object.keys(item || {}).slice(0, 25) }));
+    } catch {}
+    return "UNK";
+  }
+  // XS_POS_NORM_V2_END
 function cardPosCode(item: any): PosCode { return xsPosCodeFromAny(item); }
-  // XS_PLAY_POS_CANDIDATES_OK_V1 (BEGIN)
-  function xsNormalizePosTokenV2(v: any): string {
-    const s = String(v ?? "").toUpperCase().trim();
-    if (!s) return "";
-    if (s.includes("GK") || s.includes("GOAL")) return "GK";
-    if (s === "DF" || s === "DEF" || s.includes("DEF")) return "DEF";
-    if (s === "MD" || s === "MID" || s.includes("MID")) return "MID";
-    if (s === "FW" || s === "FWD" || s.includes("FOR") || s.includes("ATT") || s.includes("STRIK")) return "FWD";
-  
-  return "";
-  }
-
-  function xsPosCandidatesV2(item: any): string[] {
-    const out = new Set<string>();
-    const pushAny = (x: any) => {
-      if (x == null) return;
-      if (Array.isArray(x)) { for (const y of x) pushAny(y); return; }
-      const t = String(x);
-      const tokens = [t, ...t.split(/[^A-Za-z]+/)].filter(Boolean);
-      for (const tok of tokens) {
-        const n = xsNormalizePosTokenV2(tok);
-        if (n) out.add(n);
-      }
-    };
-
-    pushAny(item?.position);
-    pushAny(item?.positions);
-    pushAny(item?.anyPositions);
-    pushAny(item?.playerPosition);
-    pushAny(item?.player?.position);
-    pushAny(item?.player?.positions);
-    pushAny(item?.player?.anyPositions);
-    pushAny(item?.card?.position);
-    pushAny(item?.card?.positions);
-    pushAny(item?.card?.anyPositions);
-    pushAny(item?.card?.player?.position);
-    pushAny(item?.card?.player?.positions);
-    pushAny(item?.card?.player?.anyPositions);
-  
-  return Array.from(out);
-  }
-  // XS_PLAY_POS_CANDIDATES_OK_V1 (END)
-function cardSeason(card: any): string {
-  const value = card?.seasonYear ?? card?.card?.seasonYear ?? card?.season ?? card?.card?.season ?? null;
-  
-  return value ? String(value) : "—";
-}
 
 function cardClub(card: any): string {
   
@@ -852,6 +837,7 @@ try { showToast(`TAP PICKER ${xsPickerSlot}`); } catch {}
 </SafeAreaView>
   );
 }
+
 
 
 
