@@ -731,7 +731,17 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
                         <Pressable
                           onPress={() => {
                             /* XS_PLAY_PICKER_TAP_PROBE_V1 */
-                            try { console.log("[XS_PICKER_TAP]", xsPickerSlot, cardKey(item), cardPosCode(item)); } catch {}
+                            try { console.log("[XS_PICKER_TAP]", slotPos, cardKey(item), slotMeta || "UNK");
+try {
+  const k = cardKey(item);
+  const p = cardPosCode(item);
+  console.log("[XS_PICKER_SELECT_V2] try", xsPickerSlot, k, p); // XS_PLAY_PICKER_FORCE_SELECT_CLOSE_V2
+  xsTryAddToSlot(xsPickerSlot, k, p);
+  console.log("[XS_PICKER_SELECT_V2] ok -> close", xsPickerSlot, k, p);
+  xsClosePicker();
+} catch (e) {
+  console.log("[XS_PICKER_SELECT_V2] ERROR", e);
+}} catch {}
                             try { showToast(`TAP PICKER ${xsPickerSlot}`); } catch {}
                             xsTryAddToSlot(xsPickerSlot, cardKey(item), cardPosCode(item));
                           }}
@@ -760,6 +770,7 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
 </SafeAreaView>
   );
 }
+
 
 
 
