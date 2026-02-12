@@ -695,7 +695,7 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
                     </Text>
                     <Pressable onPress={xsClosePicker} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: theme.stroke }}>
                       <Text style={{ color: theme.text, fontWeight: "900" }}>Fermer</Text>
-                    </View>
+                    </Pressable>
                   </View>
 
                   {st.isFallback && (
@@ -750,6 +750,7 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
 </SafeAreaView>
   );
 }
+
 
 
 
