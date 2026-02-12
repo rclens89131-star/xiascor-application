@@ -729,7 +729,12 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
                       contentContainerStyle={{ paddingBottom: 12, gap: 10 }}
                       renderItem={({ item }) => (
                         <Pressable
-                          onPress={() => xsTryAddToSlot(xsPickerSlot, cardKey(item), cardPosCode(item))}
+                          onPress={() => {
+                            /* XS_PLAY_PICKER_TAP_PROBE_V1 */
+                            try { console.log("[XS_PICKER_TAP]", xsPickerSlot, cardKey(item), cardPosCode(item)); } catch {}
+                            try { showToast(`TAP PICKER ${xsPickerSlot}`); } catch {}
+                            xsTryAddToSlot(xsPickerSlot, cardKey(item), cardPosCode(item));
+                          }}
                           style={{ flex: 1 }}
                           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                         >
@@ -755,6 +760,7 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
 </SafeAreaView>
   );
 }
+
 
 
 
