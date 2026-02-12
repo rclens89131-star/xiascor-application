@@ -180,7 +180,139 @@ export function useGallery({ identifier, first = 25 }: Options) {
           console.warn("[useGallery] allowlist filtered 0 -> fallback to non-common");
 
         }
-        setCards((prev) => (mode === "reset" ? uniqMerge([], xsFiltered) : uniqMerge(prev, xsFiltered)));
+                // XS_GALLERY_NORMALIZE_TO_SORARECARD_V1 (BEGIN)
+        const xsNormalizePos = (raw: any): "GK" | "DEF" | "MID" | "FWD" | "UNK" => {
+          const s = String(raw || "").toUpperCase().trim();
+          if (s === "GK" || s.includes("GOAL")) return "GK";
+          if (s === "DEF" || s.includes("DEF")) return "DEF";
+          if (s === "MID" || s.includes("MID")) return "MID";
+          if (s === "FWD" || s.includes("FWD") || s.includes("FOR")) return "FWD";
+          // Sorare enums possibles: "Goalkeeper" "Defender" "Midfielder" "Forward"
+          if (s.includes("KEEP")) return "GK";
+          if (s.includes("DEFEN")) return "DEF";
+          if (s.includes("MIDFI")) return "MID";
+          if (s.includes("FORWA")) return "FWD";
+          return "UNK";
+        };
+
+        const xsFirstAnyPos = (obj: any): any =>
+          obj?.anyPosition ??
+          (Array.isArray(obj?.anyPositions) ? obj?.anyPositions?.[0] : null) ??
+          obj?.playerPosition ??
+          obj?.position ??
+          obj?.card?.anyPosition ??
+          (Array.isArray(obj?.card?.anyPositions) ? obj?.card?.anyPositions?.[0] : null) ??
+          obj?.card?.playerPosition ??
+          obj?.card?.position ??
+          obj?.player?.anyPosition ??
+          (Array.isArray(obj?.player?.anyPositions) ? obj?.player?.anyPositions?.[0] : null) ??
+          obj?.player?.playerPosition ??
+          obj?.player?.position ??
+          obj?.card?.player?.anyPosition ??
+          (Array.isArray(obj?.card?.player?.anyPositions) ? obj?.card?.player?.anyPositions?.[0] : null) ??
+          obj?.card?.player?.playerPosition ??
+          obj?.card?.player?.position ??
+          null;
+
+        const xsToSorareCard = (c: any) => {
+          const id = String(c?.id ?? c?.card?.id ?? c?.slug ?? c?.card?.slug ?? "");
+          const slug = String(c?.slug ?? c?.card?.slug ?? id);
+          const rarity = String(getRarity(c) || "unknown").toLowerCase();
+          const rawPos = xsFirstAnyPos(c);
+          const positionRaw = rawPos != null ? String(rawPos) : null;
+          const position = xsNormalizePos(rawPos);
+
+          const playerName =
+            String(
+              c?.playerName ??
+              c?.player?.displayName ??
+              c?.player?.name ??
+              c?.card?.playerName ??
+              c?.card?.player?.displayName ??
+              c?.card?.player?.name ??
+              c?.name ??
+              "—"
+            );
+
+          const playerSlug =
+            c?.playerSlug ??
+            c?.player?.slug ??
+            c?.card?.playerSlug ??
+            c?.card?.player?.slug ??
+            null;
+
+          const teamName =
+            c?.teamName ??
+            c?.team?.name ??
+            c?.club?.name ??
+            c?.activeClub?.name ??
+            c?.card?.teamName ??
+            c?.card?.team?.name ??
+            c?.card?.club?.name ??
+            c?.card?.activeClub?.name ??
+            null;
+
+          const teamSlug =
+            c?.teamSlug ??
+            c?.team?.slug ??
+            c?.club?.slug ??
+            c?.activeClub?.slug ??
+            c?.card?.teamSlug ??
+            c?.card?.team?.slug ??
+            c?.card?.club?.slug ??
+            c?.card?.activeClub?.slug ??
+            null;
+
+          const pictureUrl =
+            String(
+              c?.pictureUrl ??
+              c?.picture ??
+              c?.imageUrl ??
+              c?.card?.pictureUrl ??
+              c?.card?.picture ??
+              c?.card?.imageUrl ??
+              c?.player?.pictureUrl ??
+              c?.player?.picture ??
+              c?.card?.player?.pictureUrl ??
+              ""
+            );
+
+          const avatarUrl =
+            c?.avatarUrl ??
+            c?.player?.avatarUrl ??
+            c?.card?.avatarUrl ??
+            c?.card?.player?.avatarUrl ??
+            null;
+
+          const seasonYear =
+            typeof c?.seasonYear === "number" ? c.seasonYear :
+            typeof c?.season?.year === "number" ? c.season.year :
+            null;
+
+          const season =
+            c?.season ?? c?.season?.name ?? null;
+
+          return {
+            id: id || slug,
+            slug: slug || id,
+            rarity: rarity,
+            seasonYear,
+            season,
+            playerName,
+            playerSlug,
+            teamName,
+            teamSlug,
+            position,
+            positionRaw,
+            pictureUrl,
+            avatarUrl,
+          };
+        };
+
+        const xsNormalized = (xsFiltered || []).map(xsToSorareCard);
+        // XS_GALLERY_NORMALIZE_TO_SORARECARD_V1 (END)
+
+        setCards((prev) => (mode === "reset" ? uniqMerge([], xsNormalized) : uniqMerge(prev, xsNormalized)));
 
         const pi = r?.pageInfo || {};
         // XS_FIX_GALLERY_PAGINATION_STOP_ON_NULL_CURSOR_V1 (BEGIN)
@@ -216,6 +348,7 @@ export function useGallery({ identifier, first = 25 }: Options) {
 
   return { cards, loading, loadingMore, error, reload, loadMore };
 }
+
 
 
 
