@@ -731,7 +731,7 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
                         <Pressable
                           onPress={() => {
                             /* XS_PLAY_PICKER_TAP_PROBE_V1 */
-                            try { console.log("[XS_PICKER_TAP]", slotPos, cardKey(item), slotMeta || "UNK");
+                            try { console.log("[XS_PICKER_TAP]", xsPickerSlot, cardKey(item), "UNK"); // XS_PLAY_PICKER_FORCE_SELECT_CLOSE_V2
 try {
   const k = cardKey(item);
   const p = cardPosCode(item);
@@ -770,6 +770,7 @@ try {
 </SafeAreaView>
   );
 }
+
 
 
 
