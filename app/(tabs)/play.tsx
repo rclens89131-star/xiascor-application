@@ -78,60 +78,7 @@ function cardKey(item: any): string {
   return `fb_${xsHash32(fp)}`;
 }
 
-function cardPosCode(item: any): PosCode {
-  /* XS_CARD_POSCODE_SMART_V1 */
-  const cands: any[] = [
-    item?.position,
-    item?.playerPosition,
-    item?.anyPosition,
-    item?.anyPositions,
-    item?.positions,
-
-    item?.card?.position,
-    item?.card?.playerPosition,
-    item?.card?.anyPosition,
-    item?.card?.anyPositions,
-    item?.card?.positions,
-
-    item?.player?.position,
-    item?.player?.playerPosition,
-    item?.player?.anyPosition,
-    item?.player?.anyPositions,
-    item?.player?.positions,
-  ];
-
-  const flat = cands
-    .filter((v) => v != null)
-    .flatMap((v) => (Array.isArray(v) ? v : [v]))
-    .map((v) => {
-      if (typeof v === "string") return v;
-      // parfois c'est un objet { position: "Goalkeeper" } ou { name/code: ... }
-      return v?.position ?? v?.name ?? v?.code ?? "";
-    })
-    .filter(Boolean)
-    .join(" | ");
-
-  const up = String(flat).toUpperCase().trim();
-
-  // Map robuste (Sorare: Goalkeeper/Defender/Midfielder/Forward)
-  if (up.includes("GOALKEEPER") || up === "GK" || up.includes(" GK ")) return "GK";
-  if (up.includes("DEFENDER") || up === "DEF" || up.includes(" DEF ")) return "DEF";
-  if (up.includes("MIDFIELDER") || up === "MID" || up.includes(" MID ")) return "MID";
-  if (up.includes("FORWARD") || up === "FWD" || up.includes(" FWD ")) return "FWD";
-
-  // Sonde uniquement si UNK (pour voir la vraie shape runtime)
-  try {
-    console.log("[XS_POS_PROBE_V1] UNK", {
-      flat,
-      topKeys: Object.keys(item || {}),
-      cardKeys: Object.keys(item?.card || {}),
-      playerKeys: Object.keys(item?.player || {}),
-      slug: item?.cardSlug ?? item?.slug ?? item?.card?.slug ?? null,
-    });
-  } catch {}
-
-  return "UNK";
-}
+function cardPosCode(item: any): PosCode { return xsPosCodeFromAny(item); }
   // XS_PLAY_POS_CANDIDATES_OK_V1 (BEGIN)
   function xsNormalizePosTokenV2(v: any): string {
     const s = String(v ?? "").toUpperCase().trim();
@@ -905,6 +852,7 @@ try { showToast(`TAP PICKER ${xsPickerSlot}`); } catch {}
 </SafeAreaView>
   );
 }
+
 
 
 
