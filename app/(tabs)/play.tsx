@@ -684,7 +684,7 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
           {/* XS_PLAY_SLOT_PICKER_MODAL_V1 UI (BEGIN) */}
       <Modal visible={xsPickerOpen} transparent animationType="slide" onRequestClose={xsClosePicker}>
         <Pressable onPress={xsClosePicker} style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" }}>
-          <Pressable onPress={() => null} style={{ maxHeight: "75%", backgroundColor: "rgba(18,18,18,0.98)", borderTopLeftRadius: 18, borderTopRightRadius: 18, borderWidth: 1, borderColor: theme.stroke, padding: 14 }}>
+          <View style={{ maxHeight: "75%", backgroundColor: "rgba(18,18,18,0.98)", borderTopLeftRadius: 18, borderTopRightRadius: 18, borderWidth: 1, borderColor: theme.stroke, padding: 14 }}>
             {(() => {
               const st = xsPickerListForSlot(xsPickerSlot);
               return (
@@ -695,7 +695,7 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
                     </Text>
                     <Pressable onPress={xsClosePicker} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: theme.stroke }}>
                       <Text style={{ color: theme.text, fontWeight: "900" }}>Fermer</Text>
-                    </Pressable>
+                    </View>
                   </View>
 
                   {st.isFallback && (
@@ -722,12 +722,20 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
                     <FlatList
                       data={st.items}
                       keyExtractor={(it) => cardKey(it)}
+                      numColumns={2}
+                      columnWrapperStyle={{ gap: 10 }}
+                      contentContainerStyle={{ paddingBottom: 12, gap: 10 }}
                       renderItem={({ item }) => (
-                        <CardListItem
-                          card={item}
-                          selected={false}
+                        <Pressable
                           onPress={() => xsTryAddToSlot(xsPickerSlot, cardKey(item), cardPosCode(item))}
-                        />
+                          style={{ flex: 1 }}
+                        >
+                          <CardListItem
+                            card={item}
+                            selected={false}
+                            onPress={() => null}
+                          />
+                        </Pressable>
                       )}
                       style={{ maxHeight: 420 }}
                     />
@@ -742,6 +750,7 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
 </SafeAreaView>
   );
 }
+
 
 
 
