@@ -45,6 +45,7 @@ function xsHash32(input: string): string {
     h ^= input.charCodeAt(i);
     h = Math.imul(h, 16777619);
   }
+  
   return (h >>> 0).toString(36);
 }
 
@@ -73,30 +74,62 @@ function cardKey(item: any): string {
     String(item?.teamName ?? item?.card?.teamName ?? ""),
     String(item?.position ?? item?.card?.position ?? ""),
   ].join("|");
-
+  
   return `fb_${xsHash32(fp)}`;
 }
 
 function cardPosCode(item: any): PosCode {
-  const rawPos =
-    item?.position ??
-    item?.playerPosition ??
-    item?.anyPosition ??
-    item?.card?.position ??
-    item?.card?.playerPosition ??
-    item?.card?.anyPosition ??
-    (Array.isArray(item?.anyPositions) ? item?.anyPositions?.[0] : null) ??
-    (Array.isArray(item?.card?.anyPositions) ? item?.card?.anyPositions?.[0] : null) ??
-    item?.player?.position ??
-    item?.card?.player?.position ??
-    "";
+  /* XS_CARD_POSCODE_SMART_V1 */
+  const cands: any[] = [
+    item?.position,
+    item?.playerPosition,
+    item?.anyPosition,
+    item?.anyPositions,
+    item?.positions,
 
-  const raw = String(rawPos ?? "").toUpperCase().trim();
-  if (!raw) return "UNK";
-  if (raw === "GK" || raw.includes("GOAL")) return "GK";
-  if (raw === "DEF" || raw.includes("DEF")) return "DEF";
-  if (raw === "MID" || raw.includes("MID")) return "MID";
-  if (raw === "FWD" || raw.includes("FORW") || raw.includes("ATT") || raw.includes("STRIK")) return "FWD";
+    item?.card?.position,
+    item?.card?.playerPosition,
+    item?.card?.anyPosition,
+    item?.card?.anyPositions,
+    item?.card?.positions,
+
+    item?.player?.position,
+    item?.player?.playerPosition,
+    item?.player?.anyPosition,
+    item?.player?.anyPositions,
+    item?.player?.positions,
+  ];
+
+  const flat = cands
+    .filter((v) => v != null)
+    .flatMap((v) => (Array.isArray(v) ? v : [v]))
+    .map((v) => {
+      if (typeof v === "string") return v;
+      // parfois c'est un objet { position: "Goalkeeper" } ou { name/code: ... }
+      return v?.position ?? v?.name ?? v?.code ?? "";
+    })
+    .filter(Boolean)
+    .join(" | ");
+
+  const up = String(flat).toUpperCase().trim();
+
+  // Map robuste (Sorare: Goalkeeper/Defender/Midfielder/Forward)
+  if (up.includes("GOALKEEPER") || up === "GK" || up.includes(" GK ")) return "GK";
+  if (up.includes("DEFENDER") || up === "DEF" || up.includes(" DEF ")) return "DEF";
+  if (up.includes("MIDFIELDER") || up === "MID" || up.includes(" MID ")) return "MID";
+  if (up.includes("FORWARD") || up === "FWD" || up.includes(" FWD ")) return "FWD";
+
+  // Sonde uniquement si UNK (pour voir la vraie shape runtime)
+  try {
+    console.log("[XS_POS_PROBE_V1] UNK", {
+      flat,
+      topKeys: Object.keys(item || {}),
+      cardKeys: Object.keys(item?.card || {}),
+      playerKeys: Object.keys(item?.player || {}),
+      slug: item?.cardSlug ?? item?.slug ?? item?.card?.slug ?? null,
+    });
+  } catch {}
+
   return "UNK";
 }
   // XS_PLAY_POS_CANDIDATES_OK_V1 (BEGIN)
@@ -107,7 +140,8 @@ function cardPosCode(item: any): PosCode {
     if (s === "DF" || s === "DEF" || s.includes("DEF")) return "DEF";
     if (s === "MD" || s === "MID" || s.includes("MID")) return "MID";
     if (s === "FW" || s === "FWD" || s.includes("FOR") || s.includes("ATT") || s.includes("STRIK")) return "FWD";
-    return "";
+  
+  return "";
   }
 
   function xsPosCandidatesV2(item: any): string[] {
@@ -136,20 +170,23 @@ function cardPosCode(item: any): PosCode {
     pushAny(item?.card?.player?.position);
     pushAny(item?.card?.player?.positions);
     pushAny(item?.card?.player?.anyPositions);
-
-    return Array.from(out);
+  
+  return Array.from(out);
   }
   // XS_PLAY_POS_CANDIDATES_OK_V1 (END)
 function cardSeason(card: any): string {
   const value = card?.seasonYear ?? card?.card?.seasonYear ?? card?.season ?? card?.card?.season ?? null;
+  
   return value ? String(value) : "—";
 }
 
 function cardClub(card: any): string {
+  
   return String(card?.teamName ?? card?.team ?? card?.club ?? card?.card?.teamName ?? card?.player?.activeClub?.name ?? "").trim();
 }
 
 function cardRarityLabel(card: any): string {
+  
   return String(card?.rarity ?? card?.scarcity ?? card?.card?.rarity ?? "unknown").replace("_", " ").toUpperCase();
 }
 
@@ -161,8 +198,10 @@ function isCardCompatibleWithSlot(slot: Slot, pos: PosCode, allowGkInFlex: boole
   if (slot === "FLEX") {
     if (pos === "UNK") return false;
     if (pos === "GK") return allowGkInFlex;
-    return true;
+  
+  return true;
   }
+  
   return false;
 }
 
@@ -171,6 +210,7 @@ function estimateCardScore(card: any): number | null {
   for (const c of candidates) {
     if (typeof c === "number" && Number.isFinite(c)) return c;
   }
+  
   return null;
 }
 
@@ -192,7 +232,7 @@ function SlotMiniCard({
   const pos = cardPosCode(card);
   const season = cardSeason(card);
   const rarityLabel = cardRarityLabel(card);
-
+  
   return (
     <View style={{ gap: 8 }}>
       <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
@@ -242,10 +282,27 @@ export default function PlayScreen() {
       const k = cardKey(it);
       if (k) m.set(k, it);
     }
-    return m;
+  
+  return m;
   }, [gallery]);
 
   const [picked, setPicked] = useState<Record<Slot, string | null>>(EMPTY_PICKED);
+
+/* XS_PLAY_PICKED_DIAG_V2C (BEGIN) */
+useEffect(() => {
+  try {
+    const entries = Object.entries((picked as any) ?? {}).map(([slot, key]) => ({ slot, key }));
+    const hasFn = (galleryByKey as any)?.has ? (k:any) => (galleryByKey as any).has(k) : (_k:any) => false;
+    const missing = entries.filter(e => !!e.key).filter(e => !hasFn(e.key));
+    console.log("[XS_PICKED_DIAG_V2C] picked=", entries);
+    console.log("[XS_PICKED_DIAG_V2C] galleryLen=", ((gallery as any[])?.length ?? 0), "mapSize=", ((galleryByKey as any)?.size ?? null));
+    console.log("[XS_PICKED_DIAG_V2C] missing=", missing);
+  } catch (e) {
+    console.log("[XS_PICKED_DIAG_V2C] ERROR", e);
+  }
+}, [picked, gallery, galleryByKey]);
+/* XS_PLAY_PICKED_DIAG_V2C (END) */
+
   const [activeSlot, setActiveSlot] = useState<Slot>("FLEX");
   const [name, setName] = useState("GW - lineup");
   const [scenario, setScenario] = useState<Scenario>("classic");
@@ -277,6 +334,7 @@ function xsTextHay(card: any): string {
   const b = String(cardClub(card) ?? "");
   const c = String(cardSeason(card) ?? "");
   const d = String(cardRarityLabel(card) ?? "");
+  
   return (a + " " + b + " " + c + " " + d).toLowerCase();
 }
 
@@ -291,11 +349,22 @@ function xsPickerListForSlot(slot: Slot) {
 
   const pickedSet = new Set(pickedSlugs);
   const items = filtered.filter((it) => !pickedSet.has(cardKey(it)));
-
+  
   return { items, isFallback };
 }
 
 function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
+  
+  /* XS_TRYADD_FLOW_DIAG_V3 (BEGIN) */
+  try {
+    console.log("[XS_TRYADD_FLOW_V3] START", { slot, cardSlug, cardPos });
+  } catch {}
+  /* XS_TRYADD_FLOW_DIAG_V3 (END) */
+// XS_PLAY_TRYADD_DIAG_V1 (BEGIN)
+  try {
+    console.log("[XS_TRYADD] enter", { xsPickerSlot, args: Array.from(arguments) });
+  } catch {}
+  // XS_PLAY_TRYADD_DIAG_V1 (END)
   const { isFallback } = xsPickerListForSlot(slot);
   const unkAllowedInFlexFallback = isFallback;
 
@@ -307,18 +376,35 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
     } else {
       showToast(`Incompatible pour le slot ${slot}`);
     }
-    return;
+  /* XS_TRYADD_EARLY_RETURN_FALSE_V4 */
+  try {
+    console.log("[XS_TRYADD_BLOCKED_V4] early-return BEFORE setPicked", { slot, cardSlug, cardPos });
+  } catch {}
+  return false;
   }
+  /* XS_TRYADD_BEFORE_SETPICKED_V3 */
+  try { console.log("[XS_TRYADD_FLOW_V3] BEFORE setPicked", { slot, cardSlug, cardPos }); } catch {}
+
 
   setPicked((prev) => {
+  /* XS_TRYADD_SET_PICKED_DIAG_V2C */
+  try {
+    console.log("[XS_TRYADD_SET_PICKED_DIAG_V2C] slot=", slot, "cardSlug=", cardSlug, "cardPos=", cardPos, "prev=", prev);
+  } catch {}
     const next = { ...prev };
     for (const s of slots) if (next[s] === cardSlug) next[s] = null;
     next[slot] = cardSlug;
-    return next;
+  
+  return next;
   });
 
+  
+  /* XS_TRYADD_RETURN_TRUE_AFTER_SETPICKED_V4 */
+  /* XS_TRYADD_SET_ACTIVE_BEFORE_RETURN_TRUE_V5 */
   setActiveSlot(slot);
-  xsClosePicker();
+  
+  return true;
+xsClosePicker();
   showToast(`Ajouté dans ${slot}`);
 }
 // XS_PLAY_SLOT_PICKER_MODAL_V1 (END)
@@ -330,7 +416,16 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
         const raw = await AsyncStorage.getItem(PLAY_PERSIST_KEY);
         if (!raw || !mounted) { setHydrated(true); return; }
         const parsed = JSON.parse(raw) as Partial<PersistedPlayState>;
-        if (parsed?.picked) setPicked({ ...EMPTY_PICKED, ...parsed.picked });
+        /* XS_PLAY_HYDRATION_NO_OVERWRITE_V1 (BEGIN) */
+if (parsed?.picked) {
+  setPicked((prev) => {
+    try { console.log("[XS_HYDRATE] apply? prevHasAny=", Object.values(prev ?? {}).some(Boolean)); } catch {}
+    const prevHasAny = Object.values(prev ?? {}).some(Boolean);
+    if (prevHasAny) return prev; // l'utilisateur a déjà choisi -> ne pas écraser
+    return { ...EMPTY_PICKED, ...parsed.picked };
+  });
+}
+/* XS_PLAY_HYDRATION_NO_OVERWRITE_V1 (END) */
         if (typeof parsed?.name === "string") setName(parsed.name);
         if (parsed?.scenario && ["classic", "cap_240", "cap_220"].includes(parsed.scenario)) setScenario(parsed.scenario as Scenario);
         if (typeof parsed?.allowGkInFlex === "boolean") setAllowGkInFlex(parsed.allowGkInFlex);
@@ -342,7 +437,8 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
         if (mounted) setHydrated(true);
       }
     })();
-    return () => { mounted = false; };
+  
+  return () => { mounted = false; };
   }, []);
 
   useEffect(() => {
@@ -367,7 +463,8 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
       counts[club] = (counts[club] ?? 0) + 1;
       if (counts[club] > 2) return true;
     }
-    return false;
+  
+  return false;
   }, [enableClubRule, pickedCards]);
 
   const validation = useMemo(() => {
@@ -375,7 +472,8 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
     if (pickedSlugs.length !== 5) errors.push("Tu dois avoir 5 cartes");
     if (!hasGk) errors.push("Pas de GK");
     if (sameClubViolation) errors.push("Trop de joueurs même club");
-    return { ok: errors.length === 0, errors };
+  
+  return { ok: errors.length === 0, errors };
   }, [pickedSlugs.length, hasGk, sameClubViolation]);
 
   const scoreEstimate = useMemo(() => {
@@ -385,21 +483,25 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
       const s = estimateCardScore(card);
       if (typeof s === "number") { total += s; hasAny = true; }
     }
-    return hasAny ? total : null;
+  
+  return hasAny ? total : null;
   }, [pickedCards]);
 
   const capRemaining = useMemo(() => {
     const cap = scenario === "cap_240" ? 240 : scenario === "cap_220" ? 220 : null;
     if (!cap || scoreEstimate == null) return null;
-    return cap - scoreEstimate;
+  
+  return cap - scoreEstimate;
   }, [scenario, scoreEstimate]);
 
   const filteredGalleryState = useMemo(() => {
     const strictItems = (gallery as any[]).filter((item) => isCardCompatibleWithSlot(activeSlot, cardPosCode(item), allowGkInFlex));
     const canFallback = true; /* XS_PLAY_FALLBACK_UNK_V3 */ if ((gallery as any[]).length > 0 && strictItems.length === 0 && canFallback) {
-      return { items: gallery as any[], isFallback: true };
+  
+  return { items: gallery as any[], isFallback: true };
     }
-    return { items: strictItems, isFallback: false };
+  
+  return { items: strictItems, isFallback: false };
   }, [gallery, activeSlot, allowGkInFlex]);
 
   function showToast(message: string) {
@@ -422,19 +524,22 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
     if (!swapFrom) {
       setSwapFrom(slot);
       showToast(`Mode swap actif: choisis un 2e slot (départ ${slot})`);
-      return;
+  
+  return;
     }
     if (swapFrom === slot) {
       setSwapFrom(null);
       showToast("Mode swap désactivé");
-      return;
+  
+  return;
     }
     setPicked((prev) => {
       const next = { ...prev };
       const first = next[swapFrom];
       next[swapFrom] = next[slot];
       next[slot] = first;
-      return next;
+  
+  return next;
     });
     setSwapFrom(null);
     showToast(`Swap ${swapFrom} ↔ ${slot} effectué`);
@@ -459,14 +564,16 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
       } else {
         showToast(`Incompatible pour le slot ${activeSlot}`);
       }
-      return;
+  
+  return;
     }
 
     setPicked((prev) => {
       const next = { ...prev };
       for (const s of slots) if (next[s] === cardSlug) next[s] = null;
       next[activeSlot] = cardSlug;
-      return next;
+  
+  return next;
     });
   }
 
@@ -507,9 +614,18 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
       setSaving(false);
     }
   }
-
+  
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
+{/* XS_PLAY_PICKED_UI_V2 */}
+<View style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 10 }}>
+  <View style={{ padding: 10, borderRadius: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.14)", backgroundColor: "rgba(255,255,255,0.04)" }}>
+    <Text style={{ color: theme.text, fontWeight: "900", fontSize: 12 }}>XS_PICKED_UI_V2</Text>
+    <Text style={{ color: theme.muted, marginTop: 4, fontSize: 12 }} numberOfLines={3}>
+      {(() => { try { return JSON.stringify(picked ?? {}); } catch { return "picked: <unstringifiable>"; } })()}
+    </Text>
+  </View>
+</View>
       <View style={{ padding: 16, gap: 12 }}>
         <Text style={{ color: theme.text, fontSize: 22, fontWeight: "900" }}>Jouer</Text>
 <View style={{ marginTop: 8, padding: 10, borderRadius: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.18)", backgroundColor: "rgba(34,197,94,0.14)" }}>
@@ -521,7 +637,8 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
           <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
             {(["classic", "cap_240", "cap_220"] as Scenario[]).map((item) => {
               const active = scenario === item;
-              return (
+  
+  return (
                 <Pressable key={item} onPress={() => setScenario(item)} style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, borderWidth: 1, borderColor: active ? "rgba(59,130,246,0.45)" : theme.stroke, backgroundColor: active ? "rgba(59,130,246,0.15)" : "rgba(255,255,255,0.03)" }}>
                   <Text style={{ color: theme.text, fontWeight: "800" }}>{SCENARIO_LABEL[item]}</Text>
                 </Pressable>
@@ -563,10 +680,12 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
             {slots.map((s) => {
               const slug = picked[s];
               const card: any = slug ? galleryByKey.get(slug) : null;
+const xsHasKey = !!(slug && (galleryByKey as any)?.has?.(slug));
+/* XS_PLAY_SLOT_VISIBLE_PROBE_V1 */
               const isActive = activeSlot === s;
               const isSwapTarget = swapFrom === s;
-
-              return (
+  
+  return (
                 <Pressable key={s} onPress={() => onSlotPress(s)} style={{ width: "48%", padding: 12, borderRadius: 16, borderWidth: 1, borderColor: isSwapTarget ? "rgba(34,197,94,0.5)" : isActive ? "rgba(59,130,246,0.55)" : theme.stroke, backgroundColor: theme.panel }}>
                   <Text style={{ color: theme.muted, fontWeight: "900", marginBottom: 8 }}>{s}</Text>
                   {card ? (
@@ -574,6 +693,13 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
                   ) : (
                     <View style={{ gap: 8 }}>
                       <Text style={{ color: theme.muted, fontWeight: "800" }}>Vide</Text>
+{slug ? (
+  <View style={{ marginTop: 6, padding: 8, borderRadius: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.18)", backgroundColor: "rgba(255,255,255,0.04)" }}>
+    <Text style={{ color: theme.text, fontWeight: "900", fontSize: 12 }}>XS_SLOT_PROBE</Text>
+    <Text style={{ color: theme.muted, marginTop: 2, fontSize: 12 }} numberOfLines={2}>key={String(slug).slice(0, 60)}</Text>
+    <Text style={{ color: theme.muted, marginTop: 2, fontSize: 12 }}>hasKey={String(xsHasKey)}</Text>
+  </View>
+) : null}
                       <Pressable onPress={() => onSlotSwapPress(s)} style={{ alignSelf: "flex-start", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: swapFrom === s ? theme.accent : theme.stroke, backgroundColor: swapFrom === s ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.04)" }}>
                         <Text style={{ color: theme.text, fontWeight: "900" }}>↔ swap {s}</Text>
                       </Pressable>
@@ -620,10 +746,11 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
               const historyCards = slots.map((slot) => item.picked[slot]).filter(Boolean) as string[];
               const gkOk = historyCards.some((slug) => {
                 const card = galleryByKey.get(slug);
-                return cardPosCode(card) === "GK";
+  
+  return cardPosCode(card) === "GK";
               });
-
-              return (
+  
+  return (
                 <Pressable key={item.id} onPress={() => loadHistory(item)} style={{ borderRadius: 12, borderWidth: 1, borderColor: theme.stroke, padding: 10, backgroundColor: "rgba(255,255,255,0.02)" }}>
                   <Text style={{ color: theme.text, fontWeight: "900" }} numberOfLines={1}>
                     {item.name} • {SCENARIO_LABEL[item.scenario]}
@@ -656,7 +783,8 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
             (filteredGalleryState.items as any[]).map((item: any) => {
               const key = cardKey(item);
               const pos = cardPosCode(item);
-              return (
+  
+  return (
                 <View key={key} style={{ gap: 4 }}>
                   <CardListItem card={item} selected={pickedSlugs.includes(key)} onPress={() => {
                     // XS_PLAY_ASSIGN_COMPAT_SLOT_OK_V1
@@ -689,7 +817,8 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
         <View style={{ maxHeight: "75%", backgroundColor: "rgba(18,18,18,0.98)", borderTopLeftRadius: 18, borderTopRightRadius: 18, borderWidth: 1, borderColor: theme.stroke, padding: 14 }}>
             {(() => {
               const st = xsPickerListForSlot(xsPickerSlot);
-              return (
+  
+  return (
                 <View>
                   <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                     <Text style={{ color: theme.text, fontWeight: "900", fontSize: 16 }}>
@@ -731,19 +860,25 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
                         <Pressable
                           onPress={() => {
                             /* XS_PLAY_PICKER_TAP_PROBE_V1 */
-                            try { console.log("[XS_PICKER_TAP]", xsPickerSlot, cardKey(item), "UNK"); // XS_PLAY_PICKER_FORCE_SELECT_CLOSE_V2
 try {
   const k = cardKey(item);
   const p = cardPosCode(item);
+  console.log("[XS_PICKER_TAP]", xsPickerSlot, k, p);
   console.log("[XS_PICKER_SELECT_V2] try", xsPickerSlot, k, p); // XS_PLAY_PICKER_FORCE_SELECT_CLOSE_V2
-  xsTryAddToSlot(xsPickerSlot, k, p);
+  console.log("[XS_PICKER_SELECT] slot=", xsPickerSlot, "key=", k, "pos=", p);
+/* XS_PICKER_OK_V3 */
+const ok = (xsTryAddToSlot as any)(xsPickerSlot, k, p);
+try { console.log("[XS_PICKER_OK_V3] ok=", ok, "slot=", xsPickerSlot, "key=", k, "pos=", p); } catch {}
+  /* XS_PICKER_CLOSE_ONLY_ON_OK_V4 */
+  if (ok === false) {
+    try { console.log("[XS_PICKER_CLOSE_V4] blocked -> keep open", { slot: xsPickerSlot, key: k, pos: p }); } catch {}
+  } else {
   console.log("[XS_PICKER_SELECT_V2] ok -> close", xsPickerSlot, k, p);
   xsClosePicker();
-} catch (e) {
+  }} catch (e) {
   console.log("[XS_PICKER_SELECT_V2] ERROR", e);
-}} catch {}
-                            try { showToast(`TAP PICKER ${xsPickerSlot}`); } catch {}
-                            xsTryAddToSlot(xsPickerSlot, cardKey(item), cardPosCode(item));
+}
+try { showToast(`TAP PICKER ${xsPickerSlot}`); } catch {}
                           }}
                           style={{ flex: 1 }}
                           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -770,6 +905,18 @@ try {
 </SafeAreaView>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

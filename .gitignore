@@ -70,3 +70,7 @@ _backups/
 
 _session_logs/
 
+
+# XS_IGNORE_LOGS_V1
+_logs/
+
