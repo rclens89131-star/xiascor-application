@@ -726,7 +726,6 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
                       columnWrapperStyle={{ gap: 10 }}
                       contentContainerStyle={{ paddingBottom: 12, gap: 10 }}
                       renderItem={({ item }) => (
-                        {/* XS_PLAY_PICKER_TOUCH_FIX_V1 (BEGIN) */}
                         <Pressable
                           onPress={() => xsTryAddToSlot(xsPickerSlot, cardKey(item), cardPosCode(item))}
                           style={{ flex: 1 }}
@@ -740,7 +739,6 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
                             />
                           </View>
                         </Pressable>
-                        {/* XS_PLAY_PICKER_TOUCH_FIX_V1 (END) */}
                       )}
                       style={{ maxHeight: 420 }}
                     />
@@ -755,6 +753,7 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
 </SafeAreaView>
   );
 }
+
 
 
 
