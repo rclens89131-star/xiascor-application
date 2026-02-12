@@ -683,8 +683,10 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
       </ScrollView>
           {/* XS_PLAY_SLOT_PICKER_MODAL_V1 UI (BEGIN) */}
       <Modal visible={xsPickerOpen} transparent animationType="slide" onRequestClose={xsClosePicker}>
-        <Pressable onPress={xsClosePicker} style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" }}>
-          <View style={{ maxHeight: "75%", backgroundColor: "rgba(18,18,18,0.98)", borderTopLeftRadius: 18, borderTopRightRadius: 18, borderWidth: 1, borderColor: theme.stroke, padding: 14 }}>
+        <View style={{ flex: 1, justifyContent: "flex-end" }}>
+        {/* XS_PLAY_PICKER_BACKDROP_FIX_V1 */}
+        <Pressable onPress={xsClosePicker} style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.55)" }} />
+        <View style={{ maxHeight: "75%", backgroundColor: "rgba(18,18,18,0.98)", borderTopLeftRadius: 18, borderTopRightRadius: 18, borderWidth: 1, borderColor: theme.stroke, padding: 14 }}>
             {(() => {
               const st = xsPickerListForSlot(xsPickerSlot);
               return (
@@ -747,12 +749,13 @@ function xsTryAddToSlot(slot: Slot, cardSlug: string, cardPos: PosCode) {
               );
             })()}
           </View>
-        </Pressable>
+        </View>
       </Modal>
       {/* XS_PLAY_SLOT_PICKER_MODAL_V1 UI (END) */}
 </SafeAreaView>
   );
 }
+
 
 
 
