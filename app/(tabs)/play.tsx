@@ -112,6 +112,67 @@ function cardKey(item: any): string {
   // XS_POS_NORM_V2_END
 function cardPosCode(item: any): PosCode { return xsPosCodeFromAny(item); }
 
+  // XS_PLAY_RESTORE_MISSING_HELPERS_V1_BEGIN
+  // Minimal + robust helpers used by Play UI (kept local to this file).
+
+  function cardSeason(card: any): string {
+    const start =
+      card?.season?.startYear ??
+      card?.seasonStartYear ??
+      card?.season?.start ??
+      card?.seasonStart ??
+      null;
+
+    const end =
+      card?.season?.endYear ??
+      card?.seasonEndYear ??
+      card?.season?.end ??
+      card?.seasonEnd ??
+      null;
+
+    if (start != null && end != null) {
+      const s = String(start).trim();
+      const e = String(end).trim();
+      if (s && e) return `${s}-${e.slice(-2)}`;
+    }
+
+    const v =
+      card?.season?.name ??
+      card?.season?.displayName ??
+      card?.season ??
+      card?.seasonYear ??
+      "";
+
+    const out = String(v ?? "").trim();
+    return out || "—";
+  }
+
+  function xsPosCandidatesV2(item: any): string[] {
+    const vals: any[] = [
+      item?.positionRaw,
+      item?.position,
+      item?.playerPosition,
+      item?.anyPosition,
+      item?.card?.positionRaw,
+      item?.card?.position,
+      item?.card?.playerPosition,
+      item?.card?.anyPosition,
+      item?.player?.position,
+      item?.player?.anyPosition,
+      item?.playerPositionRaw,
+    ];
+
+    const out = vals
+      .filter(v => v != null && String(v).trim() !== "")
+      .map(v => (typeof v === "string" ? v : String(v)));
+
+    // Dédoublonnage simple (ordre conservé)
+    const seen = new Set<string>();
+    return out.filter(x => (seen.has(x) ? false : (seen.add(x), true)));
+  }
+  // XS_PLAY_RESTORE_MISSING_HELPERS_V1_END
+
+
 function cardClub(card: any): string {
   
   return String(card?.teamName ?? card?.team ?? card?.club ?? card?.card?.teamName ?? card?.player?.activeClub?.name ?? "").trim();
@@ -837,6 +898,7 @@ try { showToast(`TAP PICKER ${xsPickerSlot}`); } catch {}
 </SafeAreaView>
   );
 }
+
 
 
 
