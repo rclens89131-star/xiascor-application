@@ -144,28 +144,61 @@ function cardKey(item: any): string {
     return "UNK";
   }
 
+    // XS_POS_BASEURL_ROBUST_V1
   function xsBestBaseUrl(): string {
-    // Prefer an existing BASE_URL if the file already defines it
-    // Fallback to Expo env
+    // 1) Prefer an existing BASE_URL if the file already defines it
     try {
       // @ts-ignore
       if (typeof BASE_URL === "string" && BASE_URL) return BASE_URL;
     } catch {}
+
+    // 2) Expo env via globalThis.process (more reliable than "process" in some runtimes)
+    try {
+      // @ts-ignore
+      const v = globalThis?.process?.env?.EXPO_PUBLIC_BASE_URL;
+      if (typeof v === "string" && v.trim()) return v.trim();
+    } catch {}
+
+    // 3) expo-constants fallback (extra / manifest)
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const C: any = require("expo-constants")?.default ?? require("expo-constants");
+      const extra =
+        C?.expoConfig?.extra ??
+        C?.manifest?.extra ??
+        C?.manifest2?.extra ??
+        null;
+
+      const v =
+        extra?.EXPO_PUBLIC_BASE_URL ??
+        extra?.expoPublicBaseUrl ??
+        extra?.baseUrl ??
+        "";
+      if (typeof v === "string" && v.trim()) return v.trim();
+    } catch {}
+
+    return "";
+  } catch {}
     // @ts-ignore
     const envUrl = (process?.env?.EXPO_PUBLIC_BASE_URL ?? "") as string;
     return String(envUrl ?? "").trim();
   }
 
   function xsResolvePosFromPlayerSlug(playerSlug: string): void {
+    // XS_BASEURL_MISSING_V1 (diagnostic léger)
     const slug = String(playerSlug ?? "").trim();
     if (!slug) return;
     if (xsPosSlugCache.has(slug)) return;
     if (xsPosSlugInflight.has(slug)) return;
 
     const base = xsBestBaseUrl();
-    if (!base) return;
-
-    xsPosSlugInflight.add(slug);
+    if (!base) {
+      try {
+        // eslint-disable-next-line no-console
+        console.log("[XS_BASEURL_MISSING_V1] no base url; cannot resolve pos", JSON.stringify({ playerSlug: slug }));
+      } catch {}
+      return;
+    }xsPosSlugInflight.add(slug);
 
     const url = `${base.replace(/\/+$/, "")}/public-player?slug=${encodeURIComponent(slug)}`;
     fetch(url)
@@ -974,6 +1007,7 @@ try { showToast(`TAP PICKER ${xsPickerSlot}`); } catch {}
 </SafeAreaView>
   );
 }
+
 
 
 
