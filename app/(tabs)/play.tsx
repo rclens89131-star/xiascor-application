@@ -1,4 +1,4 @@
-﻿/* XS_PLAY_REPAIR_ESCAPED_PATCH_V1 */
+/* XS_PLAY_REPAIR_ESCAPED_PATCH_V1 */
 import React, { useEffect, useMemo, useState } from "react";
 import { FlatList, Image, Pressable, SafeAreaView, ScrollView, Switch, Text, TextInput, View, Modal } from "react-native"; /* XS_PLAY_SCROLL_HEADER_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -391,6 +391,13 @@ export default function PlayScreen() {
     for (const it of gallery ?? []) {
       const k = cardKey(it);
       if (k) m.set(k, it);
+      /* XS_PLAY_GALLERYBYKEY_ALIAS_SLUG_V1 (BEGIN) */
+      // Compat: anciennes sauvegardes peuvent stocker un slug au lieu d'un cardKey
+      const xsSlug1 = String((it as any)?.slug ?? (it as any)?.card?.slug ?? "").trim();
+      if (xsSlug1) m.set(xsSlug1, it);
+      const xsSlug2 = String((it as any)?.playerSlug ?? (it as any)?.card?.playerSlug ?? "").trim();
+      if (xsSlug2) m.set(xsSlug2, it);
+      /* XS_PLAY_GALLERYBYKEY_ALIAS_SLUG_V1 (END) */
     }
   
   return m;
@@ -605,14 +612,38 @@ if (parsed?.picked) {
   }, [scenario, scoreEstimate]);
 
   const filteredGalleryState = useMemo(() => {
-    const strictItems = (gallery as any[]).filter((item) => isCardCompatibleWithSlot(activeSlot, cardPosCode(item), allowGkInFlex));
-    const canFallback = true; /* XS_PLAY_FALLBACK_UNK_V3 */ if ((gallery as any[]).length > 0 && strictItems.length === 0 && canFallback) {
-  
-  return { items: gallery as any[], isFallback: true };
-    }
-  
-  return { items: strictItems, isFallback: false };
-  }, [gallery, activeSlot, allowGkInFlex]);
+  // XS_PLAY_STRICT_SLOT_FILTER_V1
+  // Règle:
+  // - Si slot = GK/DEF/MID/FWD => afficher uniquement ce poste
+  // - Si slot = FLEX => afficher DEF/MID/FWD (+ GK seulement si allowGkInFlex)
+  // - Exclure UNK en mode strict
+  // - Pas de fallback "toute la galerie" si vide
+
+  const want: Slot = activeSlot;
+  const all = (gallery as any[]) ?? [];
+
+  const posOf = (c: any) => {
+    try { return cardPosCode(c); } catch { return "UNK"; }
+  };
+
+  let items = all;
+
+  if (want === "FLEX") {
+    items = all.filter((c: any) => {
+      const p = posOf(c);
+      if (!p || p === "UNK") return false;
+      if (p === "GK") return !!allowGkInFlex;
+      return p === "DEF" || p === "MID" || p === "FWD";
+    });
+  } else if (want) {
+    items = all.filter((c: any) => posOf(c) === want);
+  } else {
+    // slot inconnu => liste vide (mode strict)
+    items = [];
+  }
+
+  return { items, isFallback: false };
+}, [gallery, activeSlot, allowGkInFlex]);
 
   function showToast(message: string) {
     setToast(message);
@@ -1015,37 +1046,4 @@ try { showToast(`TAP PICKER ${xsPickerSlot}`); } catch {}
 </SafeAreaView>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
