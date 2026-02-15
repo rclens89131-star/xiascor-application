@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -15,6 +15,75 @@ import { CardListItem } from "../../src/components/CardListItem";
 import { useAppStore } from "../../src/store/useAppStore";
 
 export default function CardsScreen() {
+  // XS_MY_CARDS_BADGES_SORT_V1_BEGIN
+  const [sortMode, setSortMode] = useState<"none" | "priceAsc" | "l15Desc">("none");
+  const [debugOpen, setDebugOpen] = useState(false);
+
+  const readNumber = (...values: any[]) => {
+    for (const value of values) {
+      const n = Number(value);
+      if (Number.isFinite(n)) return n;
+
+      if (typeof value === "string") {
+        const normalized = value.replace(/\s/g, "").replace(",", ".");
+        const match = normalized.match(/-?\d+(?:\.\d+)?/);
+        if (match) {
+          const parsed = Number(match[0]);
+          if (Number.isFinite(parsed)) return parsed;
+        }
+      }
+    }
+    return null;
+  };
+
+  const readRarity = (card: any) => {
+    const raw =
+      card?.rarity ??
+      card?.rarityTyped ??
+      card?.rarity?.slug ??
+      card?.card?.rarity ??
+      card?.card?.rarityTyped ??
+      card?.card?.rarity?.slug;
+    return typeof raw === "string" && raw.trim() ? raw.trim().toUpperCase() : "—";
+  };
+
+  const readPriceEur = (card: any) => {
+    const eur = readNumber(
+      card?.eur,
+      card?.priceEur,
+      card?.price,
+      card?.offer?.eur,
+      card?.offer?.priceEur,
+      card?.offer?.price,
+    );
+    if (eur !== null) return eur;
+
+    const cents = readNumber(
+      card?.eurCents,
+      card?.priceEurCents,
+      card?.offer?.eurCents,
+      card?.offer?.priceEurCents,
+    );
+    if (cents !== null) {
+      const converted = cents / 100;
+      return Number.isFinite(converted) ? converted : null;
+    }
+
+    return null;
+  };
+
+  const readL15 = (card: any) =>
+    readNumber(
+      card?.l15,
+      card?.averageScore,
+      card?.last15Average,
+      card?.stats?.l15,
+      card?.stats?.averageScore,
+      card?.player?.l15,
+      card?.player?.averageScore,
+    );
+  // XS_MY_CARDS_BADGES_SORT_V1_END
+
   const identifier = useAppStore((s) => s.identifier);
   const setIdentifier = useAppStore((s) => s.setIdentifier);
 
@@ -37,6 +106,72 @@ export default function CardsScreen() {
     const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
     return { H_PADDING, GAP, itemWidth };
   }, [width]);
+
+  // XS_MY_CARDS_BADGES_SORT_V1_BEGIN
+  const cardsWithMeta = useMemo(
+    () =>
+      cards.map((card, originalIndex) => ({
+        card,
+        originalIndex,
+        rarity: readRarity(card),
+        priceEur: readPriceEur(card),
+        l15: readL15(card),
+      })),
+    [cards],
+  );
+
+  const hasAnyPrice = cardsWithMeta.some((item) => item.priceEur !== null);
+  const hasAnyL15 = cardsWithMeta.some((item) => item.l15 !== null);
+
+  const sortedCards = useMemo(() => {
+    if (sortMode === "none") return cardsWithMeta;
+
+    if (sortMode === "priceAsc" && !hasAnyPrice) return cardsWithMeta;
+    if (sortMode === "l15Desc" && !hasAnyL15) return cardsWithMeta;
+
+    const next = [...cardsWithMeta];
+    next.sort((a, b) => {
+      if (sortMode === "priceAsc") {
+        if (a.priceEur === null && b.priceEur === null) return a.originalIndex - b.originalIndex;
+        if (a.priceEur === null) return 1;
+        if (b.priceEur === null) return -1;
+        if (a.priceEur !== b.priceEur) return a.priceEur - b.priceEur;
+      }
+
+      if (sortMode === "l15Desc") {
+        if (a.l15 === null && b.l15 === null) return a.originalIndex - b.originalIndex;
+        if (a.l15 === null) return 1;
+        if (b.l15 === null) return -1;
+        if (a.l15 !== b.l15) return b.l15 - a.l15;
+      }
+
+      return a.originalIndex - b.originalIndex;
+    });
+    return next;
+  }, [cardsWithMeta, hasAnyL15, hasAnyPrice, sortMode]);
+
+  const firstCard = cards[0];
+  const debugKeys = useMemo(() => (debugOpen && firstCard ? Object.keys(firstCard) : []), [debugOpen, firstCard]);
+  const debugKeysPreview = useMemo(() => {
+    if (!debugKeys.length) return "Aucune carte";
+    const max = 60;
+    const preview = debugKeys.slice(0, max).join(", ");
+    const extra = debugKeys.length - max;
+    return extra > 0 ? `${preview} (+${extra})` : preview;
+  }, [debugKeys]);
+
+  const debugCandidates = useMemo(() => {
+    if (!debugOpen || !firstCard) return [] as string[];
+    const entries: Array<[string, any]> = [
+      ["rarity", readRarity(firstCard)],
+      ["priceEur", readPriceEur(firstCard)],
+      ["l15", readL15(firstCard)],
+      ["offerKeys", firstCard?.offer ? Object.keys(firstCard.offer).slice(0, 5).join(",") : "—"],
+      ["statsKeys", firstCard?.stats ? Object.keys(firstCard.stats).slice(0, 5).join(",") : "—"],
+    ];
+    return entries.map(([key, value]) => `${key}: ${value ?? "—"}`);
+  }, [debugOpen, firstCard]);
+  // XS_MY_CARDS_BADGES_SORT_V1_END
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -83,6 +218,59 @@ export default function CardsScreen() {
             {cards.length} cartes • sélection Jouer: {selected.length}/5
           </Text>
         )}
+
+        {/* XS_MY_CARDS_BADGES_SORT_V1_BEGIN */}
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <Pressable
+            onPress={() => setSortMode("none")}
+            style={{
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: sortMode === "none" ? theme.accent : theme.stroke,
+              backgroundColor: sortMode === "none" ? "rgba(59,130,246,0.18)" : theme.panel,
+            }}
+          >
+            <Text style={{ color: theme.text, fontWeight: "800", fontSize: 12 }}>Aucun</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => setSortMode("priceAsc")}
+            style={{
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: sortMode === "priceAsc" ? theme.accent : theme.stroke,
+              backgroundColor: sortMode === "priceAsc" ? "rgba(59,130,246,0.18)" : theme.panel,
+            }}
+          >
+            <Text style={{ color: theme.text, fontWeight: "800", fontSize: 12 }}>Prix ↑</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => setSortMode("l15Desc")}
+            style={{
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: sortMode === "l15Desc" ? theme.accent : theme.stroke,
+              backgroundColor: sortMode === "l15Desc" ? "rgba(59,130,246,0.18)" : theme.panel,
+            }}
+          >
+            <Text style={{ color: theme.text, fontWeight: "800", fontSize: 12 }}>L15 ↓</Text>
+          </Pressable>
+        </View>
+
+        {!hasAnyPrice ? (
+          <Text style={{ color: theme.muted, fontSize: 12 }}>Tri prix indisponible (prix non fourni)</Text>
+        ) : null}
+        {!hasAnyL15 ? (
+          <Text style={{ color: theme.muted, fontSize: 12 }}>Tri L15 indisponible (champ absent)</Text>
+        ) : null}
+        {/* XS_MY_CARDS_BADGES_SORT_V1_END */}
       </View>
 
       {loading ? (
@@ -92,15 +280,20 @@ export default function CardsScreen() {
         </View>
       ) : (
         <FlatList
-          key="grid2" // ✅ force FlatList à recalculer la grille
-          data={cards}
-          keyExtractor={(item: any) => String(item?.slug || item?.id)}
+          key="grid2"
+          data={sortedCards}
+          keyExtractor={(item: any, idx: number) =>
+            String(item?.card?.slug || item?.card?.id || `missing-${item?.originalIndex ?? idx}`)
+          }
           numColumns={2}
           contentContainerStyle={{ paddingHorizontal: layout.H_PADDING, paddingBottom: 120 }}
           onEndReached={() => loadMore()}
           onEndReachedThreshold={0.6}
           renderItem={({ item, index }: any) => {
             const isLeft = index % 2 === 0;
+            const priceLabel = item.priceEur !== null ? `€ ${item.priceEur.toFixed(2)}` : "Prix inconnu";
+            const rarityLabel = String(item.rarity || "—").toUpperCase();
+
             return (
               <View
                 style={{
@@ -110,27 +303,100 @@ export default function CardsScreen() {
                 }}
               >
                 <CardListItem
-                  card={item}
-                  selected={selected.some((c) => c.slug === item.slug)}
-                  onPress={() => toggleSelected(item)}
+                  card={{ ...item.card, rarity: item.rarity === "—" ? item.card?.rarity : item.rarity }}
+                  selected={selected.some((c) => c.slug === item.card?.slug)}
+                  onPress={() => (item.card?.slug ? toggleSelected(item.card) : null)}
+                  rightSlot={
+                    <View style={{ gap: 6, alignItems: "flex-end" }}>
+                      <View
+                        style={{
+                          paddingHorizontal: 8,
+                          paddingVertical: 5,
+                          borderRadius: 999,
+                          borderWidth: 1,
+                          borderColor: theme.stroke,
+                          backgroundColor: "rgba(255,255,255,0.04)",
+                        }}
+                      >
+                        <Text style={{ color: theme.text, fontWeight: "900", fontSize: 11 }} numberOfLines={1}>
+                          {rarityLabel}
+                        </Text>
+                      </View>
+
+                      <View
+                        style={{
+                          paddingHorizontal: 8,
+                          paddingVertical: 5,
+                          borderRadius: 999,
+                          borderWidth: 1,
+                          borderColor: theme.stroke,
+                          backgroundColor: "rgba(255,255,255,0.04)",
+                        }}
+                      >
+                        <Text style={{ color: theme.text, fontWeight: "900", fontSize: 11 }} numberOfLines={1}>
+                          {priceLabel}
+                        </Text>
+                      </View>
+                    </View>
+                  }
                 />
               </View>
             );
           }}
           ListFooterComponent={
-            loadingMore ? (
-              <View style={{ paddingVertical: 16 }}>
-                <ActivityIndicator />
-              </View>
-            ) : (
+            <View style={{ paddingVertical: 16, gap: 12 }}>
+              {loadingMore ? <ActivityIndicator /> : <View style={{ height: 8 }} />}
+
+              {/* XS_MY_CARDS_BADGES_SORT_V1_BEGIN */}
+              <Pressable
+                onPress={() => setDebugOpen((v) => !v)}
+                style={{
+                  marginHorizontal: 16,
+                  paddingHorizontal: 12,
+                  paddingVertical: 9,
+                  borderWidth: 1,
+                  borderRadius: 12,
+                  borderColor: theme.stroke,
+                  backgroundColor: theme.panel,
+                }}
+              >
+                <Text style={{ color: theme.text, fontWeight: "800" }}>
+                  Debug carte (1ère) {debugOpen ? "▲" : "▼"}
+                </Text>
+              </Pressable>
+
+              {debugOpen ? (
+                <View
+                  style={{
+                    marginHorizontal: 16,
+                    padding: 12,
+                    borderRadius: 12,
+                    backgroundColor: theme.panel,
+                    borderWidth: 1,
+                    borderColor: theme.stroke,
+                  }}
+                >
+                  <Text style={{ color: theme.text, fontWeight: "800", marginBottom: 8 }}>Object.keys(firstCard)</Text>
+                  <Text style={{ color: theme.muted, fontSize: 12 }}>{debugKeysPreview}</Text>
+
+                  <Text style={{ color: theme.text, fontWeight: "800", marginTop: 10, marginBottom: 6 }}>
+                    Candidats détectés
+                  </Text>
+                  {debugCandidates.map((line) => (
+                    <Text key={line} style={{ color: theme.muted, fontSize: 12 }}>
+                      {line}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
+              {/* XS_MY_CARDS_BADGES_SORT_V1_END */}
+
               <View style={{ height: 16 }} />
-            )
+            </View>
           }
           ListEmptyComponent={
             <View style={{ padding: 16 }}>
-              <Text style={{ color: theme.muted }}>
-                Aucune carte. Vérifie le slug/URL et clique OK.
-              </Text>
+              <Text style={{ color: theme.muted }}>Aucune carte. Vérifie le slug/URL et clique OK.</Text>
             </View>
           }
         />
@@ -138,5 +404,3 @@ export default function CardsScreen() {
     </SafeAreaView>
   );
 }
-
-
