@@ -9,7 +9,56 @@ type Options = {
   identifier: string;
   first?: number;
 };
+/* XS_CARD_PRICE_WIRING_APP_V1 (BEGIN)
+   Normalise le payload prix backend pour garder un contrat stable côté UI.
+*/
+type CardPrice = {
+  floorEur: number | null;
+  lastSaleEur: number | null;
+  avg7dEur: number | null;
+  avg30dEur: number | null;
+  asOf: string | null;
+  source?: string | null;
+  warning?: string | null;
+};
 
+function toFiniteOrNull(v: unknown): number | null {
+  if (typeof v !== "number") return null;
+  return Number.isFinite(v) ? v : null;
+}
+
+function normalizeCardPrice(card: any): CardPrice | null {
+  const direct = card?.price && typeof card.price === "object" ? card.price : null;
+
+  const floorEur =
+    toFiniteOrNull(direct?.floorEur) ??
+    toFiniteOrNull(card?.floorEur) ??
+    toFiniteOrNull(card?.floorPriceEur) ??
+    toFiniteOrNull(card?.floorPrice) ??
+    null;
+
+  const lastSaleEur =
+    toFiniteOrNull(direct?.lastSaleEur) ??
+    toFiniteOrNull(card?.lastSaleEur) ??
+    toFiniteOrNull(card?.lastSalePriceEur) ??
+    toFiniteOrNull(card?.lastSalePrice) ??
+    null;
+
+  const avg7dEur = toFiniteOrNull(direct?.avg7dEur) ?? toFiniteOrNull(card?.avg7dEur) ?? null;
+  const avg30dEur = toFiniteOrNull(direct?.avg30dEur) ?? toFiniteOrNull(card?.avg30dEur) ?? null;
+
+  const asOfRaw = direct?.asOf ?? card?.priceAsOf ?? null;
+  const asOf = typeof asOfRaw === "string" && asOfRaw.trim() ? asOfRaw : null;
+
+  const source = typeof direct?.source === "string" ? direct.source : null;
+  const warning = typeof direct?.warning === "string" ? direct.warning : null;
+
+  const hasUsefulValue = floorEur !== null || lastSaleEur !== null || avg7dEur !== null || avg30dEur !== null;
+  if (!hasUsefulValue && !asOf && !source && !warning) return null;
+
+  return { floorEur, lastSaleEur, avg7dEur, avg30dEur, asOf, source, warning };
+}
+/* XS_CARD_PRICE_WIRING_APP_V1 (END) */
 function normalizeRarity(v: unknown): string {
   const s = typeof v === "string" ? v.toLowerCase().trim() : "";
   return s
