@@ -10,21 +10,6 @@ type Props = {
 };
 
 const CARD_AR = 320 / 448; // ≈ Sorare card ratio
-
-
-
-/* XS_CARD_PRICE_PANEL_UI_V1 (BEGIN) */
-function asFinite(v: unknown): number | null {
-  if (typeof v !== "number") return null;
-  return Number.isFinite(v) ? v : null;
-}
-
-function formatEur(v: unknown): string {
-  const n = asFinite(v);
-  if (n === null) return "—";
-  return `${n.toFixed(2)} €`;
-}
-/* XS_CARD_PRICE_PANEL_UI_V1 (END) */
 function xsFmtEur(value: unknown): string {
   const n = typeof value === "number" ? value : null;
   if (n == null || !Number.isFinite(n)) return "—";
@@ -41,17 +26,6 @@ function xsFmtAsOf(value: unknown): string {
 export function CardListItem({ card, selected, onPress, rightSlot }: Props) {
   const [imgOk, setImgOk] = useState(true);
   const border = selected ? "rgba(59,130,246,0.55)" : theme.stroke;
-  // XS_CARD_PRICE_PANEL_V1 (BEGIN)
-  const price = card?.price;
-  const floorEur = xsFmtEur(price?.floorEur);
-  const lastSaleEur = xsFmtEur(price?.lastSaleEur);
-  const avg7d = typeof price?.avg7dEur === "number" ? price.avg7dEur : null;
-  const avg30d = typeof price?.avg30dEur === "number" ? price.avg30dEur : null;
-  const trend = avg7d != null && avg30d != null ? avg7d - avg30d : null;
-  const trendLabel = trend == null ? "—" : `${trend >= 0 ? "+" : ""}${trend.toFixed(2)}€`;
-  const asOf = xsFmtAsOf(price?.asOf);
-  const hasPrice = !!price;
-  // XS_CARD_PRICE_PANEL_V1 (END)
   const url = String(card?.pictureUrl || "").trim();
 
   return (
@@ -127,49 +101,9 @@ export function CardListItem({ card, selected, onPress, rightSlot }: Props) {
 
           {rightSlot ? <View style={{ justifyContent: "center" }}>{rightSlot}</View> : null}
         </View>
-        {/* XS_CARD_PRICE_PANEL_UI_V1 */}
-        <View
-          style={{
-            marginTop: 10,
-            borderRadius: 12,
-            borderWidth: 1,
-            borderColor: theme.stroke,
-            backgroundColor: theme.panel2,
-            padding: 10,
-            gap: 4,
-          }}
-        >
-          <Text style={{ color: theme.text, fontWeight: "900", fontSize: 12 }}>Prix (J15)</Text>
-          <Text style={{ color: theme.muted, fontSize: 12 }}>Dernière vente: {formatEur(card?.price?.lastSaleEur)}</Text>
-          <Text style={{ color: theme.muted, fontSize: 12 }}>Moy. 7j: {formatEur(card?.price?.avg7dEur)}</Text>
-          <Text style={{ color: theme.muted, fontSize: 12 }}>Moy. 30j: {formatEur(card?.price?.avg30dEur)}</Text>
-          <Text style={{ color: theme.muted, fontSize: 12 }}>Floor: {formatEur(card?.price?.floorEur)}</Text>
-          {!!card?.price?.asOf && (
-            <Text style={{ color: theme.muted, fontSize: 11 }}>asOf: {String(card.price.asOf)}</Text>
-          )}
-        </View>
-
-
-
         {selected ? (
           <Text style={{ color: theme.accent, fontWeight: "900", marginTop: 6 }}>Sélectionnée</Text>
         ) : null}
-      
-
-        {/* XS_CARD_PRICE_PANEL_V1 (BEGIN) */}
-        <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: theme.stroke }}>
-          <Text style={{ color: theme.text, fontWeight: "900", marginBottom: 4 }}>Prix</Text>
-          <Text style={{ color: theme.muted, fontSize: 12 }}>Floor: {floorEur}</Text>
-          <Text style={{ color: theme.muted, fontSize: 12 }}>Last sale: {lastSaleEur}</Text>
-          <Text style={{ color: theme.muted, fontSize: 12 }}>Trend 7j/30j: {trendLabel}</Text>
-          <Text style={{ color: theme.muted, fontSize: 12 }}>As of: {asOf}</Text>
-          {!hasPrice ? (
-            <Text style={{ color: theme.muted, fontSize: 11, marginTop: 4 }}>
-              — (prix EUR nécessite auth/APIKEY)
-            </Text>
-          ) : null}
-        </View>
-        {/* XS_CARD_PRICE_PANEL_V1 (END) */}
       </View>
     </Pressable>
   );

@@ -1,4 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
+import { useRouter } from "expo-router";
+import { xsCardNavSet } from "..\/_lib\/cardNavCache";
 import {
   ActivityIndicator,
   FlatList,
@@ -15,6 +17,8 @@ import { CardListItem } from "../../src/components/CardListItem";
 import { useAppStore } from "../../src/store/useAppStore";
 
 export default function CardsScreen() {
+  const router = useRouter();
+
   // XS_MY_CARDS_BADGES_SORT_V1_BEGIN
   const [sortMode, setSortMode] = useState<"none" | "priceAsc" | "l15Desc">("none");
   const [debugOpen, setDebugOpen] = useState(false);
