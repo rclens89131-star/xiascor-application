@@ -5,23 +5,27 @@ import { theme } from "../../src/theme";
 import { xsCardNavGet } from "../_lib/cardNavCache";
 
 /**
- * XS_CARD_DETAIL_SCREEN_V2
+ * XS_CARD_DETAIL_SCREEN_V3
  * - Affiche Prix + L15 + infos détaillées
  * - N'affiche PAS la rareté (même si dispo)
+ * - PS-safe: pas de template strings/backticks
  */
 
 function asFinite(v: unknown): number | null {
   if (typeof v !== "number") return null;
   return Number.isFinite(v) ? v : null;
 }
+
 function formatEur(v: unknown): string {
   const n = asFinite(v);
   if (n === null) return "—";
-  return \\ €\;
+  return n.toFixed(2) + " €";
 }
+
 function pickStr(v: unknown): string {
   return typeof v === "string" && v.trim() ? v.trim() : "—";
 }
+
 function pickL15(card: any): string {
   const v =
     card?.l15 ??
@@ -38,18 +42,12 @@ function pickL15(card: any): string {
 
 export default function CardDetailScreen() {
   const params = useLocalSearchParams();
-  const id = String(params?.id || "").trim();
+  const id = String((params as any)?.id || "").trim();
 
   const card = useMemo(() => {
     if (!id) return null;
     return xsCardNavGet(id);
   }, [id]);
-
-  const price = card?.price || {};
-  const avg7d = asFinite(price?.avg7dEur);
-  const avg30d = asFinite(price?.avg30dEur);
-  const trend = avg7d !== null && avg30d !== null ? avg7d - avg30d : null;
-  const trendLabel = trend === null ? "—" : \\\ €\;
 
   if (!card) {
     return (
@@ -62,13 +60,22 @@ export default function CardDetailScreen() {
     );
   }
 
+  const price = (card as any)?.price || {};
+  const avg7d = asFinite(price?.avg7dEur);
+  const avg30d = asFinite(price?.avg30dEur);
+  const trend = avg7d !== null && avg30d !== null ? (avg7d - avg30d) : null;
+  const trendLabel =
+    trend === null
+      ? "—"
+      : ((trend >= 0 ? "+" : "") + trend.toFixed(2) + " €");
+
   return (
     <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16, gap: 12 }}>
       <Text style={{ color: theme.text, fontWeight: "900", fontSize: 20 }} numberOfLines={2}>
-        {pickStr(card?.playerName)}
+        {pickStr((card as any)?.playerName)}
       </Text>
       <Text style={{ color: theme.muted }} numberOfLines={2}>
-        {pickStr(card?.teamName)} • {pickStr(card?.position)} • {pickStr(card?.seasonYear)}
+        {pickStr((card as any)?.teamName)} • {pickStr((card as any)?.position)} • {pickStr((card as any)?.seasonYear)}
       </Text>
 
       {/* L15 */}
@@ -89,13 +96,15 @@ export default function CardDetailScreen() {
         {!!price?.warning && <Text style={{ color: theme.muted, fontSize: 12 }}>{String(price.warning)}</Text>}
       </View>
 
-      {/* Infos brutes utiles (sans rareté) */}
+      {/* Détails utiles (sans rareté) */}
       <View style={{ borderRadius: 14, borderWidth: 1, borderColor: theme.stroke, backgroundColor: theme.panel, padding: 12 }}>
         <Text style={{ color: theme.text, fontWeight: "900" }}>Détails</Text>
-        <Text style={{ color: theme.muted, marginTop: 6 }}>ID: {pickStr(card?.id ?? card?.cardId ?? card?.slug)}</Text>
-        <Text style={{ color: theme.muted }}>Club: {pickStr(card?.teamName)}</Text>
-        <Text style={{ color: theme.muted }}>Poste: {pickStr(card?.position)}</Text>
-        <Text style={{ color: theme.muted }}>Saison: {pickStr(card?.seasonYear)}</Text>
+        <Text style={{ color: theme.muted, marginTop: 6 }}>
+          ID: {pickStr((card as any)?.id ?? (card as any)?.cardId ?? (card as any)?.slug)}
+        </Text>
+        <Text style={{ color: theme.muted }}>Club: {pickStr((card as any)?.teamName)}</Text>
+        <Text style={{ color: theme.muted }}>Poste: {pickStr((card as any)?.position)}</Text>
+        <Text style={{ color: theme.muted }}>Saison: {pickStr((card as any)?.seasonYear)}</Text>
       </View>
     </ScrollView>
   );
