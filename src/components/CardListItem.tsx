@@ -126,7 +126,8 @@ export function CardListItem({ card, selected, onPress, rightSlot }: Props) {
           </View>
 
           {rightSlot ? <View style={{ justifyContent: "center" }}>{rightSlot}</View> : null}
-        </View>        {/* XS_CARD_PRICE_PANEL_UI_V1 */}
+        </View>
+        {/* XS_CARD_PRICE_PANEL_UI_V1 */}
         <View
           style={{
             marginTop: 10,
