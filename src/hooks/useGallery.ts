@@ -10,18 +10,6 @@ type Options = {
   first?: number;
 };
 
-
-
-
-
-
-
-
-
-
-
-
-
 function normalizeRarity(v: unknown): string {
   const s = typeof v === "string" ? v.toLowerCase().trim() : "";
   return s
@@ -131,8 +119,12 @@ export function useGallery({ identifier, first = 25 }: Options) {
         if (mode === "more" && cursorRef.current) qs.set("after", cursorRef.current);
 
         const r = await apiFetch<any>(`/public-user-cards-page?${qs.toString()}`);
-
-        const rawCards: Card[] = Array.isArray(r?.cards) ? r.cards : [];
+        const rawCards: Card[] = Array.isArray(r?.cards)
+          ? r.cards.map((card: any) => {
+              const price = normalizeCardPrice(card);
+              return price ? { ...card, price } : card;
+            })
+          : [];
         const filtered = rawCards.filter(isAllowedRarity);
         // XS_HIDE_COMMON_CARDS_V1D (BEGIN)
         const xsDeriveRarityFromSlug = (slug?: string): string => {
@@ -348,16 +340,4 @@ export function useGallery({ identifier, first = 25 }: Options) {
 
   return { cards, loading, loadingMore, error, reload, loadMore };
 }
-
-
-
-
-
-
-
-
-
-
-
-
 

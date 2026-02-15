@@ -12,6 +12,19 @@ type Props = {
 const CARD_AR = 320 / 448; // ≈ Sorare card ratio
 
 
+
+/* XS_CARD_PRICE_PANEL_UI_V1 (BEGIN) */
+function asFinite(v: unknown): number | null {
+  if (typeof v !== "number") return null;
+  return Number.isFinite(v) ? v : null;
+}
+
+function formatEur(v: unknown): string {
+  const n = asFinite(v);
+  if (n === null) return "—";
+  return `${n.toFixed(2)} €`;
+}
+/* XS_CARD_PRICE_PANEL_UI_V1 (END) */
 function xsFmtEur(value: unknown): string {
   const n = typeof value === "number" ? value : null;
   if (n == null || !Number.isFinite(n)) return "—";
@@ -69,7 +82,7 @@ export function CardListItem({ card, selected, onPress, rightSlot }: Props) {
             <Image
               source={{ uri: url }}
               style={{ width: "100%", height: "100%" }}
-              resizeMode="contain"   // ✅ pas de crop, cadrage comme Sorare
+              resizeMode="contain" // ✅ pas de crop, cadrage comme Sorare
               onError={() => setImgOk(false)}
             />
           ) : (
@@ -113,7 +126,29 @@ export function CardListItem({ card, selected, onPress, rightSlot }: Props) {
           </View>
 
           {rightSlot ? <View style={{ justifyContent: "center" }}>{rightSlot}</View> : null}
+        </View>        {/* XS_CARD_PRICE_PANEL_UI_V1 */}
+        <View
+          style={{
+            marginTop: 10,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: theme.stroke,
+            backgroundColor: theme.panel2,
+            padding: 10,
+            gap: 4,
+          }}
+        >
+          <Text style={{ color: theme.text, fontWeight: "900", fontSize: 12 }}>Prix (J15)</Text>
+          <Text style={{ color: theme.muted, fontSize: 12 }}>Dernière vente: {formatEur(card?.price?.lastSaleEur)}</Text>
+          <Text style={{ color: theme.muted, fontSize: 12 }}>Moy. 7j: {formatEur(card?.price?.avg7dEur)}</Text>
+          <Text style={{ color: theme.muted, fontSize: 12 }}>Moy. 30j: {formatEur(card?.price?.avg30dEur)}</Text>
+          <Text style={{ color: theme.muted, fontSize: 12 }}>Floor: {formatEur(card?.price?.floorEur)}</Text>
+          {!!card?.price?.asOf && (
+            <Text style={{ color: theme.muted, fontSize: 11 }}>asOf: {String(card.price.asOf)}</Text>
+          )}
         </View>
+
+
 
         {selected ? (
           <Text style={{ color: theme.accent, fontWeight: "900", marginTop: 6 }}>Sélectionnée</Text>
