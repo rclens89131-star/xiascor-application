@@ -170,6 +170,10 @@ export function useGallery({ identifier, first = 25 }: Options) {
               // XS_FIX_GALLERY_URL_COMMENT_BREAK_V1:
       // - Ne JAMAIS injecter de commentaire dans une template string URL (ça casse l’URL)
       // - Endpoint: /public-user-cards-page (page1)
+            // XS_APP_GALLERY_FORCE_HIDECOMMON_QUERY_V1B:
+      // - Demande au backend de NE PAS renvoyer les commons => pas de fetch inutile en arrière-plan
+      // - Nécessite backend support ?hideCommon=1 (OK)
+      qs.set("hideCommon", "1");
       const r = await apiFetch<any>(`/public-user-cards-page?${qs.toString()}`);
         const rawCards: Card[] = Array.isArray(r?.cards)
           ? r.cards.map((card: any) => {
@@ -392,6 +396,7 @@ export function useGallery({ identifier, first = 25 }: Options) {
 
   return { cards, loading, loadingMore, error, reload, loadMore };
 }
+
 
 
 
