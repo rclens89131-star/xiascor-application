@@ -1,4 +1,4 @@
-/* XS_HIDE_COMMON_CARDS_V1D */
+﻿/* XS_HIDE_COMMON_CARDS_V1D */
 /* XS_GALLERY_RARITY_UNKNOWN_V1 */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../api";
@@ -167,7 +167,8 @@ export function useGallery({ identifier, first = 25 }: Options) {
         qs.set("first", String(first));
         if (mode === "more" && cursorRef.current) qs.set("after", cursorRef.current);
 
-        const r = await apiFetch<any>(`/public-user-cards-page2?${qs.toString()}`);
+        const r = await apiFetch<any>(`/public-user-cards-page?
+            // XS_GALLERY_USE_PAGE1_ENDPOINT_V1: utilise page1 (enrich default compute-time côté backend)${qs.toString()}`);
         const rawCards: Card[] = Array.isArray(r?.cards)
           ? r.cards.map((card: any) => {
               const price = normalizeCardPrice(card);
@@ -389,4 +390,5 @@ export function useGallery({ identifier, first = 25 }: Options) {
 
   return { cards, loading, loadingMore, error, reload, loadMore };
 }
+
 
