@@ -167,8 +167,10 @@ export function useGallery({ identifier, first = 25 }: Options) {
         qs.set("first", String(first));
         if (mode === "more" && cursorRef.current) qs.set("after", cursorRef.current);
 
-        const r = await apiFetch<any>(`/public-user-cards-page?
-            // XS_GALLERY_USE_PAGE1_ENDPOINT_V1: utilise page1 (enrich default compute-time côté backend)${qs.toString()}`);
+              // XS_FIX_GALLERY_URL_COMMENT_BREAK_V1:
+      // - Ne JAMAIS injecter de commentaire dans une template string URL (ça casse l’URL)
+      // - Endpoint: /public-user-cards-page (page1)
+      const r = await apiFetch<any>(`/public-user-cards-page?${qs.toString()}`);
         const rawCards: Card[] = Array.isArray(r?.cards)
           ? r.cards.map((card: any) => {
               const price = normalizeCardPrice(card);
@@ -390,5 +392,6 @@ export function useGallery({ identifier, first = 25 }: Options) {
 
   return { cards, loading, loadingMore, error, reload, loadMore };
 }
+
 
 
