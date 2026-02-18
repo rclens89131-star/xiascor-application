@@ -1,4 +1,4 @@
-﻿export type XsCardNavItem = any;
+export type XsCardNavItem = any;
 
 /**
  * XS_CARD_NAV_CACHE_V1
@@ -24,3 +24,10 @@ export function xsCardNavClear(id?: string) {
   }
   XS_CARD_NAV_MAP.delete(String(id));
 }
+// ==========================================================
+ // XS_EXPO_ROUTER_DEFAULT_EXPORT_SHIM_V1
+ // Expo Router interprète parfois les fichiers sous app/ comme des routes.
+ // Une route doit exporter un composant par défaut. Ce shim retourne null.
+ // (Ne casse pas les exports/utilitaires existants.)
+ // ==========================================================
+export default function XsCardNavCacheRouteShim() { return null; }
