@@ -1,132 +1,202 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
-import { View, Text, Pressable, ActivityIndicator, Linking } from "react-native";
+/* XS_JWT_ONLY_UI_SWAP_V1
+   - Remplace l'écran "Connexion Sorare" OAuth par un écran JWT-only
+   - Supprime la section JWT en bas (elle n'existe plus)
+   - Conserve un deviceId persistant (AsyncStorage)
+*/
+import React, { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
-import { theme } from "../../src/theme";
+const DEVICE_ID_KEY = "xs_device_id";
 
-const BASE_URL = process.env.EXPO_PUBLIC_BASE_URL ?? "http://192.168.1.19:3000" /* XS_FIX_BASE_URL_FALLBACK_LAN_V1 */;
-const DEVICE_KEY = "xs_device_id_v2";
-
-function makeDeviceId() {
-  return "dev_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2);
+function nowId() {
+  const d = new Date();
+  const pad = (n: number) => (n < 10 ? "0" + n : "" + n);
+  return (
+    "dev_jwt_" +
+    d.getFullYear() +
+    pad(d.getMonth() + 1) +
+    pad(d.getDate()) +
+    "_" +
+    pad(d.getHours()) +
+    pad(d.getMinutes()) +
+    pad(d.getSeconds())
+  );
 }
 
-export default function LoginScreen() {
-  const [deviceId, setDeviceId] = useState<string>("");
-  const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<{ linked: boolean; userSlug?: string; nickname?: string } | null>(null);
-  const [err, setErr] = useState<string>("");
+export default function SorareConnectScreen() {
+  const BASE_URL = (process.env.EXPO_PUBLIC_BASE_URL || "http://127.0.0.1:3000").trim();
 
-  const loginUrl = useMemo(() => {
-    if (!deviceId) return "";
-    return BASE_URL + "/auth/sorare-device/login?deviceId=" + encodeURIComponent(deviceId);
-  }, [deviceId]);
+  const [deviceId, setDeviceId] = useState<string>("");
+  const [email, setEmail] = useState<string>("");
+  const [password, setPassword] = useState<string>("");
+  const [aud, setAud] = useState<string>("sorare:com");
+
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<{ linked?: boolean; userSlug?: string; nickname?: string; err?: string }>({});
+
+  // XS_JWT_LOGIN_AUTO_REDIRECT_V1
+  // But: après login JWT OK (linked=true), retourner automatiquement dans l'app.
+  useEffect(() => {
+    if (status?.linked && !loading) {
+      const t = setTimeout(() => {
+        try {
+          // Si l'écran est ouvert depuis l'app (modal/stack), on revient.
+          // Sinon fallback vers la home.
+          if ((router as any)?.canGoBack && (router as any).canGoBack()) {
+            router.back();
+          } else {
+            router.replace("/(tabs)");
+          }
+        } catch {
+          try { router.replace("/(tabs)"); } catch {}
+        }
+      }, 350);
+      return () => clearTimeout(t);
+    }
+  }, [status?.linked, loading]);
+
+  const [debug, setDebug] = useState<string>("");
+
+  const canSubmit = useMemo(() => {
+    return !!deviceId && email.trim().length >= 3 && password.trim().length >= 3 && aud.trim().length >= 3;
+  }, [deviceId, email, password, aud]);
 
   useEffect(() => {
+    let alive = true;
     (async () => {
       try {
-        const existing = await AsyncStorage.getItem(DEVICE_KEY);
-        if (existing) { setDeviceId(existing); return; }
-        const id = makeDeviceId();
-        await AsyncStorage.setItem(DEVICE_KEY, id);
-        setDeviceId(id);
+        const existing = await AsyncStorage.getItem(DEVICE_ID_KEY);
+        let id = (existing || "").trim();
+        if (!id) {
+          id = nowId();
+          await AsyncStorage.setItem(DEVICE_ID_KEY, id);
+        }
+        if (alive) setDeviceId(id);
       } catch (e: any) {
-        setErr(String(e?.message || e));
+        if (alive) {
+          setDeviceId(nowId());
+          setDebug("WARN: AsyncStorage deviceId failed: " + (e?.message || String(e)));
+        }
       }
     })();
+    return () => { alive = false; };
   }, []);
 
-  useEffect(() => {
-    let t: any = null;
-    let alive = true;
-
-    async function poll() {
-      if (!deviceId) return;
-      try {
-        const r = await fetch(BASE_URL + "/auth/device-status?deviceId=" + encodeURIComponent(deviceId), {
-          headers: { accept: "application/json" },
-        });
-        const j = await r.json().catch(() => ({}));
-        if (!alive) return;
-        setStatus(j);
-
-        if (j && j.linked) {
-          await AsyncStorage.setItem("xs_linked_v1", "1");
-          router.replace("/(tabs)");
-        }
-      } catch (e: any) {
-        if (!alive) return;
-        setErr(String(e?.message || e));
-      }
-    }
-
-    t = setInterval(poll, 1500);
-    poll();
-
-    return () => { alive = false; if (t) clearInterval(t); };
-  }, [deviceId]);
-
-  async function onLogin() {
-    setErr("");
-    if (!loginUrl) return;
-    setLoading(true);
+  async function refreshMe(id: string) {
     try {
-      await Linking.openURL(loginUrl);
+      const url = BASE_URL + "/me-jwt?deviceId=" + encodeURIComponent(id);
+      const res = await fetch(url);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) {
+        setStatus({ linked: false, err: json?.error || ("HTTP " + res.status) });
+        return;
+      }
+      setStatus({ linked: true, userSlug: json?.user?.slug, nickname: json?.user?.nickname });
     } catch (e: any) {
-      setErr(String(e?.message || e));
+      setStatus({ linked: false, err: e?.message || String(e) });
+    }
+  }
+
+  async function doLoginJwt() {
+    if (!canSubmit) return;
+    setLoading(true);
+    setDebug("");
+    try {
+      const payload = { deviceId, email: email.trim(), password, aud: aud.trim() };
+      const res = await fetch(BASE_URL + "/auth/jwt/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) {
+        setDebug("LOGIN FAIL: " + (json?.error || ("HTTP " + res.status)));
+        setStatus({ linked: false, err: json?.error || ("HTTP " + res.status) });
+        return;
+      }
+      setDebug("login ok=true | linked=true");
+      await refreshMe(deviceId);
+    } catch (e: any) {
+      setDebug("LOGIN ERROR: " + (e?.message || String(e)));
+      setStatus({ linked: false, err: e?.message || String(e) });
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg, padding: 18, justifyContent: "center" }}>
-      <Text style={{ color: theme.text, fontSize: 28, fontWeight: "900", marginBottom: 8 }}>Connexion Sorare</Text>
-      <Text style={{ color: theme.muted, marginBottom: 14 }}>
-        Connecte-toi pour afficher tes cartes et utiliser le marché avec ton compte.
-      </Text>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: "#0b0b0e" }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <ScrollView contentContainerStyle={{ padding: 18, paddingTop: 26 }}>
+        <Text style={{ color: "white", fontSize: 34, fontWeight: "800", marginBottom: 16 }}>Connexion Sorare</Text>
 
-      <View style={{ padding: 12, borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, marginBottom: 14 }}>
-        <Text style={{ color: theme.text, fontWeight: "800" }}>DeviceId</Text>
-        <Text selectable style={{ color: theme.muted }}>{deviceId || "..."}</Text>
-      </View>
+        <View style={{ backgroundColor: "#14141a", borderRadius: 16, padding: 14, marginBottom: 14 }}>
+          <Text style={{ color: "#cfcfe6", fontSize: 12, marginBottom: 6 }}>Backend</Text>
+          <Text style={{ color: "#ffffff", fontSize: 14 }}>{BASE_URL}</Text>
+          <Text style={{ color: "#9aa0aa", fontSize: 12, marginTop: 8 }}>DeviceId</Text>
+          <Text style={{ color: "#ffffff", fontSize: 13 }}>{deviceId || "..."}</Text>
+        </View>
 
-      <Pressable
-        onPress={onLogin}
-        disabled={!deviceId || loading}
-        style={{
-          paddingVertical: 14,
-          borderRadius: 16,
-          alignItems: "center",
-          backgroundColor: theme.text,
-          opacity: (!deviceId || loading) ? 0.6 : 1,
-        }}
-      >
-        {loading ? <ActivityIndicator /> : <Text style={{ color: theme.bg, fontWeight: "900" }}>Se connecter à Sorare</Text>}
-      </Pressable>
+        <View style={{ backgroundColor: "#14141a", borderRadius: 16, padding: 14, marginBottom: 14 }}>
+          <Text style={{ color: "#cfcfe6", fontSize: 12, marginBottom: 8 }}>Email</Text>
+          <TextInput
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            placeholder="ton@email.com"
+            placeholderTextColor="#666"
+            style={{ color: "white", borderWidth: 1, borderColor: "#2a2a34", borderRadius: 12, padding: 12, marginBottom: 12 }}
+          />
 
-      <View style={{ height: 12 }} />
+          <Text style={{ color: "#cfcfe6", fontSize: 12, marginBottom: 8 }}>Mot de passe</Text>
+          <TextInput
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            placeholder="••••••••"
+            placeholderTextColor="#666"
+            style={{ color: "white", borderWidth: 1, borderColor: "#2a2a34", borderRadius: 12, padding: 12, marginBottom: 12 }}
+          />
 
-      <View style={{ padding: 12, borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke }}>
-        <Text style={{ color: theme.text, fontWeight: "800" }}>Statut</Text>
-        <Text style={{ color: theme.muted, marginTop: 6 }}>
-          {status ? (status.linked ? ("✅ Connecté (" + (status.nickname || status.userSlug || "ok") + ")") : "⏳ En attente d'autorisation") : "…"}
+          <Text style={{ color: "#cfcfe6", fontSize: 12, marginBottom: 8 }}>AUD (JWT)</Text>
+          <TextInput
+            value={aud}
+            onChangeText={setAud}
+            autoCapitalize="none"
+            placeholder="sorare:com"
+            placeholderTextColor="#666"
+            style={{ color: "white", borderWidth: 1, borderColor: "#2a2a34", borderRadius: 12, padding: 12, marginBottom: 12 }}
+          />
+
+          <Pressable
+            onPress={doLoginJwt}
+            disabled={!canSubmit || loading}
+            style={{
+              backgroundColor: !canSubmit || loading ? "#2a2a34" : "#ffffff",
+              paddingVertical: 14,
+              borderRadius: 14,
+              alignItems: "center",
+            }}
+          >
+            {loading ? <ActivityIndicator /> : <Text style={{ color: "#000", fontSize: 16, fontWeight: "700" }}>Se connecter à Sorare</Text>}
+          </Pressable>
+        </View>
+
+        <View style={{ backgroundColor: "#14141a", borderRadius: 16, padding: 14, marginBottom: 14 }}>
+          <Text style={{ color: "#cfcfe6", fontSize: 12, marginBottom: 8 }}>Statut</Text>
+          {status?.linked ? (
+            <Text style={{ color: "#c9ffd1", fontSize: 14 }}>✅ Connecté: {status.nickname || status.userSlug || "ok"}</Text>
+          ) : (
+            <Text style={{ color: "#ffd7c9", fontSize: 14 }}>⏳ {status.err ? status.err : "En attente d'autorisation"}</Text>
+          )}
+          {debug ? <Text style={{ color: "#9aa0aa", fontSize: 12, marginTop: 10 }}>{debug}</Text> : null}
+        </View>
+
+        <Text style={{ color: "#6b6f7a", fontSize: 11, marginTop: 6 }}>
+          XS_JWT_ONLY_UI_SWAP_V1
         </Text>
-      </View>
-
-      {!!err && (
-        <Text style={{ color: "#ff5a5a", marginTop: 12 }}>
-          Erreur: {err}
-        </Text>
-      )}
-
-      <Text style={{ color: theme.muted, marginTop: 14, fontSize: 12 }}>
-        Backend: {BASE_URL}
-      </Text>
-    </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
-
-
-
-

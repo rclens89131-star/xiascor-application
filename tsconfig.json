@@ -1,4 +1,4 @@
-﻿{
+{
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "baseUrl": ".",
@@ -6,5 +6,7 @@
       "@/*": ["./*"]
     }
   },
-  "exclude": ["_backups/**"]
+  "exclude": ["**/_trash_*/**",
+    "_trash_*/**",
+    "_backups/**"]
 }
