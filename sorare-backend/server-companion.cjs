@@ -5833,6 +5833,30 @@ app.get("/auth/jwt/logout", async (req,res)=>{
   }
 });
 /* XS_JWT_AUTH_ENDPOINTS_V1_END */
+/* ============================
+   XS_JWT_ONLY_DISABLE_OAUTH_V1
+   But: désactiver les routes OAuth "device" => JWT only.
+   ============================ */
+(function xsJwtOnlyDisableOauth(){
+  const xsJwtOnly = true;
+  if(!xsJwtOnly) return;
+
+  function xsOauthDisabled(res){
+    return res.status(410).json({
+      ok:false,
+      error:"oauth_disabled",
+      hint:"JWT only. Use POST /auth/jwt/login then GET /me-jwt?deviceId=..."
+    });
+  }
+
+  app.get("/auth/sorare-device/login", (req,res)=> xsOauthDisabled(res));
+  app.get("/auth/device-status", (req,res)=> xsOauthDisabled(res));
+  app.get("/auth/sorare/callback", (req,res)=> xsOauthDisabled(res));
+  app.get("/auth/sorare-device/callback", (req,res)=> xsOauthDisabled(res));
+})();
+/* ============================
+   XS_JWT_ONLY_DISABLE_OAUTH_V1_END
+   ============================ */
 app.listen(PORT, HOST, () => {
   console.log(`[OK] Companion backend on http://${HOST}:${PORT}`);
   console.log(`[OK] GraphQL -> ${SORARE_GQL}`);
