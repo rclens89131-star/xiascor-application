@@ -37,7 +37,13 @@ export default function SorareConnectScreen() {
 
   // XS_JWT_LOGIN_AUTO_REDIRECT_V1
   // But: après login JWT OK (linked=true), retourner automatiquement dans l'app.
+    // XS_LOGIN_JWT_DEBUG_SNAP_V1
   useEffect(() => {
+    try {
+      setXsProbeSnap("linked=" + String((status as any)?.linked) + " | user=" + String((status as any)?.userSlug || ""));
+    } catch {}
+  }, [status]);
+useEffect(() => {
     if (status?.linked && !loading) {
       const t = setTimeout(() => {
         try {
@@ -57,6 +63,12 @@ export default function SorareConnectScreen() {
   }, [status?.linked, loading]);
 
   const [debug, setDebug] = useState<string>("");
+
+// XS_LOGIN_JWT_DEBUG_PANEL_V1
+const [xsProbeOn, setXsProbeOn] = useState<boolean>(true);
+const [xsProbeMsg, setXsProbeMsg] = useState<string>("");
+const [xsProbeSnap, setXsProbeSnap] = useState<string>("");
+
 
   const canSubmit = useMemo(() => {
     return !!deviceId && email.trim().length >= 3 && password.trim().length >= 3 && aud.trim().length >= 3;
@@ -131,6 +143,21 @@ export default function SorareConnectScreen() {
         <Text style={{ color: "white", fontSize: 34, fontWeight: "800", marginBottom: 16 }}>Connexion Sorare</Text>
 
         <View style={{ backgroundColor: "#14141a", borderRadius: 16, padding: 14, marginBottom: 14 }}>
+{/* XS_LOGIN_JWT_DEBUG_PANEL_V1 — DEBUG PANEL (remove later) */}
+{xsProbeOn ? (
+  <View style={{ padding: 10, marginTop: 10, borderWidth: 1, borderColor: "#333", borderRadius: 10 }}>
+    <Text style={{ fontWeight: "700" }}>DEBUG (JWT)</Text>
+    <Text selectable={true}>BASE_URL: {BASE_URL}</Text>
+    <Text selectable={true}>deviceId: {deviceId}</Text>
+    <Text selectable={true}>loading: {String(loading)}</Text>
+    <Text selectable={true}>status: {JSON.stringify(status)}</Text>
+    <Text selectable={true}>debug: {debug}</Text>
+    <Text selectable={true}>xsProbeMsg: {xsProbeMsg}</Text>
+    <Text selectable={true}>xsProbeSnap: {xsProbeSnap}</Text>
+    <Text selectable={true}>returnRoute: /(tabs)</Text>
+  </View>
+) : null}
+
           <Text style={{ color: "#cfcfe6", fontSize: 12, marginBottom: 6 }}>Backend</Text>
           <Text style={{ color: "#ffffff", fontSize: 14 }}>{BASE_URL}</Text>
           <Text style={{ color: "#9aa0aa", fontSize: 12, marginTop: 8 }}>DeviceId</Text>
@@ -138,6 +165,21 @@ export default function SorareConnectScreen() {
         </View>
 
         <View style={{ backgroundColor: "#14141a", borderRadius: 16, padding: 14, marginBottom: 14 }}>
+{/* XS_LOGIN_JWT_DEBUG_PANEL_V1 — DEBUG PANEL (remove later) */}
+{xsProbeOn ? (
+  <View style={{ padding: 10, marginTop: 10, borderWidth: 1, borderColor: "#333", borderRadius: 10 }}>
+    <Text style={{ fontWeight: "700" }}>DEBUG (JWT)</Text>
+    <Text selectable={true}>BASE_URL: {BASE_URL}</Text>
+    <Text selectable={true}>deviceId: {deviceId}</Text>
+    <Text selectable={true}>loading: {String(loading)}</Text>
+    <Text selectable={true}>status: {JSON.stringify(status)}</Text>
+    <Text selectable={true}>debug: {debug}</Text>
+    <Text selectable={true}>xsProbeMsg: {xsProbeMsg}</Text>
+    <Text selectable={true}>xsProbeSnap: {xsProbeSnap}</Text>
+    <Text selectable={true}>returnRoute: /(tabs)</Text>
+  </View>
+) : null}
+
           <Text style={{ color: "#cfcfe6", fontSize: 12, marginBottom: 8 }}>Email</Text>
           <TextInput
             value={email}
@@ -184,6 +226,21 @@ export default function SorareConnectScreen() {
         </View>
 
         <View style={{ backgroundColor: "#14141a", borderRadius: 16, padding: 14, marginBottom: 14 }}>
+{/* XS_LOGIN_JWT_DEBUG_PANEL_V1 — DEBUG PANEL (remove later) */}
+{xsProbeOn ? (
+  <View style={{ padding: 10, marginTop: 10, borderWidth: 1, borderColor: "#333", borderRadius: 10 }}>
+    <Text style={{ fontWeight: "700" }}>DEBUG (JWT)</Text>
+    <Text selectable={true}>BASE_URL: {BASE_URL}</Text>
+    <Text selectable={true}>deviceId: {deviceId}</Text>
+    <Text selectable={true}>loading: {String(loading)}</Text>
+    <Text selectable={true}>status: {JSON.stringify(status)}</Text>
+    <Text selectable={true}>debug: {debug}</Text>
+    <Text selectable={true}>xsProbeMsg: {xsProbeMsg}</Text>
+    <Text selectable={true}>xsProbeSnap: {xsProbeSnap}</Text>
+    <Text selectable={true}>returnRoute: /(tabs)</Text>
+  </View>
+) : null}
+
           <Text style={{ color: "#cfcfe6", fontSize: 12, marginBottom: 8 }}>Statut</Text>
           {status?.linked ? (
             <Text style={{ color: "#c9ffd1", fontSize: 14 }}>✅ Connecté: {status.nickname || status.userSlug || "ok"}</Text>
