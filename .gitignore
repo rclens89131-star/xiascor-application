@@ -1,2 +1,9 @@
-﻿# XS_BACKUPS_IGNORE_V1
+# XS_BACKUPS_IGNORE_V1
 sorare-backend/_backups/
+# XS_SORARE_BACKEND_GITIGNORE_V1
+sorare-backend/_secrets/
+sorare-backend/data/jwt_device_tokens.json
+sorare-backend/node_out.log
+sorare-backend/node_err.log
+sorare-backend/_logs/
+sorare-backend/data/*.log
