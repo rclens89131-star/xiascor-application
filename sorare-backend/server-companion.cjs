@@ -1,4 +1,4 @@
-﻿/* XS_OAUTH_ENV_HARDREAD_V3
+/* XS_OAUTH_ENV_HARDREAD_V3
    Why: OAuth device sees empty env values even when .env has them.
    Fix: read .env as Buffer, detect encoding, decode, parse ourselves (last occurrence wins).
    Supports: KEY=, "KEY = value", export KEY=value, quoted values.
@@ -847,10 +847,12 @@ async function sorareGraphQL(query, variables) {
     err.body = txt;
     throw err;
   }
-
+
+
   
 
-  const json = await res.json();
+  const json = await res.json();
+
   /* XS_SORARE_GRAPHQL_RAWDUMP_HOOK_V12_BEGIN
      But: si globalThis.__XS_PUC_RAWDUMP est défini, dumper la réponse RAW GraphQL APRES json() (donc gql != null).
      Preuve: écrit aussi un marker puc_hook_rawdump_seen_<stamp>.txt
@@ -999,7 +1001,8 @@ async function fetchAnyCards(slugs) {
   let lastErr = null;
   for (const q of queries) {
     try {
-      const data = await sorareGraphQL(q, { slugs: uniq });
+      const data = await sorareGraphQL(q, { slugs: uniq });
+
     
 
           return (data && data.anyCards) ? data.anyCards : [];
@@ -2285,7 +2288,9 @@ app.get("/public-player-old", async (req, res) => {
   let lastErr = null;
   for (const q of tries) {
     try {
-      const data = await sorareGraphQL(q, { slug });
+      const data = await sorareGraphQL(q, { slug });
+
+
     
 
     
@@ -5623,7 +5628,7 @@ async function xsSorareSignInJwt(email, passwordPlain, aud){
       signIn(input:{email:$email, password:$password}){
         jwtToken(aud:$aud){
           token
-       */
+
         }
         errors{
           message
