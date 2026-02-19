@@ -1,3 +1,13 @@
+﻿/* XS_MYCARDS_HELPER_SHIM_V3_BEGIN */
+// Ensure helper exists in module scope (prevents ReferenceError in /my-cards/* handlers)
+function xsMcFindOAuthTokenMaybeBridgeV1(deviceId){
+  try { if (typeof xsFindOAuthTokenMaybeBridgeV1 === "function") return xsFindOAuthTokenMaybeBridgeV1(deviceId); } catch {}
+  try { if (typeof xsFindOAuthTokenMaybeBridge === "function") return xsFindOAuthTokenMaybeBridge(deviceId); } catch {}
+  try { if (typeof xsFindOAuthTokenByDeviceId === "function") return xsFindOAuthTokenByDeviceId(deviceId); } catch {}
+  try { if (typeof xsGetOAuthTokenByDeviceId === "function") return xsGetOAuthTokenByDeviceId(deviceId); } catch {}
+  return null;
+}
+/* XS_MYCARDS_HELPER_SHIM_V3_END */
 /* XS_OAUTH_ENV_HARDREAD_V3
    Why: OAuth device sees empty env values even when .env has them.
    Fix: read .env as Buffer, detect encoding, decode, parse ourselves (last occurrence wins).
@@ -6629,6 +6639,7 @@ res.json({
 
 
 /* XS_JWT_FIX_REMOVE_SLASH_COMMENTS_V1 applied */
+
 
 
 
