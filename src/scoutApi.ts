@@ -147,3 +147,106 @@ export async function scoutPlayer2(
 }
 /* XS_SCOUT_PLAYER2_API_V2_END */
 
+/* ============================
+   XS_JWT_API_HELPERS_V1_BEGIN
+   Objectif:
+   - jwtLogin(baseUrl, deviceId, email, password)
+   - jwtStatus(baseUrl, deviceId)
+   Notes:
+   - Le token JWT reste côté backend (jamais renvoyé)
+   ============================ */
+
+export async function jwtLogin(baseUrl: string, deviceId: string, email: string, password: string, aud?: string){
+  const url = `${baseUrl}/auth/jwt/login`;
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "content-type":"application/json" },
+    body: JSON.stringify({ deviceId, email, password, aud })
+  });
+  const j = await r.json().catch(()=> ({}));
+  if(!r.ok){
+    const msg = (j && (j.error || j.message)) ? (j.error || j.message) : `http_${r.status}`;
+    throw new Error(`jwtLogin:${msg}`);
+  }
+  return j as any;
+}
+
+export async function jwtStatus(baseUrl: string, deviceId: string){
+  const url = `${baseUrl}/auth/jwt/status?deviceId=${encodeURIComponent(deviceId)}`;
+  const r = await fetch(url);
+  const j = await r.json().catch(()=> ({}));
+  if(!r.ok){
+    const msg = (j && (j.error || j.message)) ? (j.error || j.message) : `http_${r.status}`;
+    throw new Error(`jwtStatus:${msg}`);
+  }
+  return j as any;
+}
+
+/* XS_JWT_API_HELPERS_V1_END */
+
+
+/* XS_MY_CARDS_API_V1_BEGIN
+   Purpose:
+   - Client NEVER calls Sorare GraphQL directly.
+   - Client reads backend cache via /my-cards and triggers backend sync via /my-cards/sync.
+*/
+export type MyCardsMeta = {
+  model?: string;
+  deviceId?: string;
+  userSlug?: string | null;
+  nickname?: string | null;
+  fetchedAt?: string;
+  count?: number;
+  pages?: number;
+  jwtAud?: string | null;
+};
+
+export type MyCardItem = {
+  slug?: string;
+  pictureUrl?: string;
+  rarityTyped?: string;
+  seasonYear?: number;
+  serialNumber?: number;
+  // optional extras (backend normalizer may add):
+  rarity?: string;
+  season?: { year?: number };
+};
+
+export async function myCardsGet(deviceId: string){
+  const id = String(deviceId || "").trim();
+  if(!id) throw new Error("missing deviceId");
+  const url = `${BASE_URL}/my-cards?deviceId=${encodeURIComponent(id)}`;
+  const r = await fetch(url);
+  const j = await r.json().catch(()=>null);
+  if(!r.ok) throw new Error((j && (j.error || j.message)) ? String(j.error || j.message) : `HTTP ${r.status}`);
+  return j as { ok: boolean; cached?: boolean; meta?: MyCardsMeta; cards?: MyCardItem[]; pageInfo?: any };
+}
+
+export type MyCardsSyncOpts = {
+  jwtAud?: string;
+  first?: number;
+  maxPages?: number;
+  maxCards?: number;
+  sleepMs?: number;
+};
+
+export async function myCardsSync(deviceId: string, opts?: MyCardsSyncOpts){
+  const id = String(deviceId || "").trim();
+  if(!id) throw new Error("missing deviceId");
+  const aud = String((opts && opts.jwtAud) || "sorare:com");
+  const url = `${BASE_URL}/my-cards/sync?jwtAud=${encodeURIComponent(aud)}`;
+  const body = {
+    deviceId: id,
+    jwtAud: aud,
+    first: (opts && opts.first != null) ? opts.first : 100,
+    maxPages: (opts && opts.maxPages != null) ? opts.maxPages : 120,
+    maxCards: (opts && opts.maxCards != null) ? opts.maxCards : 6000,
+    sleepMs: (opts && opts.sleepMs != null) ? opts.sleepMs : 200,
+  };
+  const r = await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) });
+  const j = await r.json().catch(()=>null);
+  if(!r.ok) throw new Error((j && (j.error || j.message)) ? String(j.error || j.message) : `HTTP ${r.status}`);
+  return j as { ok: boolean; count?: number; cachePath?: string; meta?: MyCardsMeta };
+}
+/* XS_MY_CARDS_API_V1_END */
+
