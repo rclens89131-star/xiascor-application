@@ -1,0 +1,16 @@
+{
+    "name": "sorare-backend",
+    "version": "0.0.0",
+    "private": true,
+    "main": "server-companion.cjs",
+    "type": "commonjs",
+    "scripts": {
+        "start": "node server-companion.cjs"
+    },
+    "dependencies": {
+        "bcryptjs": "^3.0.3",
+        "cors": "^2.8.6",
+        "dotenv": "^17.3.1",
+        "express": "^5.2.1"
+    }
+}

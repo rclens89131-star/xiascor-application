@@ -1,4 +1,7 @@
-﻿/* XS_MYCARDS_HELPER_SHIM_V3_BEGIN */
+﻿/* XS_MYCARDS_GQL_JWT_AUD_V1_BEGIN */
+/* patched in-place below */
+/* XS_MYCARDS_GQL_JWT_AUD_V1_END */
+/* XS_MYCARDS_HELPER_SHIM_V3_BEGIN */
 // Ensure helper exists in module scope (prevents ReferenceError in /my-cards/* handlers)
 function xsMcFindOAuthTokenMaybeBridgeV1(deviceId){
   try { if (typeof xsFindOAuthTokenMaybeBridgeV1 === "function") return xsFindOAuthTokenMaybeBridgeV1(deviceId); } catch {}
@@ -5170,7 +5173,7 @@ try {
     return null;
   }
 
-  async function xsMcGraphQLV1(accessToken, query, variables) {
+  async function xsMcGraphQLV1(accessToken, query, variables, jwtAud) {
     const url = "https://api.sorare.com/graphql";
     const body = JSON.stringify({ query, variables: variables || {} });
 
@@ -5179,6 +5182,9 @@ try {
       headers: {
         "content-type": "application/json",
         "authorization": `Bearer ${accessToken}`,
+      /* XS_MYCARDS_GQL_JWT_AUD_V1_BEGIN */
+      ...(jwtAud ? { "JWT-AUD": String(jwtAud) } : {}),
+      /* XS_MYCARDS_GQL_JWT_AUD_V1_END */,
         "user-agent": "companion-sorare-backend/1.0"
       },
       body
@@ -5269,6 +5275,55 @@ try {
   });
 
   // ============================
+  /* XS_MYCARDS_SYNC_JWT_FALLBACK_V1_BEGIN */
+  async function xsMcFindAnyTokenV1(deviceId){
+    // 1) Try OAuth token (Model2)
+    try {
+      if (typeof xsMcFindOAuthTokenMaybeBridgeV1 === "function") {
+        const t = await xsMcFindOAuthTokenMaybeBridgeV1(deviceId);
+        if (t && t.access_token) return { access_token: t.access_token, refresh_token: t.refresh_token || null, kind:"oauth" };
+      }
+    } catch(e) {}
+
+    // 2) Fallback: JWT token store (deviceId -> {access_token}) + aud from jwt_devices.json
+    try {
+      if (typeof xsJwtTokDbReadV3 === "function") {
+        const db = xsJwtTokDbReadV3() || {};
+        const rec = db && db[deviceId] ? db[deviceId] : null;
+        const tok = rec && (rec.access_token || rec.accessToken) ? (rec.access_token || rec.accessToken) : null;
+
+        let aud = null;
+        try {
+          if (typeof xsJwtDbRead === "function") {
+            const jdb = xsJwtDbRead() || {};
+            const jrec = jdb && jdb[deviceId] ? jdb[deviceId] : null;
+            aud = jrec && jrec.aud ? String(jrec.aud) : null;
+          }
+        } catch(e2) {}
+
+        if (tok) return { access_token: tok, kind:"jwt", jwtAud: aud };
+      }
+      if (typeof xsJwtTokDbReadV2 === "function") {
+        const db = xsJwtTokDbReadV2() || {};
+        const rec = db && db[deviceId] ? db[deviceId] : null;
+        const tok = rec && (rec.access_token || rec.accessToken) ? (rec.access_token || rec.accessToken) : null;
+
+        let aud = null;
+        try {
+          if (typeof xsJwtDbRead === "function") {
+            const jdb = xsJwtDbRead() || {};
+            const jrec = jdb && jdb[deviceId] ? jdb[deviceId] : null;
+            aud = jrec && jrec.aud ? String(jrec.aud) : null;
+          }
+        } catch(e2) {}
+
+        if (tok) return { access_token: tok, kind:"jwt", jwtAud: aud };
+      }
+    } catch(e) {}
+
+    return null;
+  }
+  /* XS_MYCARDS_SYNC_JWT_FALLBACK_V1_END */
   // POST /my-cards/sync  (download + write cache)
   // ============================
   app.post("/my-cards/sync", async (req, res) => {
@@ -5280,12 +5335,12 @@ try {
     const maxPages = Math.max(1, Math.min(200, Number(req.query.maxPages || 60)));
     const maxCards = Math.max(100, Math.min(20000, Number(req.query.maxCards || 6000)));
 
-    const tok = await xsMcFindOAuthTokenMaybeBridgeV1(deviceId);
+    const tok = await xsMcFindAnyTokenV1(deviceId);
     if (!tok || !tok.access_token) {
       return res.status(401).json({
         ok:false,
-        error:"oauth_token_not_found",
-        hint:"Relink OAuth for this deviceId (token must exist server-side).",
+        error:"token_not_found",
+        hint:"No token for this deviceId. If OAuth is disabled (410), use /auth/jwt/login then retry. If OAuth is enabled, relink device.",
       });
     }
 
@@ -5322,7 +5377,7 @@ try {
 
     while (page < maxPages && all.length < maxCards) {
       page++;
-      const json = await xsMcGraphQLV1(tok.access_token, Q, { first, after });
+      const json = await xsMcGraphQLV1(tok.access_token, Q, { first, after }, tok.jwtAud || null);
       const data = json && json.data ? json.data : null;
       const cu = data && data.currentUser ? data.currentUser : null;
       if (!cu) break;
@@ -6639,6 +6694,8 @@ res.json({
 
 
 /* XS_JWT_FIX_REMOVE_SLASH_COMMENTS_V1 applied */
+
+
 
 
 

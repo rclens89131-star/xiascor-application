@@ -7,3 +7,6 @@ sorare-backend/node_out.log
 sorare-backend/node_err.log
 sorare-backend/_logs/
 sorare-backend/data/*.log
+# XS_SORARE_BACKEND_IGNORE_V2
+sorare-backend/.env
+sorare-backend/node_modules/
