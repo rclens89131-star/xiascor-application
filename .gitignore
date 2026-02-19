@@ -10,3 +10,18 @@ sorare-backend/data/*.log
 # XS_SORARE_BACKEND_IGNORE_V2
 sorare-backend/.env
 sorare-backend/node_modules/
+
+# === XS_MONOREPO_IGNORE_V1 ===
+**/node_modules/
+**/.expo/
+**/.next/
+**/dist/
+**/build/
+**/_logs/
+**/_backups/
+**/_secrets/
+**/*.log
+**/data/
+.env
+.env.*
+# ============================
