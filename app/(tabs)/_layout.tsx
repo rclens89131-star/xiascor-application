@@ -61,14 +61,6 @@ export default function TabsLayout() {
           href: null,
         }}
       />
-        {/* XS_ADD_MYCARDS_TAB_V1_BEGIN */}
-        <Tabs.Screen
-          name="mycards"
-          options={{
-            title: "Mes cartes",
-          }}
-        />
-        {/* XS_ADD_MYCARDS_TAB_V1_END */}
 </Tabs>
   );
 }
