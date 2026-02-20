@@ -236,6 +236,37 @@ useEffect(() => {
           </Text>
         </Pressable>
 
+        {/* XS_MYCARDS_LINK_BUTTON_V1 */}
+        {deviceLinked === false && (
+          <Pressable
+            onPress={async () => {
+              try {
+                const id = String(deviceId || "").trim();
+                if (!id) return;
+                const url = sorareDeviceLoginUrl(id, { devLocal: true });
+                await Linking.openURL(url);
+              } catch {
+                // ignore
+              }
+            }}
+            style={{
+              alignSelf: "flex-start",
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              borderRadius: 12,
+              backgroundColor: "rgba(245,158,11,0.16)",
+              borderWidth: 1,
+              borderColor: "rgba(245,158,11,0.35)",
+              marginTop: 6,
+            }}
+          >
+            <Text style={{ color: theme.text, fontWeight: "800" }}>
+              Lier Sorare (PC)
+            </Text>
+          </Pressable>
+        )}
+
+
         {deviceLinked === false ? (
           <Pressable
             onPress={async () => {
@@ -364,5 +395,6 @@ useEffect(() => {
   );
 }
 // XS_MY_CARDS_TAB_V4_END
+
 
 
