@@ -1,7 +1,7 @@
 ﻿import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, Image, Pressable, SafeAreaView, Text, View } from "react-native";
-import { myCardsPage, myCardsStatus, myCardsSync, XS_MYCARDS_SYNC_TAG } from "../../src/scoutApi";
+import { ActivityIndicator, FlatList, Image, Pressable, SafeAreaView, Text, View, Linking } from "react-native";
+import { myCardsPage, myCardsStatus, myCardsSync, XS_MYCARDS_SYNC_TAG, deviceStatus, sorareDeviceLoginUrl } from "../../src/scoutApi";
 import { theme } from "../../src/theme";
 
 type MyCard = {
@@ -61,7 +61,25 @@ export default function CardsScreen() {
 
   const [statusSnap, setStatusSnap] = useState<any>(null);
 
-  useEffect(() => {
+  
+  /* XS_MYCARDS_LINKFLOW_V1_BEGIN */
+  const [deviceLinked, setDeviceLinked] = useState<boolean | null>(null);
+  const [deviceUserSlug, setDeviceUserSlug] = useState<string>("");
+
+  const refreshDeviceLink = useCallback(async (id: string) => {
+    try {
+      const st: any = await deviceStatus(id);
+      const linked = Boolean(st && (st.linked === true || st.linked === "true"));
+      setDeviceLinked(linked);
+      setDeviceUserSlug(String(st?.userSlug || ""));
+    } catch {
+      // unknown => keep null
+      setDeviceLinked(null);
+      setDeviceUserSlug("");
+    }
+  }, []);
+  /* XS_MYCARDS_LINKFLOW_V1_END */
+useEffect(() => {
     let alive = true;
     (async () => {
       try {
@@ -134,12 +152,18 @@ export default function CardsScreen() {
     }
     loadPage("reset");
     refreshStatus(id);
-  }, [deviceId, loadPage, refreshStatus]);
+    refreshDeviceLink(id);}, [deviceId, loadPage, refreshStatus]);
 
   const onSync = useCallback(async () => {
     const id = String(deviceId || "").trim();
     if (!id) {
       setSyncError("deviceId introuvable.");
+      return;
+    }
+    // XS_MYCARDS_LINK_GUARD_V1: éviter 401 si device pas lié
+    if (deviceLinked === false) {
+      setSyncError("Compte Sorare non lié. Clique “Lier Sorare (PC)” puis réessaie.");
+      setLastSync("sync blocked (not linked)");
       return;
     }
     setSyncing(true);
@@ -212,6 +236,33 @@ export default function CardsScreen() {
           </Text>
         </Pressable>
 
+        {deviceLinked === false ? (
+          <Pressable
+            onPress={async () => {
+              try {
+                const id = String(deviceId || "").trim();
+                if (!id) return;
+                const url = sorareDeviceLoginUrl(id, { devLocal: true });
+                await Linking.openURL(url);
+              } catch {
+                // ignore
+              }
+            }}
+            style={{
+              alignSelf: "flex-start",
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              borderRadius: 12,
+              backgroundColor: "rgba(245,158,11,0.16)",
+              borderWidth: 1,
+              borderColor: "rgba(245,158,11,0.35)",
+            }}
+          >
+            <Text style={{ color: theme.text, fontWeight: "800" }}>
+              Lier Sorare (PC)
+            </Text>
+          </Pressable>
+        ) : null}
         <Text style={{ color: theme.muted }}>{headerLabel}</Text>
       </View>
 
@@ -276,6 +327,34 @@ export default function CardsScreen() {
                 >
                   <Text style={{ color: theme.text, fontWeight: "700" }}>Charger plus</Text>
                 </Pressable>
+
+        {deviceLinked === false ? (
+          <Pressable
+            onPress={async () => {
+              try {
+                const id = String(deviceId || "").trim();
+                if (!id) return;
+                const url = sorareDeviceLoginUrl(id, { devLocal: true });
+                await Linking.openURL(url);
+              } catch {
+                // ignore
+              }
+            }}
+            style={{
+              alignSelf: "flex-start",
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              borderRadius: 12,
+              backgroundColor: "rgba(245,158,11,0.16)",
+              borderWidth: 1,
+              borderColor: "rgba(245,158,11,0.35)",
+            }}
+          >
+            <Text style={{ color: theme.text, fontWeight: "800" }}>
+              Lier Sorare (PC)
+            </Text>
+          </Pressable>
+        ) : null}
               ) : null}
             </View>
           }
@@ -285,4 +364,5 @@ export default function CardsScreen() {
   );
 }
 // XS_MY_CARDS_TAB_V4_END
+
 

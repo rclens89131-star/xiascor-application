@@ -343,3 +343,31 @@ export async function myCardsStatus(deviceId: string): Promise<any> {
 
 export const XS_MYCARDS_SYNC_TAG = "XS_MYCARDS_SYNC_QS_V1+LOG_V1";
 
+
+/* XS_DEVICE_STATUS_API_V1_BEGIN
+   Purpose:
+   - Allow UI to know whether current deviceId is linked (Sorare OAuth device flow).
+   - Provide a safe login URL helper (devLocal=1 for LAN dev).
+*/
+export async function deviceStatus(deviceId: string): Promise<{ linked?: boolean; userSlug?: string; nickname?: string; [k: string]: any }> {
+  const id = String(deviceId || "").trim();
+  if (!id) throw new Error("missing deviceId");
+  const url = `${BASE_URL}/auth/device-status?deviceId=${encodeURIComponent(id)}`;
+  const r = await fetch(url);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const msg = (j && (j.error || j.message)) ? String(j.error || j.message) : `HTTP ${r.status}`;
+    throw new Error(`deviceStatus:${msg}`);
+  }
+  return j as any;
+}
+
+export function sorareDeviceLoginUrl(deviceId: string, opts?: { devLocal?: boolean }): string {
+  const id = String(deviceId || "").trim();
+  const qs = new URLSearchParams();
+  qs.set("deviceId", id);
+  if (opts?.devLocal) qs.set("devLocal", "1");
+  return `${BASE_URL}/auth/sorare-device/login?${qs.toString()}`;
+}
+/* XS_DEVICE_STATUS_API_V1_END */
+
