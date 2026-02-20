@@ -279,3 +279,69 @@ export async function myCardsGetPage(
   return j;
 }
 
+/* XS_MY_CARDS_API_V2_BEGIN
+   Backend cache pipeline:
+   - POST /my-cards/sync?deviceId=...  (fill cache)
+   - GET  /my-cards?deviceId=...&first=...&after=... (read cache)
+   - GET  /my-cards/status?deviceId=...
+*/
+export type MyCardsSyncResponse = {
+  ok: boolean;
+  count?: number;
+  meta?: any;
+  cachePath?: string;
+  error?: string;
+  hint?: string;
+};
+
+export type MyCardsPageResponse = {
+  ok: boolean;
+  cached?: boolean;
+  cards: any[];
+  pageInfo?: { hasNextPage: boolean; endCursor: string | null };
+  meta?: any;
+  error?: string;
+  hint?: string;
+};
+
+export async function myCardsSync(deviceId: string, opts?: { first?: number; maxPages?: number }): Promise<MyCardsSyncResponse> {
+  const id = String(deviceId || "").trim();
+  if (!id) return { ok: false, error: "deviceId manquant" };
+
+  const qs = new URLSearchParams();
+  qs.set("deviceId", id);
+  if (opts?.first != null) qs.set("first", String(opts.first));
+  if (opts?.maxPages != null) qs.set("maxPages", String(opts.maxPages));
+
+  return apiFetch<MyCardsSyncResponse>(`/my-cards/sync?${qs.toString()}`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export async function myCardsPage(deviceId: string, opts?: { first?: number; after?: string }): Promise<MyCardsPageResponse> {
+  const id = String(deviceId || "").trim();
+  if (!id) return { ok: false, cards: [], error: "deviceId manquant" };
+
+  const qs = new URLSearchParams();
+  qs.set("deviceId", id);
+  qs.set("first", String(opts?.first ?? 20));
+  if (opts?.after) qs.set("after", String(opts.after));
+
+  const data = await apiFetch<MyCardsPageResponse>(`/my-cards?${qs.toString()}`);
+  return {
+    ...data,
+    ok: Boolean((data as any)?.ok),
+    cards: Array.isArray((data as any)?.cards) ? (data as any).cards : [],
+  };
+}
+
+export async function myCardsStatus(deviceId: string): Promise<any> {
+  const id = String(deviceId || "").trim();
+  if (!id) return { ok: false, error: "deviceId manquant" };
+  const qs = new URLSearchParams();
+  qs.set("deviceId", id);
+  return apiFetch<any>(`/my-cards/status?${qs.toString()}`);
+}
+/* XS_MY_CARDS_API_V2_END */
+
