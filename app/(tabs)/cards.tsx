@@ -64,22 +64,17 @@ export default function CardsScreen() {
   
   /* XS_MYCARDS_LINKFLOW_V1_BEGIN */
   const [deviceLinked, setDeviceLinked] = useState<boolean | null>(null);
-  const [deviceUserSlug, setDeviceUserSlug] = useState<string>("");
 
   const refreshDeviceLink = useCallback(async (id: string) => {
     try {
       const st: any = await deviceStatus(id);
       const linked = Boolean(st && (st.linked === true || st.linked === "true"));
       setDeviceLinked(linked);
-      setDeviceUserSlug(String(st?.userSlug || ""));
     } catch {
-      // unknown => keep null
       setDeviceLinked(null);
-      setDeviceUserSlug("");
     }
   }, []);
-  /* XS_MYCARDS_LINKFLOW_V1_END */
-useEffect(() => {
+  /* XS_MYCARDS_LINKFLOW_V1_END */useEffect(() => {
     let alive = true;
     (async () => {
       try {
@@ -176,7 +171,7 @@ useEffect(() => {
       const pages = (r && r.meta && r.meta.pages != null) ? String(r.meta.pages) : "?";
       setLastSync(`sync ok • count=${cnt} • pages=${pages}`);
       await refreshStatus(id);
-    } catch (e: any) {
+    refreshDeviceLink(id);} catch (e: any) {
       setSyncError(String(e?.message || e || "Échec sync"));
       setLastSync("sync failed");
       setSyncing(false);
@@ -235,8 +230,7 @@ useEffect(() => {
             {syncing ? "Synchronisation…" : "Synchroniser"}
           </Text>
         </Pressable>
-
-        {/* XS_MYCARDS_LINK_BUTTON_V1 */}
+        {/* XS_MYCARDS_LINK_BUTTON_V2 */}
         {deviceLinked === false && (
           <Pressable
             onPress={async () => {
@@ -267,33 +261,6 @@ useEffect(() => {
         )}
 
 
-        {deviceLinked === false ? (
-          <Pressable
-            onPress={async () => {
-              try {
-                const id = String(deviceId || "").trim();
-                if (!id) return;
-                const url = sorareDeviceLoginUrl(id, { devLocal: true });
-                await Linking.openURL(url);
-              } catch {
-                // ignore
-              }
-            }}
-            style={{
-              alignSelf: "flex-start",
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-              borderRadius: 12,
-              backgroundColor: "rgba(245,158,11,0.16)",
-              borderWidth: 1,
-              borderColor: "rgba(245,158,11,0.35)",
-            }}
-          >
-            <Text style={{ color: theme.text, fontWeight: "800" }}>
-              Lier Sorare (PC)
-            </Text>
-          </Pressable>
-        ) : null}
         <Text style={{ color: theme.muted }}>{headerLabel}</Text>
       </View>
 
@@ -358,34 +325,6 @@ useEffect(() => {
                 >
                   <Text style={{ color: theme.text, fontWeight: "700" }}>Charger plus</Text>
                 </Pressable>
-
-        {deviceLinked === false ? (
-          <Pressable
-            onPress={async () => {
-              try {
-                const id = String(deviceId || "").trim();
-                if (!id) return;
-                const url = sorareDeviceLoginUrl(id, { devLocal: true });
-                await Linking.openURL(url);
-              } catch {
-                // ignore
-              }
-            }}
-            style={{
-              alignSelf: "flex-start",
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-              borderRadius: 12,
-              backgroundColor: "rgba(245,158,11,0.16)",
-              borderWidth: 1,
-              borderColor: "rgba(245,158,11,0.35)",
-            }}
-          >
-            <Text style={{ color: theme.text, fontWeight: "800" }}>
-              Lier Sorare (PC)
-            </Text>
-          </Pressable>
-        ) : null}
               ) : null}
             </View>
           }
@@ -395,6 +334,5 @@ useEffect(() => {
   );
 }
 // XS_MY_CARDS_TAB_V4_END
-
 
 
