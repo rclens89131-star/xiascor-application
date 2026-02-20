@@ -1,5 +1,5 @@
 ﻿import AsyncStorage from "@react-native-async-storage/async-storage";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, Image, Pressable, SafeAreaView, Text, View } from "react-native";
 import { myCardsPage, myCardsStatus, myCardsSync } from "../../src/scoutApi";
 import { theme } from "../../src/theme";
@@ -23,7 +23,20 @@ function uniqBySlug(items: MyCard[]) {
   return Array.from(m.values());
 }
 
-// XS_MY_CARDS_TAB_V2_BEGIN
+const XS_DEVICE_KEY = "xs_device_id_v1";
+function makeDeviceId() {
+  const rand = Math.random().toString(36).slice(2, 10);
+  return `dev_${Date.now()}_${rand}`;
+}
+async function ensureDeviceId() {
+  const existing = String((await AsyncStorage.getItem(XS_DEVICE_KEY)) || "").trim();
+  if (existing) return existing;
+  const generated = makeDeviceId();
+  await AsyncStorage.setItem(XS_DEVICE_KEY, generated);
+  return generated;
+}
+
+// XS_MY_CARDS_TAB_V3_BEGIN
 export default function CardsScreen() {
   const [deviceId, setDeviceId] = useState("");
   const [cards, setCards] = useState<MyCard[]>([]);
@@ -37,14 +50,21 @@ export default function CardsScreen() {
   const [endCursor, setEndCursor] = useState<string | null>(null);
   const [hasNextPage, setHasNextPage] = useState(false);
 
+  // Anti-loop: utiliser un ref pour endCursor au lieu de le mettre dans deps d'un callback
+  const endCursorRef = useRef<string | null>(null);
+  useEffect(() => {
+    endCursorRef.current = endCursor;
+  }, [endCursor]);
+
+  // Debug visible: status snapshot
+  const [statusSnap, setStatusSnap] = useState<any>(null);
+
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        const id =
-          (await AsyncStorage.getItem("xs_device_id_v1")) ||
-          (await AsyncStorage.getItem("deviceId")) ||
-          "";
+        // On force xs_device_id_v1 si absent (sinon sur iPhone ça peut être vide)
+        const id = await ensureDeviceId();
         if (!alive) return;
         setDeviceId(String(id || "").trim());
       } catch (e) {
@@ -57,11 +77,21 @@ export default function CardsScreen() {
     };
   }, []);
 
+  const refreshStatus = useCallback(async (id: string) => {
+    try {
+      const st = await myCardsStatus(id);
+      setStatusSnap(st || null);
+      if (st && st.meta) setMeta(st.meta);
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const loadPage = useCallback(
     async (mode: "reset" | "more") => {
       const id = String(deviceId || "").trim();
       if (!id) {
-        setError("deviceId introuvable. Ouvre Paramètres/Connexion puis réessaie.");
+        setError("deviceId introuvable (AsyncStorage).");
         setLoading(false);
         return;
       }
@@ -74,10 +104,8 @@ export default function CardsScreen() {
       }
 
       try {
-        const res = await myCardsPage(id, {
-          first: 20,
-          after: mode === "more" ? (endCursor ?? undefined) : undefined,
-        });
+        const after = mode === "more" ? (endCursorRef.current ?? undefined) : undefined;
+        const res = await myCardsPage(id, { first: 20, after });
 
         if (!res.ok) {
           setError(res.error || "Erreur de chargement");
@@ -85,7 +113,7 @@ export default function CardsScreen() {
           setCards((prev) => uniqBySlug(mode === "reset" ? res.cards : [...prev, ...res.cards]));
           setEndCursor(res.pageInfo?.endCursor ?? null);
           setHasNextPage(Boolean(res.pageInfo?.hasNextPage));
-          setMeta(res.meta ?? null);
+          if (res.meta) setMeta(res.meta);
         }
       } catch (e: any) {
         setError(String(e?.message || e || "Erreur de chargement"));
@@ -94,39 +122,40 @@ export default function CardsScreen() {
       if (mode === "reset") setLoading(false);
       setLoadingMore(false);
     },
-    [deviceId, endCursor]
+    [deviceId]
   );
 
+  // IMPORTANT: déclencher le premier load UNIQUEMENT quand deviceId arrive (anti-loop)
   useEffect(() => {
-    if (!deviceId) {
+    const id = String(deviceId || "").trim();
+    if (!id) {
       setLoading(false);
       return;
     }
     loadPage("reset");
-    myCardsStatus(deviceId)
-      .then((st) => {
-        if (st && st.meta) setMeta(st.meta);
-      })
-      .catch(() => {});
-  }, [deviceId, loadPage]);
+    refreshStatus(id);
+  }, [deviceId, loadPage, refreshStatus]);
 
   const onSync = useCallback(async () => {
     const id = String(deviceId || "").trim();
     if (!id) {
-      setError("deviceId introuvable. Ouvre Paramètres/Connexion puis réessaie.");
+      setError("deviceId introuvable.");
       return;
     }
     setSyncing(true);
     setError(null);
+
     try {
-      // opts safe: defaults already exist server-side; keep it small for dev
+      // Flow: sync -> status -> reload page1
       await myCardsSync(id, { first: 50, maxPages: 2, sleepMs: 0 });
+      await refreshStatus(id);
     } catch (e: any) {
-      setError(String(e?.message || e || "Échec de synchronisation"));
+      setError(String(e?.message || e || "Échec sync (voir logs)"));
     }
+
     await loadPage("reset");
     setSyncing(false);
-  }, [deviceId, loadPage]);
+  }, [deviceId, loadPage, refreshStatus]);
 
   const headerLabel = useMemo(() => {
     const count = meta?.count ?? cards.length;
@@ -134,10 +163,22 @@ export default function CardsScreen() {
     return fetched ? `${count} cartes • ${fetched}` : `${count} cartes`;
   }, [cards.length, meta]);
 
+  const debugLine = useMemo(() => {
+    const st = statusSnap || {};
+    const cached = typeof st.cached === "boolean" ? String(st.cached) : "-";
+    const cnt = (st.count != null) ? String(st.count) : "-";
+    const user = st?.meta?.userSlug ? String(st.meta.userSlug) : "-";
+    return `deviceId=${deviceId || "-"} • cached=${cached} • count=${cnt} • user=${user}`;
+  }, [statusSnap, deviceId]);
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
       <View style={{ padding: 16, gap: 10 }}>
         <Text style={{ color: theme.text, fontSize: 22, fontWeight: "900" }}>Mes cartes</Text>
+
+        <Text style={{ color: theme.muted, fontSize: 12 }} numberOfLines={2}>
+          {debugLine}
+        </Text>
 
         <Pressable
           onPress={onSync}
@@ -203,7 +244,7 @@ export default function CardsScreen() {
           ListEmptyComponent={
             <View style={{ padding: 16 }}>
               <Text style={{ color: theme.muted }}>
-                Aucune carte en cache. Lance une synchronisation.
+                Aucune carte en cache. Appuie sur Synchroniser.
               </Text>
             </View>
           }
@@ -233,4 +274,4 @@ export default function CardsScreen() {
     </SafeAreaView>
   );
 }
-// XS_MY_CARDS_TAB_V2_END
+// XS_MY_CARDS_TAB_V3_END
