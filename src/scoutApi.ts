@@ -250,3 +250,32 @@ export async function myCardsSync(deviceId: string, opts?: MyCardsSyncOpts){
 }
 /* XS_MY_CARDS_API_V1_END */
 
+/* XS_SCOUTAPI_MYCARDS_GETPAGE_V2 */
+export async function myCardsGetPage(
+  deviceId: string,
+  opts?: { first?: number; after?: string | null }
+): Promise<any> {
+  const id = String(deviceId || "").trim();
+  if (!id) throw new Error("missing deviceId");
+
+  const qs = new URLSearchParams();
+  qs.set("deviceId", id);
+
+  const first = opts && opts.first != null ? Number(opts.first) : null;
+  const after = opts && opts.after != null ? String(opts.after) : "";
+
+  if (first != null && Number.isFinite(first)) qs.set("first", String(first));
+  if (after) qs.set("after", after);
+
+  const base =
+    (typeof BASE_URL !== "undefined" && String((BASE_URL as any) || "").trim())
+      ? String((BASE_URL as any)).trim()
+      : ((process.env.EXPO_PUBLIC_BASE_URL || "").trim() || "http://192.168.1.19:3000");
+
+  const url = `${base}/my-cards?${qs.toString()}`;
+  const r = await fetch(url);
+  const j = await r.json().catch(() => null);
+  if (!r.ok) throw new Error(j && (j.error || j.message) ? String(j.error || j.message) : `HTTP ${r.status}`);
+  return j;
+}
+
