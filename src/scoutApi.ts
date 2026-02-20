@@ -158,6 +158,9 @@ export async function scoutPlayer2(
 
 export async function jwtLogin(baseUrl: string, deviceId: string, email: string, password: string, aud?: string){
   const url = `${baseUrl}/auth/jwt/login`;
+  // XS_MYCARDS_SYNC_PROBE_V1: log URL réelle appelée (debug iPhone)
+  try { console.log("[myCardsSync] BASE_URL=", BASE_URL); } catch {}
+  try { console.log("[myCardsSync] url=", url); } catch {}
   const r = await fetch(url, {
     method: "POST",
     headers: { "content-type":"application/json" },
@@ -254,6 +257,9 @@ export async function myCardsSync(deviceId: string, opts?: MyCardsSyncOpts){
   // On garde aussi le body pour compat (si backend évolue) — mais la source de vérité = query string.
   const body = { deviceId: id, jwtAud: aud, first, maxPages, maxCards, sleepMs };
 
+  // XS_MYCARDS_SYNC_PROBE_V1: log URL réelle appelée (debug iPhone)
+  try { console.log("[myCardsSync] BASE_URL=", BASE_URL); } catch {}
+  try { console.log("[myCardsSync] url=", url); } catch {}
   const r = await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) });
   const j = await r.json().catch(()=>null);
   if(!r.ok) throw new Error((j && (j.error || j.message)) ? String(j.error || j.message) : `HTTP ${r.status}`);
@@ -333,4 +339,7 @@ export async function myCardsStatus(deviceId: string): Promise<any> {
 }
 /* XS_MY_CARDS_API_V3_END */
 
+
+
+export const XS_MYCARDS_SYNC_TAG = "XS_MYCARDS_SYNC_QS_V1+LOG_V1";
 

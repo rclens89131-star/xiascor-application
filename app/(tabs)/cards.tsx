@@ -1,7 +1,7 @@
 ﻿import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, Image, Pressable, SafeAreaView, Text, View } from "react-native";
-import { myCardsPage, myCardsStatus, myCardsSync } from "../../src/scoutApi";
+import { myCardsPage, myCardsStatus, myCardsSync, XS_MYCARDS_SYNC_TAG } from "../../src/scoutApi";
 import { theme } from "../../src/theme";
 
 type MyCard = {
@@ -183,7 +183,10 @@ export default function CardsScreen() {
         <Text style={{ color: theme.text, fontSize: 22, fontWeight: "900" }}>Mes cartes</Text>
 
         <Text style={{ color: theme.muted, fontSize: 12 }} numberOfLines={2}>
-          {debugLine}
+          {debugLine}</Text>
+        {/* XS_MYCARDS_UI_TAG_V1 */}
+        <Text style={{ color: theme.muted, fontSize: 12 }} numberOfLines={1}>
+          build={String(XS_MYCARDS_SYNC_TAG || "")}
         </Text>
 
         {lastSync ? <Text style={{ color: theme.muted, fontSize: 12 }}>{lastSync}</Text> : null}
@@ -282,3 +285,4 @@ export default function CardsScreen() {
   );
 }
 // XS_MY_CARDS_TAB_V4_END
+
