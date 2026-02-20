@@ -36,7 +36,7 @@ async function ensureDeviceId() {
   return generated;
 }
 
-// XS_MY_CARDS_TAB_V3_BEGIN
+// XS_MY_CARDS_TAB_V4_BEGIN
 export default function CardsScreen() {
   const [deviceId, setDeviceId] = useState("");
   const [cards, setCards] = useState<MyCard[]>([]);
@@ -45,29 +45,30 @@ export default function CardsScreen() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  // IMPORTANT: séparer les erreurs (sinon loadPage efface l'erreur de sync)
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [lastSync, setLastSync] = useState<string>("");
 
   const [endCursor, setEndCursor] = useState<string | null>(null);
   const [hasNextPage, setHasNextPage] = useState(false);
 
-  // Anti-loop: utiliser un ref pour endCursor au lieu de le mettre dans deps d'un callback
   const endCursorRef = useRef<string | null>(null);
   useEffect(() => {
     endCursorRef.current = endCursor;
   }, [endCursor]);
 
-  // Debug visible: status snapshot
   const [statusSnap, setStatusSnap] = useState<any>(null);
 
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        // On force xs_device_id_v1 si absent (sinon sur iPhone ça peut être vide)
         const id = await ensureDeviceId();
         if (!alive) return;
         setDeviceId(String(id || "").trim());
-      } catch (e) {
+      } catch {
         if (!alive) return;
         setDeviceId("");
       }
@@ -91,14 +92,14 @@ export default function CardsScreen() {
     async (mode: "reset" | "more") => {
       const id = String(deviceId || "").trim();
       if (!id) {
-        setError("deviceId introuvable (AsyncStorage).");
+        setLoadError("deviceId introuvable (AsyncStorage).");
         setLoading(false);
         return;
       }
 
       if (mode === "reset") {
         setLoading(true);
-        setError(null);
+        setLoadError(null); // on ne touche PAS syncError ici
       } else {
         setLoadingMore(true);
       }
@@ -108,7 +109,7 @@ export default function CardsScreen() {
         const res = await myCardsPage(id, { first: 20, after });
 
         if (!res.ok) {
-          setError(res.error || "Erreur de chargement");
+          setLoadError(res.error || "Erreur de chargement");
         } else {
           setCards((prev) => uniqBySlug(mode === "reset" ? res.cards : [...prev, ...res.cards]));
           setEndCursor(res.pageInfo?.endCursor ?? null);
@@ -116,7 +117,7 @@ export default function CardsScreen() {
           if (res.meta) setMeta(res.meta);
         }
       } catch (e: any) {
-        setError(String(e?.message || e || "Erreur de chargement"));
+        setLoadError(String(e?.message || e || "Erreur de chargement"));
       }
 
       if (mode === "reset") setLoading(false);
@@ -125,7 +126,6 @@ export default function CardsScreen() {
     [deviceId]
   );
 
-  // IMPORTANT: déclencher le premier load UNIQUEMENT quand deviceId arrive (anti-loop)
   useEffect(() => {
     const id = String(deviceId || "").trim();
     if (!id) {
@@ -139,18 +139,24 @@ export default function CardsScreen() {
   const onSync = useCallback(async () => {
     const id = String(deviceId || "").trim();
     if (!id) {
-      setError("deviceId introuvable.");
+      setSyncError("deviceId introuvable.");
       return;
     }
     setSyncing(true);
-    setError(null);
+    setSyncError(null);
+    setLastSync("");
 
     try {
-      // Flow: sync -> status -> reload page1
-      await myCardsSync(id, { first: 50, maxPages: 2, sleepMs: 0 });
+      const r: any = await myCardsSync(id, { first: 50, maxPages: 2, sleepMs: 0 });
+      const cnt = (r && r.count != null) ? String(r.count) : "?";
+      const pages = (r && r.meta && r.meta.pages != null) ? String(r.meta.pages) : "?";
+      setLastSync(`sync ok • count=${cnt} • pages=${pages}`);
       await refreshStatus(id);
     } catch (e: any) {
-      setError(String(e?.message || e || "Échec sync (voir logs)"));
+      setSyncError(String(e?.message || e || "Échec sync"));
+      setLastSync("sync failed");
+      setSyncing(false);
+      return; // IMPORTANT: ne pas call loadPage qui rend tout "silencieux"
     }
 
     await loadPage("reset");
@@ -166,8 +172,8 @@ export default function CardsScreen() {
   const debugLine = useMemo(() => {
     const st = statusSnap || {};
     const cached = typeof st.cached === "boolean" ? String(st.cached) : "-";
-    const cnt = (st.count != null) ? String(st.count) : "-";
-    const user = st?.meta?.userSlug ? String(st.meta.userSlug) : "-";
+    const cnt = (st.count != null) ? String(st.count) : "--";
+    const user = st?.meta?.userSlug ? String(st.meta.userSlug) : "--";
     return `deviceId=${deviceId || "-"} • cached=${cached} • count=${cnt} • user=${user}`;
   }, [statusSnap, deviceId]);
 
@@ -179,6 +185,10 @@ export default function CardsScreen() {
         <Text style={{ color: theme.muted, fontSize: 12 }} numberOfLines={2}>
           {debugLine}
         </Text>
+
+        {lastSync ? <Text style={{ color: theme.muted, fontSize: 12 }}>{lastSync}</Text> : null}
+        {syncError ? <Text style={{ color: theme.bad, fontWeight: "800" }}>Sync: {syncError}</Text> : null}
+        {loadError ? <Text style={{ color: theme.bad, fontWeight: "800" }}>Load: {loadError}</Text> : null}
 
         <Pressable
           onPress={onSync}
@@ -200,7 +210,6 @@ export default function CardsScreen() {
         </Pressable>
 
         <Text style={{ color: theme.muted }}>{headerLabel}</Text>
-        {error ? <Text style={{ color: theme.bad, fontWeight: "800" }}>Erreur: {error}</Text> : null}
       </View>
 
       {loading ? (
@@ -243,9 +252,7 @@ export default function CardsScreen() {
           )}
           ListEmptyComponent={
             <View style={{ padding: 16 }}>
-              <Text style={{ color: theme.muted }}>
-                Aucune carte en cache. Appuie sur Synchroniser.
-              </Text>
+              <Text style={{ color: theme.muted }}>Aucune carte en cache. Appuie sur Synchroniser.</Text>
             </View>
           }
           ListFooterComponent={
@@ -274,4 +281,4 @@ export default function CardsScreen() {
     </SafeAreaView>
   );
 }
-// XS_MY_CARDS_TAB_V3_END
+// XS_MY_CARDS_TAB_V4_END
