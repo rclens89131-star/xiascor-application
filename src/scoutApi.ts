@@ -233,6 +233,16 @@ export type MyCardsSyncOpts = {
   sleepMs?: number;
 };
 
+
+/* XS_MY_CARDS_LIST_V1_BEGIN */
+export async function myCardsList(deviceId: string, first = 50, after?: string) {
+  const qs = new URLSearchParams();
+  qs.set("deviceId", deviceId);
+  qs.set("first", String(first));
+  if (after) qs.set("after", after);
+  return apiFetch<{ ok?: boolean; cached?: boolean; meta?: any; cards: any[]; pageInfo?: PageInfo }>(`/my-cards?${qs.toString()}`);
+}
+/* XS_MY_CARDS_LIST_V1_END */
 export async function myCardsSync(deviceId: string, opts?: MyCardsSyncOpts){
   const id = String(deviceId || "").trim();
   if(!id) throw new Error("missing deviceId");
@@ -370,4 +380,7 @@ export function sorareDeviceLoginUrl(deviceId: string, opts?: { devLocal?: boole
   return `${BASE_URL}/auth/sorare-device/login?${qs.toString()}`;
 }
 /* XS_DEVICE_STATUS_API_V1_END */
+
+
+
 
