@@ -5458,7 +5458,7 @@ try {
         pages: page,
         tokenSourcePath: tok._path || null,
             /* XS_MYCARDS_DEBUG_GQLDATA_SNIPPET_V1_META */
-            gqlDebug: ((xsMcDebugDataV1 === "1" || String(xsMcDebugDataV1).toLowerCase() === "true") ? { snippet: xsMcGqlSnippetV1, hasCurrentUser: xsMcGqlHasCurrentUserV1 } : null),
+            gqlDebug: (((String(req.query.debugData || req.query.debug || "").trim() === "1") || (String(req.query.debugData || req.query.debug || "").trim().toLowerCase() === "true")) ? { snippet: (typeof xsMcGqlSnippetV1 !== "undefined" ? xsMcGqlSnippetV1 : null), hasCurrentUser: (typeof xsMcGqlHasCurrentUserV1 !== "undefined" ? xsMcGqlHasCurrentUserV1 : null) } : null),
       },
       cards: all
     };
