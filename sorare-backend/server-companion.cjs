@@ -5333,6 +5333,17 @@ try {
   /* XS_MYCARDS_SYNC_JWT_FALLBACK_V1_END */
   // POST /my-cards/sync  (download + write cache)
   // ============================
+    /* XS_MYCARDS_KEEP_RARITY_SCOPE_V1_BEGIN */
+  function xsMcKeepRarityV1(card){
+    try{
+      const r = String((card && (card.rarityTyped || card.rarity)) || "").toLowerCase().trim();
+      return (r === "limited" || r === "rare" || r === "super_rare" || r === "unique");
+    } catch(e){
+      return false;
+    }
+  }
+  /* XS_MYCARDS_KEEP_RARITY_SCOPE_V1_END */
+
   app.post("/my-cards/sync", async (req, res) => {
     try { res.setHeader("X-XS-MYCARDS-V1", "1"); } catch(e) {}
     const deviceId = String(req.query.deviceId || "");
@@ -5359,32 +5370,29 @@ try {
 
     // Query currentUser cards (shape classique)
     const Q = `
-      query XSMyCardsV1($first: Int!, $after: String) {
-        currentUser {
+query XSMyCardsV1($first: Int!, $after: String) {
+  currentUser {
+    slug
+    nickname
+    cards(first: $first, after: $after) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        ... on Card {
           slug
-          nickname
-          cards(first: $first, after: $after) {
-            /* XS_MYCARDS_QUERY_ANYCARD_FRAGMENT_V1_BEGIN */
- nodes {
-              ... on Card {
-                slug
-                pictureUrl
-                rarityTyped
-                seasonYear
-                serialNumber
-                anyPositions
-                anyTeam { name slug }
-                anyPlayer { displayName slug }
-                player { displayName slug activeClub { name slug } anyPositions }
-              }
-            }
-            /* XS_MYCARDS_QUERY_ANYCARD_FRAGMENT_V1_END */
-            }
-            pageInfo { hasNextPage endCursor }
-          }
+          pictureUrl
+          rarityTyped
+          seasonYear
+          serialNumber
+          anyPositions
+          anyTeam { name slug }
+          anyPlayer { displayName slug }
+          player { displayName slug activeClub { name slug } anyPositions }
         }
       }
-    `;
+    }
+  }
+}
+`;
 
     const all = [];
     let after = null;
@@ -6636,30 +6644,58 @@ return res.json({ ok: true, deviceId, note: "No offers to inspect", base });
       ];
 
       async function tryScalar(fieldName) {
-        const q = `
-          query QScalar($first: Int!, $after: String) {
-            tokens {
-              liveSingleSaleOffers(first: $first, after: $after) {
-                nodes { id __typename ${fieldName} }
-                pageInfo { endCursor hasNextPage }
-              }
-            }
-          }
-        `;
+        const Q = `
+query XSMyCardsV1($first: Int!, $after: String) {
+  currentUser {
+    slug
+    nickname
+    cards(first: $first, after: $after) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        ... on Card {
+          slug
+          pictureUrl
+          rarityTyped
+          seasonYear
+          serialNumber
+          anyPositions
+          anyTeam { name slug }
+          anyPlayer { displayName slug }
+          player { displayName slug activeClub { name slug } anyPositions }
+        }
+      }
+    }
+  }
+}
+`;
         return await xsDevOauth_graphql(tok, q, vars);
       }
 
       async function tryObjectTypename(fieldName) {
-        const q = `
-          query QObject($first: Int!, $after: String) {
-            tokens {
-              liveSingleSaleOffers(first: $first, after: $after) {
-                nodes { id __typename ${fieldName} { __typename } }
-                pageInfo { endCursor hasNextPage }
-              }
-            }
-          }
-        `;
+        const Q = `
+query XSMyCardsV1($first: Int!, $after: String) {
+  currentUser {
+    slug
+    nickname
+    cards(first: $first, after: $after) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        ... on Card {
+          slug
+          pictureUrl
+          rarityTyped
+          seasonYear
+          serialNumber
+          anyPositions
+          anyTeam { name slug }
+          anyPlayer { displayName slug }
+          player { displayName slug activeClub { name slug } anyPositions }
+        }
+      }
+    }
+  }
+}
+`;
         return await xsDevOauth_graphql(tok, q, vars);
       }
 
@@ -6798,6 +6834,8 @@ res.json({
 
 
 /* XS_JWT_FIX_REMOVE_SLASH_COMMENTS_V1 applied */
+
+
 
 
 
