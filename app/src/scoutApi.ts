@@ -79,7 +79,7 @@ export async function deleteScoutAlert(id: string) {
   });
 }
 
-/* XS_PORT_MYCARDS_FUNCS_BRACE_V1_BEGIN */
+/* XS_MYCARDS_FUNCS_PORTED_V1_BEGIN */
 export async function myCardsPage(deviceId: string, opts?: { first?: number; after?: string }
 
 export async function myCardsStatus(deviceId: string): Promise<any> {
@@ -122,4 +122,4 @@ export async function myCardsSync(deviceId: string, opts?: MyCardsSyncOpts){
   if(!r.ok) throw new Error((j && (j.error || j.message)) ? String(j.error || j.message) : `HTTP ${r.status}`);
   return j as { ok: boolean; count?: number; cachePath?: string; meta?: MyCardsMeta };
 }
-/* XS_PORT_MYCARDS_FUNCS_BRACE_V1_END */
+/* XS_MYCARDS_FUNCS_PORTED_V1_END */
