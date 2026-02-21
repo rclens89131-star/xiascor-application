@@ -5388,7 +5388,7 @@ try {
       const xsMcDebugV1 = String(req.query.debug || "").trim();
       let json = null;
       try {
-              const json = await xsMcGraphQLV1(tok.access_token, Q, { first, after }, (typeof xsMcJwtAudEffectiveV1 !== "undefined" ? xsMcJwtAudEffectiveV1 : (tok.jwtAud || null)));
+        json = await xsMcGraphQLV1(tok.access_token, Q, { first, after }, (typeof xsMcJwtAudEffectiveV1 !== "undefined" ? xsMcJwtAudEffectiveV1 : (tok.jwtAud || null)));
       } catch (e) {
         const status = (e && e.status) ? Number(e.status) : null;
         const body = (e && e.body) ? String(e.body) : String(e && e.message ? e.message : e);
