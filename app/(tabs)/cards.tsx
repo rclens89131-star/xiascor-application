@@ -5,6 +5,7 @@ import { theme } from "../../src/theme";
 import { myCardsList, myCardsSync, type PageInfo } from "../../src/scoutApi";
 
 const DEVICE_ID_KEY = "XS_DEVICE_ID_V1";
+const JWT_DEVICE_ID_KEY = "XS_JWT_DEVICE_ID_V1";
 
 /* XS_MY_CARDS_UI_TYPING_V1_BEGIN */
 type MyCardItemLocal = {
@@ -76,12 +77,17 @@ export default function CardsScreen() {
   const loadingMoreRef = useRef(false);
 
   const ensureDeviceId = useCallback(async () => {
-    const existing = await AsyncStorage.getItem(DEVICE_ID_KEY);
-    if (existing) return existing;
-    const generated = `xs-device-${Date.now()}`;
-    await AsyncStorage.setItem(DEVICE_ID_KEY, generated);
-    return generated;
-  }, []);
+  // XS_PREFER_JWT_DEVICEID_V1 — if JWT login already happened, reuse its deviceId
+  const jwtId = await AsyncStorage.getItem(JWT_DEVICE_ID_KEY);
+  if (jwtId) return jwtId;
+
+  const existing = await AsyncStorage.getItem(DEVICE_ID_KEY);
+  if (existing) return existing;
+
+  const generated = `xs-device-${Date.now()}`;
+  await AsyncStorage.setItem(DEVICE_ID_KEY, generated);
+  return generated;
+}, []);
 
   const loadInitial = useCallback(async () => {
     setLoading(true);
@@ -221,4 +227,5 @@ export default function CardsScreen() {
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
