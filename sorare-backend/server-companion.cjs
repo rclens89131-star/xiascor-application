@@ -5357,18 +5357,21 @@ try {
           slug
           nickname
           cards(first: $first, after: $after) {
-            nodes {
-              slug
-              pictureUrl
-              rarity
-              rarityTyped
-              seasonYear
-              serialNumber
-              anyPositions
-              anyTeam { name slug }
-              anyPlayer { displayName slug }
-              player { displayName slug activeClub { name slug } anyPositions }
+            /* XS_MYCARDS_QUERY_ANYCARD_FRAGMENT_V1_BEGIN */
+ {
+              ... on Card {
+                slug
+                pictureUrl
+                rarityTyped
+                seasonYear
+                serialNumber
+                anyPositions
+                anyTeam { name slug }
+                anyPlayer { displayName slug }
+                player { displayName slug activeClub { name slug } anyPositions }
+              }
             }
+            /* XS_MYCARDS_QUERY_ANYCARD_FRAGMENT_V1_END */
             pageInfo { hasNextPage endCursor }
           }
         }
