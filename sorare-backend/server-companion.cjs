@@ -5336,6 +5336,12 @@ try {
     const maxCards = Math.max(100, Math.min(20000, Number(req.query.maxCards || 6000)));
 
     const tok = await xsMcFindAnyTokenV1(deviceId);
+    /* XS_MYCARDS_SYNC_JWTAUD_QUERY_V1_BEGIN */
+    // Fallback: allow passing jwtAud via querystring (useful when JWT store lacks aud).
+    const xsMcJwtAudFromQueryV1 = String(req.query.jwtAud || "").trim();
+    // Prefer token-provided aud; fallback to querystring if present.
+    const xsMcJwtAudEffectiveV1 = (tok && tok.jwtAud) ? String(tok.jwtAud) : (xsMcJwtAudFromQueryV1 ? xsMcJwtAudFromQueryV1 : null);
+    /* XS_MYCARDS_SYNC_JWTAUD_QUERY_V1_END */
     if (!tok || !tok.access_token) {
       return res.status(401).json({
         ok:false,
@@ -5377,7 +5383,23 @@ try {
 
     while (page < maxPages && all.length < maxCards) {
       page++;
-      const json = await xsMcGraphQLV1(tok.access_token, Q, { first, after }, tok.jwtAud || null);
+      /* XS_MYCARDS_SYNC_GQL_ERRBODY_V1_BEGIN */
+      // If Sorare returns HTTP 422/401/etc, expose body only when ?debug=1 (never leak token).
+      const xsMcDebugV1 = String(req.query.debug || "").trim();
+      let json = null;
+      try {
+              const json = await xsMcGraphQLV1(tok.access_token, Q, { first, after }, (typeof xsMcJwtAudEffectiveV1 !== "undefined" ? xsMcJwtAudEffectiveV1 : (tok.jwtAud || null)));
+      } catch (e) {
+        const status = (e && e.status) ? Number(e.status) : null;
+        const body = (e && e.body) ? String(e.body) : String(e && e.message ? e.message : e);
+        const snippet = body.length > 1600 ? (body.slice(0,1600) + "...<snip>...") : body;
+        try { res.setHeader("X-XS-MYCARDS-GQLSTATUS", String(status || "")); } catch(_) {}
+        if (xsMcDebugV1 === "1" || xsMcDebugV1.toLowerCase() === "true") {
+          return res.status(502).json({ ok:false, error:"sorare_graphql_error", status, jwtAudUsed: (typeof xsMcJwtAudEffectiveV1 !== "undefined" ? xsMcJwtAudEffectiveV1 : (tok && tok.jwtAud ? String(tok.jwtAud) : null)), tokenKind: (tok && tok.kind ? String(tok.kind) : null), bodySnippet: snippet });
+        }
+        return res.status(502).json({ ok:false, error:"sorare_graphql_error", status, hint:"Retry with &debug=1 to see bodySnippet" });
+      }
+      /* XS_MYCARDS_SYNC_GQL_ERRBODY_V1_END */
       const data = json && json.data ? json.data : null;
       const cu = data && data.currentUser ? data.currentUser : null;
       if (!cu) break;
