@@ -5184,7 +5184,7 @@ try {
         "authorization": `Bearer ${accessToken}`,
       /* XS_MYCARDS_GQL_JWT_AUD_V1_BEGIN */
       ...(jwtAud ? { "JWT-AUD": String(jwtAud) } : {}),
-      /* XS_MYCARDS_GQL_JWT_AUD_V1_END */,
+      /* XS_MYCARDS_GQL_JWT_AUD_V1_END */
         "user-agent": "companion-sorare-backend/1.0"
       },
       body
@@ -6694,6 +6694,7 @@ res.json({
 
 
 /* XS_JWT_FIX_REMOVE_SLASH_COMMENTS_V1 applied */
+
 
 
 
