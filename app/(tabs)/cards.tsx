@@ -20,7 +20,17 @@ function uniqBySlug(items: MyCard[]) {
     if (!k) continue;
     if (!m.has(k)) m.set(k, c);
   }
-  return Array.from(m.values());
+  
+
+// XS_FILTER_RARITIES_V1: on exclut les Common dans l'UI (on garde limited/rare/super_rare/unique)
+const XS_ALLOWED_RARITIES_V1 = new Set(["limited", "rare", "super_rare", "unique"]);
+function xsPickRarityV1(c: any){
+  const v = String((c && (c.rarityTyped || c.rarity)) || "").toLowerCase().trim();
+  return v;
+}
+function xsFilterAllowedRaritiesV1(items: any[]){
+  return (Array.isArray(items) ? items : []).filter((c) => XS_ALLOWED_RARITIES_V1.has(xsPickRarityV1(c)));
+}return Array.from(m.values());
 }
 
 const XS_DEVICE_KEY = "xs_device_id_v1";
@@ -124,7 +134,7 @@ export default function CardsScreen() {
         if (!res.ok) {
           setLoadError(res.error || "Erreur de chargement");
         } else {
-          setCards((prev) => uniqBySlug(mode === "reset" ? res.cards : [...prev, ...res.cards]));
+          setCards((prev) => uniqBySlug(xsFilterAllowedRaritiesV1(mode === "reset" ? res.cards : [...prev, ...res.cards])));
           setEndCursor(res.pageInfo?.endCursor ?? null);
           setHasNextPage(Boolean(res.pageInfo?.hasNextPage));
           if (res.meta) setMeta(res.meta);
@@ -334,5 +344,6 @@ export default function CardsScreen() {
   );
 }
 // XS_MY_CARDS_TAB_V4_END
+
 
 
