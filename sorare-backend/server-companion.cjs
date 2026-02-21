@@ -5209,7 +5209,16 @@ try {
       try { const m = slug.match(/-(\d+)$/); if (m && m[1]) serialNumber = Number(m[1]); } catch(e) {}
     }
 
-    const rarity = (n && n.rarity) ? String(n.rarity) : (n && n.rarityTyped ? String(n.rarityTyped) : null);
+  /* XS_MYCARDS_FILTER_RARITY_V1_BEGIN */
+  function xsMcKeepRarityV1(card){
+    try{
+      const r = String((card && (card.rarityTyped || card.rarity)) || "").toLowerCase().trim();
+      return (r === "limited" || r === "rare" || r === "super_rare" || r === "unique");
+    } catch(e){
+      return false;
+    }
+  }
+  /* XS_MYCARDS_FILTER_RARITY_V1_END */    const rarity = (n && n.rarity) ? String(n.rarity) : (n && n.rarityTyped ? String(n.rarityTyped) : null);
     const seasonYear = (n && (n.seasonYear || (n.season && n.season.year))) ? Number(n.seasonYear || (n.season && n.season.year)) : null;
     const season = (n && n.season) ? n.season : (seasonYear ? { year: seasonYear } : null);
 
@@ -5369,7 +5378,8 @@ try {
                 player { displayName slug activeClub { name slug } anyPositions }
               }
             }
-            /* XS_MYCARDS_QUERY_ANYCARD_FRAGMENT_V1_END */
+            /* XS_MYCARDS_QUERY_ANYCARD_FRAGMENT_V1_END */
+            }
             pageInfo { hasNextPage endCursor }
           }
         }
@@ -5380,7 +5390,12 @@ try {
     let after = null;
     let page = 0;
     let meSlug = null;
-    let meNick = null;
+let meNick = null;
+/* XS_MYCARDS_GQLDEBUG_SCOPE_V1_BEGIN */
+let xsMcGqlSnippetV1 = null;
+let xsMcGqlHasCurrentUserV1 = null;
+let xsMcGqlErrorsV1 = null;
+/* XS_MYCARDS_GQLDEBUG_SCOPE_V1_END */
 
     while (page < maxPages && all.length < maxCards) {
       page++;
@@ -5417,7 +5432,8 @@ try {
           pageInfo: (json && json.data && json.data.currentUser && json.data.currentUser.cards && json.data.currentUser.cards.pageInfo) ? json.data.currentUser.cards.pageInfo : null,
           nodesLen: (json && json.data && json.data.currentUser && json.data.currentUser.cards && Array.isArray(json.data.currentUser.cards.nodes)) ? json.data.currentUser.cards.nodes.length : null
         };
-        const s = JSON.stringify({ data: safeObj, errors: json && json.errors ? json.errors : null });
+        xsMcGqlErrorsV1 = (json && json.errors && Array.isArray(json.errors)) ? json.errors.map(e=> (e && e.message) ? String(e.message) : null).filter(Boolean).slice(0,5) : null;
+const s = JSON.stringify({ data: safeObj, errors: json && json.errors ? json.errors : null });
         xsMcGqlSnippetV1 = s.length > 2200 ? (s.slice(0,2200) + "...<snip>...") : s;
       } catch (e) {
         xsMcGqlSnippetV1 = "<snippet_error>";
@@ -5433,7 +5449,10 @@ try {
       const conn = cu.cards || null;
       const nodes = conn && Array.isArray(conn.nodes) ? conn.nodes : [];
       for (const n of nodes) {
-        all.push(xsMcNormalizeCardV1(n));
+              /* XS_MYCARDS_FILTER_APPLY_V1_BEGIN */
+      const _c = xsMcNormalizeCardV1(n);
+      if (xsMcKeepRarityV1(_c)) all.push(_c);
+      /* XS_MYCARDS_FILTER_APPLY_V1_END */
         if (all.length >= maxCards) break;
       }
 
@@ -6747,6 +6766,8 @@ res.json({
 
 
 /* XS_JWT_FIX_REMOVE_SLASH_COMMENTS_V1 applied */
+
+
 
 
 
