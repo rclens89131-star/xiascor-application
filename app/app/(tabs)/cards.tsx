@@ -1,89 +1,216 @@
-﻿import React, { useEffect, useMemo } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  Pressable,
-  SafeAreaView,
-  Text,
-  TextInput,
-  View,
-  useWindowDimensions,
-} from "react-native";
+﻿import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, FlatList, Image, Pressable, RefreshControl, SafeAreaView, Text, View } from "react-native";
+import { myCardsPage, myCardsStatus, myCardsSync } from "../../src/scoutApi";
 import { theme } from "../../src/theme";
-import { useGallery } from "../../src/hooks/useGallery";
-import { CardListItem } from "../../src/components/CardListItem";
-import { useAppStore } from "../../src/store/useAppStore";
 
+type MyCard = {
+  slug?: string;
+  pictureUrl?: string;
+  rarity?: string;
+  rarityTyped?: string;
+  seasonYear?: number | string;
+  serialNumber?: number | string;
+};
+
+function uniqBySlug(items: MyCard[]) {
+  const m = new Map<string, MyCard>();
+  for (const c of items) {
+    const k = String(c?.slug || "").trim();
+    if (!k) continue;
+    if (!m.has(k)) m.set(k, c);
+  }
+  return Array.from(m.values());
+}
+
+const XS_DEVICE_KEY = "xs_device_id_v1";
+function makeDeviceId() {
+  const rand = Math.random().toString(36).slice(2, 10);
+  return `dev_${Date.now()}_${rand}`;
+}
+async function ensureDeviceId() {
+  const existing = String((await AsyncStorage.getItem(XS_DEVICE_KEY)) || "").trim();
+  if (existing) return existing;
+  const generated = makeDeviceId();
+  await AsyncStorage.setItem(XS_DEVICE_KEY, generated);
+  return generated;
+}
+
+function parseIsoMs(s?: string) {
+  const t = Date.parse(String(s || ""));
+  return Number.isFinite(t) ? t : 0;
+}
+
+// XS_MY_CARDS_TAB_V5_BEGIN
 export default function CardsScreen() {
-  const identifier = useAppStore((s) => s.identifier);
-  const setIdentifier = useAppStore((s) => s.setIdentifier);
+  const [deviceId, setDeviceId] = useState("");
+  const [cards, setCards] = useState<MyCard[]>([]);
+  const [meta, setMeta] = useState<any>(null);
 
-  const { cards, loading, loadingMore, error, loadMore, reload } = useGallery({ identifier, first: 25 });
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
-  const setGallery = useAppStore((s) => s.setGallery);
-  const toggleSelected = useAppStore((s) => s.toggleSelected);
-  const selected = useAppStore((s) => s.selected);
+  // Erreurs: visibles seulement si l'utilisateur a cliqué "Synchroniser"
+  const [userSyncError, setUserSyncError] = useState<string | null>(null);
+
+  const [endCursor, setEndCursor] = useState<string | null>(null);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const endCursorRef = useRef<string | null>(null);
+  useEffect(() => { endCursorRef.current = endCursor; }, [endCursor]);
+
+  const xsAutoSyncInFlight = useRef(false);
+  const xsLastAutoSyncAt = useRef(0);
 
   useEffect(() => {
-    setGallery(cards);
-  }, [cards, setGallery]);
+    let alive = true;
+    (async () => {
+      try {
+        const id = await ensureDeviceId();
+        if (!alive) return;
+        setDeviceId(String(id || "").trim());
+      } catch {
+        if (!alive) return;
+        setDeviceId("");
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
 
-  const { width } = useWindowDimensions();
-  const getCardKey = (card: any) => String(card?.slug || card?.id || "");
+  const refreshStatus = useCallback(async (id: string) => {
+    try {
+      const st = await myCardsStatus(id);
+      if (st && st.meta) setMeta(st.meta);
+      return st || null;
+    } catch {
+      return null;
+    }
+  }, []);
 
-  // ✅ largeur exacte pour 2 colonnes
-  const layout = useMemo(() => {
-    const H_PADDING = 16;
-    const GAP = 12;
-    const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
-    return { H_PADDING, GAP, itemWidth };
-  }, [width]);
+  const loadPage = useCallback(async (mode: "reset" | "more") => {
+    const id = String(deviceId || "").trim();
+    if (!id) {
+      setLoading(false);
+      return;
+    }
+
+    if (mode === "reset") {
+      setLoading(true);
+    } else {
+      setLoadingMore(true);
+    }
+
+    try {
+      const after = mode === "more" ? (endCursorRef.current ?? undefined) : undefined;
+      const res = await myCardsPage(id, { first: 20, after });
+
+      if (res.ok) {
+        setCards((prev) => uniqBySlug(mode === "reset" ? res.cards : [...prev, ...res.cards]));
+        setEndCursor(res.pageInfo?.endCursor ?? null);
+        setHasNextPage(Boolean(res.pageInfo?.hasNextPage));
+        if (res.meta) setMeta(res.meta);
+      }
+    } catch {
+      // silencieux (pas de debug visible)
+    }
+
+    if (mode === "reset") setLoading(false);
+    setLoadingMore(false);
+  }, [deviceId]);
+
+  // Sync: silent=true => pas de messages visibles
+  const runSync = useCallback(async (silent: boolean) => {
+    const id = String(deviceId || "").trim();
+    if (!id) return;
+
+    if (!silent) setUserSyncError(null);
+    setSyncing(true);
+
+    try {
+      await myCardsSync(id, { first: 50, maxPages: 6, sleepMs: 0 });
+      await refreshStatus(id);
+      await loadPage("reset");
+    } catch (e: any) {
+      if (!silent) setUserSyncError(String(e?.message || e || "Échec sync"));
+    } finally {
+      setSyncing(false);
+    }
+  }, [deviceId, loadPage, refreshStatus]);
+
+  // Premier chargement + auto-sync "en arrière-plan" (tant que l'écran est ouvert)
+  useEffect(() => {
+    const id = String(deviceId || "").trim();
+    if (!id) { setLoading(false); return; }
+
+    (async () => {
+      await loadPage("reset");
+
+      const st = await refreshStatus(id);
+
+      // Heuristique auto-sync:
+      // - si pas de cache, ou cache trop vieux (> 6h), on sync en SILENCIEUX
+      // - anti-spam: au max 1 auto-sync toutes les 3 minutes
+      const now = Date.now();
+      const fetchedAtMs = parseIsoMs(st?.meta?.fetchedAt);
+      const stale = !fetchedAtMs || (now - fetchedAtMs) > (6 * 60 * 60 * 1000);
+      const throttled = (now - xsLastAutoSyncAt.current) < (3 * 60 * 1000);
+
+      if (!throttled && stale && !xsAutoSyncInFlight.current) {
+        xsAutoSyncInFlight.current = true;
+        xsLastAutoSyncAt.current = now;
+        try {
+          await runSync(true);
+        } finally {
+          xsAutoSyncInFlight.current = false;
+        }
+      }
+    })();
+  }, [deviceId, loadPage, refreshStatus, runSync]);
+
+  const headerLabel = useMemo(() => {
+    const count = meta?.count ?? cards.length;
+    const fetched = meta?.fetchedAt ? String(meta.fetchedAt) : "";
+    return fetched ? `${count} cartes • ${fetched}` : `${count} cartes`;
+  }, [cards.length, meta]);
+
+  const onManualSync = useCallback(() => runSync(false), [runSync]);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
       <View style={{ padding: 16, gap: 10 }}>
         <Text style={{ color: theme.text, fontSize: 22, fontWeight: "900" }}>Mes cartes</Text>
 
-        <View style={{ flexDirection: "row", gap: 10 }}>
-          <TextInput
-            value={identifier}
-            onChangeText={setIdentifier}
-            placeholder="slug ou URL Sorare my-club"
-            placeholderTextColor={theme.muted}
-            autoCapitalize="none"
-            style={{
-              flex: 1,
-              color: theme.text,
-              backgroundColor: theme.panel,
-              borderWidth: 1,
-              borderColor: theme.stroke,
-              borderRadius: 14,
-              paddingHorizontal: 12,
-              paddingVertical: 10,
-            }}
-          />
-          <Pressable
-            onPress={reload}
-            style={{
-              paddingHorizontal: 12,
-              justifyContent: "center",
-              borderRadius: 14,
-              backgroundColor: "rgba(59,130,246,0.18)",
-              borderWidth: 1,
-              borderColor: "rgba(59,130,246,0.35)",
-            }}
-          >
-            <Text style={{ color: theme.text, fontWeight: "900" }}>OK</Text>
-          </Pressable>
-        </View>
+        {/* UI produit: on garde seulement une info utile (compte + dernière synchro) */}
+        <Text style={{ color: theme.muted }}>{headerLabel}</Text>
 
-        {error ? (
-          <Text style={{ color: theme.bad, fontWeight: "800" }}>Erreur: {error}</Text>
-        ) : (
-          <Text style={{ color: theme.muted }}>
-            {cards.length} cartes (hors commons) • sélection Jouer: {selected.length}/5
+        {userSyncError ? (
+          <Text style={{ color: theme.bad, fontWeight: "800" }}>
+            Impossible de synchroniser. Réessaie.
           </Text>
-        )}
+        ) : null}
+
+        <Pressable
+          onPress={onManualSync}
+          disabled={syncing}
+          style={{
+            alignSelf: "flex-start",
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+            borderRadius: 12,
+            backgroundColor: "rgba(59,130,246,0.18)",
+            borderWidth: 1,
+            borderColor: "rgba(59,130,246,0.35)",
+            opacity: syncing ? 0.7 : 1,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          {syncing ? <ActivityIndicator /> : null}
+          <Text style={{ color: theme.text, fontWeight: "800" }}>
+            {syncing ? "Synchronisation…" : "Synchroniser"}
+          </Text>
+        </Pressable>
       </View>
 
       {loading ? (
@@ -93,45 +220,64 @@ export default function CardsScreen() {
         </View>
       ) : (
         <FlatList
-          key="grid2" // ✅ force FlatList à recalculer la grille
           data={cards}
-          keyExtractor={(item: any) => getCardKey(item)}
+          keyExtractor={(item, idx) => String(item?.slug || idx)}
           numColumns={2}
-          contentContainerStyle={{ paddingHorizontal: layout.H_PADDING, paddingBottom: 120 }}
-          onEndReached={() => loadMore()}
-          onEndReachedThreshold={0.6}
-          renderItem={({ item, index }: any) => {
-            const isLeft = index % 2 === 0;
-            return (
-              <View
-                style={{
-                  width: layout.itemWidth,
-                  marginBottom: layout.GAP,
-                  marginRight: isLeft ? layout.GAP : 0,
-                }}
-              >
-                <CardListItem
-                  card={item}
-                  selected={selected.some((c) => getCardKey(c) === getCardKey(item))}
-                  onPress={() => toggleSelected(item)}
-                />
-              </View>
-            );
-          }}
-          ListFooterComponent={
-            loadingMore ? (
-              <View style={{ paddingVertical: 16 }}>
-                <ActivityIndicator />
-              </View>
-            ) : (
-              <View style={{ height: 16 }} />
-            )
+          contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 120 }}
+          columnWrapperStyle={{ gap: 10 }}
+          refreshControl={
+            <RefreshControl refreshing={false} onRefresh={() => loadPage("reset")} />
           }
+          renderItem={({ item }) => (
+            <View
+              style={{
+                width: "48%",
+                backgroundColor: theme.panel,
+                borderRadius: 12,
+                marginBottom: 10,
+                borderWidth: 1,
+                borderColor: theme.stroke,
+                overflow: "hidden",
+              }}
+            >
+              <Image
+                source={{ uri: item?.pictureUrl || "https://via.placeholder.com/400x560?text=No+Image" }}
+                style={{ width: "100%", aspectRatio: 0.72, backgroundColor: "#1a1a1a" }}
+              />
+              <View style={{ padding: 8, gap: 4 }}>
+                <Text style={{ color: theme.text, fontWeight: "700" }}>
+                  {String(item?.rarity || item?.rarityTyped || "unknown")}
+                </Text>
+                <Text style={{ color: theme.muted, fontSize: 12 }}>
+                  Saison {String(item?.seasonYear ?? "-")} • #{String(item?.serialNumber ?? "-")}
+                </Text>
+              </View>
+            </View>
+          )}
           ListEmptyComponent={
             <View style={{ padding: 16 }}>
-              <Text style={{ color: theme.muted }}>
-                Aucune carte. Vérifie le slug/URL et clique OK.
-              </Text>
+              <Text style={{ color: theme.muted }}>Aucune carte en cache. Appuie sur Synchroniser.</Text>
+            </View>
+          }
+          ListFooterComponent={
+            <View style={{ paddingVertical: 14, alignItems: "center" }}>
+              {loadingMore ? (
+                <ActivityIndicator />
+              ) : hasNextPage ? (
+                <Pressable
+                  onPress={() => loadPage("more")}
+                  style={{
+                    paddingHorizontal: 14,
+                    paddingVertical: 9,
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: theme.stroke,
+                    backgroundColor: theme.panel,
+                  }}
+                >
+                  <Text style={{ color: theme.text, fontWeight: "700" }}>Charger plus</Text>
+                </Pressable>
+              ) : null}
             </View>
           }
         />
@@ -139,3 +285,4 @@ export default function CardsScreen() {
     </SafeAreaView>
   );
 }
+// XS_MY_CARDS_TAB_V5_END
