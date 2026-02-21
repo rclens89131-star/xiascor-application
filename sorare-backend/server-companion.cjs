@@ -5403,6 +5403,28 @@ try {
         return res.status(502).json({ ok:false, error:"sorare_graphql_error", status, hint:"Retry with &debug=1 to see bodySnippet" });
       }
       /* XS_MYCARDS_SYNC_GQL_ERRBODY_V1_END */
+      /* XS_MYCARDS_DEBUG_GQLDATA_SNIPPET_V1_BEGIN */
+      // When debug=1, attach a safe snippet of GraphQL response shape (no tokens).
+      const xsMcDebugDataV1 = String(req.query.debugData || req.query.debug || "").trim();
+      let xsMcGqlSnippetV1 = null;
+      let xsMcGqlHasCurrentUserV1 = null;
+      try {
+        xsMcGqlHasCurrentUserV1 = !!(json && json.data && json.data.currentUser);
+        const safeObj = {
+          hasData: !!(json && json.data),
+          hasCurrentUser: xsMcGqlHasCurrentUserV1,
+          topKeys: json && json.data ? Object.keys(json.data) : null,
+          currentUserKeys: (json && json.data && json.data.currentUser) ? Object.keys(json.data.currentUser) : null,
+          // include small samples if present
+          pageInfo: (json && json.data && json.data.currentUser && json.data.currentUser.cards && json.data.currentUser.cards.pageInfo) ? json.data.currentUser.cards.pageInfo : null,
+          nodesLen: (json && json.data && json.data.currentUser && json.data.currentUser.cards && Array.isArray(json.data.currentUser.cards.nodes)) ? json.data.currentUser.cards.nodes.length : null
+        };
+        const s = JSON.stringify({ data: safeObj, errors: json && json.errors ? json.errors : null });
+        xsMcGqlSnippetV1 = s.length > 2200 ? (s.slice(0,2200) + "...<snip>...") : s;
+      } catch (e) {
+        xsMcGqlSnippetV1 = "<snippet_error>";
+      }
+      /* XS_MYCARDS_DEBUG_GQLDATA_SNIPPET_V1_END */
       const data = json && json.data ? json.data : null;
       const cu = data && data.currentUser ? data.currentUser : null;
       if (!cu) break;
@@ -5434,7 +5456,9 @@ try {
         fetchedAt: nowIso,
         count: all.length,
         pages: page,
-        tokenSourcePath: tok._path || null
+        tokenSourcePath: tok._path || null,
+            /* XS_MYCARDS_DEBUG_GQLDATA_SNIPPET_V1_META */
+            gqlDebug: ((xsMcDebugDataV1 === "1" || String(xsMcDebugDataV1).toLowerCase() === "true") ? { snippet: xsMcGqlSnippetV1, hasCurrentUser: xsMcGqlHasCurrentUserV1 } : null),
       },
       cards: all
     };
