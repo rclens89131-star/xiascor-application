@@ -49,7 +49,18 @@ async function ensureDeviceId() {
 // XS_MY_CARDS_TAB_V4_BEGIN
 export default function CardsScreen() {
   const [deviceId, setDeviceId] = useState("");
-  const [cards, setCards] = useState<MyCard[]>([]);
+  
+
+  // XS_FILTER_RARITIES_LOCAL_V1: on exclut les Common dans l'UI
+  const XS_ALLOWED_RARITIES_V1 = useMemo(() => new Set(["limited", "rare", "super_rare", "unique"]), []);
+  const xsPickRarityV1 = useCallback((c: any) => {
+    return String((c && (c.rarityTyped || c.rarity)) || "").toLowerCase().trim();
+  }, []);
+  const xsFilterAllowedRaritiesV1 = useCallback((items: any[]) => {
+    const arr = Array.isArray(items) ? items : [];
+    return arr.filter((c) => XS_ALLOWED_RARITIES_V1.has(xsPickRarityV1(c)));
+  }, [XS_ALLOWED_RARITIES_V1, xsPickRarityV1]);
+const [cards, setCards] = useState<MyCard[]>([]);
   const [meta, setMeta] = useState<any>(null);
 
   const [loading, setLoading] = useState(true);
@@ -344,6 +355,7 @@ export default function CardsScreen() {
   );
 }
 // XS_MY_CARDS_TAB_V4_END
+
 
 
 
