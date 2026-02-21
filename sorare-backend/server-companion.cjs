@@ -5405,6 +5405,38 @@ let xsMcGqlErrorsV1 = null;
       let json = null;
       try {
         json = await xsMcGraphQLV1(tok.access_token, Q, { first, after }, (typeof xsMcJwtAudEffectiveV1 !== "undefined" ? xsMcJwtAudEffectiveV1 : (tok.jwtAud || null)));
+      /* XS_MYCARDS_FIRSTPAGE_DUMP_V1_BEGIN */
+      try{
+        const dbg = String(req.query.debug || "").trim();
+        if((dbg === "1") || (dbg.toLowerCase() === "true")){
+          const fs = require("fs");
+          const p = require("path");
+          const dir = p.join(__dirname, "_logs");
+          if(!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive:true });
+          const cu0 = json && json.data ? json.data.currentUser : null;
+          const cards0 = cu0 && cu0.cards ? cu0.cards : null;
+          const nodes0 = (cards0 && Array.isArray(cards0.nodes)) ? cards0.nodes : null;
+          const payload = {
+            ts: Date.now(),
+            deviceId,
+            hasData: !!(json && json.data),
+            dataKeys: (json && json.data) ? Object.keys(json.data) : null,
+            errors: (json && json.errors && Array.isArray(json.errors)) ? json.errors.map(e=> e && e.message ? String(e.message) : null).filter(Boolean).slice(0,10) : null,
+            hasCurrentUser: !!cu0,
+            currentUserKeys: cu0 ? Object.keys(cu0) : null,
+            cardsKeys: cards0 ? Object.keys(cards0) : null,
+            nodesLen: (nodes0 ? nodes0.length : null),
+            sampleNode: (nodes0 && nodes0[0]) ? {
+              slug: nodes0[0].slug || null,
+              rarityTyped: nodes0[0].rarityTyped || null,
+              seasonYear: nodes0[0].seasonYear || null,
+              serialNumber: (typeof nodes0[0].serialNumber === "number") ? nodes0[0].serialNumber : null
+            } : null
+          };
+          fs.writeFileSync(p.join(dir, "mycards_gql_firstpage_" + Date.now() + ".json"), JSON.stringify(payload, null, 2), "utf8");
+        }
+      } catch(eDump){}
+      /* XS_MYCARDS_FIRSTPAGE_DUMP_V1_END */
       } catch (e) {
         const status = (e && e.status) ? Number(e.status) : null;
         const body = (e && e.body) ? String(e.body) : String(e && e.message ? e.message : e);
@@ -6766,6 +6798,7 @@ res.json({
 
 
 /* XS_JWT_FIX_REMOVE_SLASH_COMMENTS_V1 applied */
+
 
 
 
