@@ -25,3 +25,7 @@ sorare-backend/node_modules/
 .env
 .env.*
 # ============================
+
+# XS_IGNORE_LOCAL_BACKUPS_V1
+backup_app_app_*.zip
+
