@@ -1,7 +1,7 @@
 ﻿import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, Image, Pressable, SafeAreaView, Text, View, Linking } from "react-native";
-import { myCardsPage, myCardsStatus, myCardsSync, XS_MYCARDS_SYNC_TAG, deviceStatus, sorareDeviceLoginUrl } from "../../src/scoutApi";
+import { ActivityIndicator, FlatList, Image, Pressable, RefreshControl, SafeAreaView, Text, View } from "react-native";
+import { myCardsPage, myCardsStatus, myCardsSync } from "../../src/scoutApi";
 import { theme } from "../../src/theme";
 
 type MyCard = {
@@ -20,17 +20,7 @@ function uniqBySlug(items: MyCard[]) {
     if (!k) continue;
     if (!m.has(k)) m.set(k, c);
   }
-  
-
-// XS_FILTER_RARITIES_V1: on exclut les Common dans l'UI (on garde limited/rare/super_rare/unique)
-const XS_ALLOWED_RARITIES_V1 = new Set(["limited", "rare", "super_rare", "unique"]);
-function xsPickRarityV1(c: any){
-  const v = String((c && (c.rarityTyped || c.rarity)) || "").toLowerCase().trim();
-  return v;
-}
-function xsFilterAllowedRaritiesV1(items: any[]){
-  return (Array.isArray(items) ? items : []).filter((c) => XS_ALLOWED_RARITIES_V1.has(xsPickRarityV1(c)));
-}return Array.from(m.values());
+  return Array.from(m.values());
 }
 
 const XS_DEVICE_KEY = "xs_device_id_v1";
@@ -46,56 +36,33 @@ async function ensureDeviceId() {
   return generated;
 }
 
-// XS_MY_CARDS_TAB_V4_BEGIN
+function parseIsoMs(s?: string) {
+  const t = Date.parse(String(s || ""));
+  return Number.isFinite(t) ? t : 0;
+}
+
+// XS_MY_CARDS_TAB_V5_BEGIN
 export default function CardsScreen() {
   const [deviceId, setDeviceId] = useState("");
-  
-
-  // XS_FILTER_RARITIES_LOCAL_V1: on exclut les Common dans l'UI
-  const XS_ALLOWED_RARITIES_V1 = useMemo(() => new Set(["limited", "rare", "super_rare", "unique"]), []);
-  const xsPickRarityV1 = useCallback((c: any) => {
-    return String((c && (c.rarityTyped || c.rarity)) || "").toLowerCase().trim();
-  }, []);
-  const xsFilterAllowedRaritiesV1 = useCallback((items: any[]) => {
-    const arr = Array.isArray(items) ? items : [];
-    return arr.filter((c) => XS_ALLOWED_RARITIES_V1.has(xsPickRarityV1(c)));
-  }, [XS_ALLOWED_RARITIES_V1, xsPickRarityV1]);
-const [cards, setCards] = useState<MyCard[]>([]);
+  const [cards, setCards] = useState<MyCard[]>([]);
   const [meta, setMeta] = useState<any>(null);
 
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
-  // IMPORTANT: séparer les erreurs (sinon loadPage efface l'erreur de sync)
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [syncError, setSyncError] = useState<string | null>(null);
-  const [lastSync, setLastSync] = useState<string>("");
+  // Erreurs: visibles seulement si l'utilisateur a cliqué "Synchroniser"
+  const [userSyncError, setUserSyncError] = useState<string | null>(null);
 
   const [endCursor, setEndCursor] = useState<string | null>(null);
   const [hasNextPage, setHasNextPage] = useState(false);
-
   const endCursorRef = useRef<string | null>(null);
+  useEffect(() => { endCursorRef.current = endCursor; }, [endCursor]);
+
+  const xsAutoSyncInFlight = useRef(false);
+  const xsLastAutoSyncAt = useRef(0);
+
   useEffect(() => {
-    endCursorRef.current = endCursor;
-  }, [endCursor]);
-
-  const [statusSnap, setStatusSnap] = useState<any>(null);
-
-  
-  /* XS_MYCARDS_LINKFLOW_V1_BEGIN */
-  const [deviceLinked, setDeviceLinked] = useState<boolean | null>(null);
-
-  const refreshDeviceLink = useCallback(async (id: string) => {
-    try {
-      const st: any = await deviceStatus(id);
-      const linked = Boolean(st && (st.linked === true || st.linked === "true"));
-      setDeviceLinked(linked);
-    } catch {
-      setDeviceLinked(null);
-    }
-  }, []);
-  /* XS_MYCARDS_LINKFLOW_V1_END */useEffect(() => {
     let alive = true;
     (async () => {
       try {
@@ -107,101 +74,98 @@ const [cards, setCards] = useState<MyCard[]>([]);
         setDeviceId("");
       }
     })();
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, []);
 
   const refreshStatus = useCallback(async (id: string) => {
     try {
       const st = await myCardsStatus(id);
-      setStatusSnap(st || null);
       if (st && st.meta) setMeta(st.meta);
+      return st || null;
     } catch {
-      // ignore
+      return null;
     }
   }, []);
 
-  const loadPage = useCallback(
-    async (mode: "reset" | "more") => {
-      const id = String(deviceId || "").trim();
-      if (!id) {
-        setLoadError("deviceId introuvable (AsyncStorage).");
-        setLoading(false);
-        return;
-      }
-
-      if (mode === "reset") {
-        setLoading(true);
-        setLoadError(null); // on ne touche PAS syncError ici
-      } else {
-        setLoadingMore(true);
-      }
-
-      try {
-        const after = mode === "more" ? (endCursorRef.current ?? undefined) : undefined;
-        const res = await myCardsPage(id, { first: 20, after });
-
-        if (!res.ok) {
-          setLoadError(res.error || "Erreur de chargement");
-        } else {
-          setCards((prev) => uniqBySlug(xsFilterAllowedRaritiesV1(mode === "reset" ? res.cards : [...prev, ...res.cards])));
-          setEndCursor(res.pageInfo?.endCursor ?? null);
-          setHasNextPage(Boolean(res.pageInfo?.hasNextPage));
-          if (res.meta) setMeta(res.meta);
-        }
-      } catch (e: any) {
-        setLoadError(String(e?.message || e || "Erreur de chargement"));
-      }
-
-      if (mode === "reset") setLoading(false);
-      setLoadingMore(false);
-    },
-    [deviceId]
-  );
-
-  useEffect(() => {
+  const loadPage = useCallback(async (mode: "reset" | "more") => {
     const id = String(deviceId || "").trim();
     if (!id) {
       setLoading(false);
       return;
     }
-    loadPage("reset");
-    refreshStatus(id);
-    refreshDeviceLink(id);}, [deviceId, loadPage, refreshStatus]);
 
-  const onSync = useCallback(async () => {
-    const id = String(deviceId || "").trim();
-    if (!id) {
-      setSyncError("deviceId introuvable.");
-      return;
+    if (mode === "reset") {
+      setLoading(true);
+    } else {
+      setLoadingMore(true);
     }
-    // XS_MYCARDS_LINK_GUARD_V1: éviter 401 si device pas lié
-    if (deviceLinked === false) {
-      setSyncError("Compte Sorare non lié. Clique “Lier Sorare (PC)” puis réessaie.");
-      setLastSync("sync blocked (not linked)");
-      return;
-    }
-    setSyncing(true);
-    setSyncError(null);
-    setLastSync("");
 
     try {
-      const r: any = await myCardsSync(id, { first: 50, maxPages: 200, maxCards: 20000, sleepMs: 120 });
-      const cnt = (r && r.count != null) ? String(r.count) : "?";
-      const pages = (r && r.meta && r.meta.pages != null) ? String(r.meta.pages) : "?";
-      setLastSync(`sync ok • count=${cnt} • pages=${pages}`);
-      await refreshStatus(id);
-    refreshDeviceLink(id);} catch (e: any) {
-      setSyncError(String(e?.message || e || "Échec sync"));
-      setLastSync("sync failed");
-      setSyncing(false);
-      return; // IMPORTANT: ne pas call loadPage qui rend tout "silencieux"
+      const after = mode === "more" ? (endCursorRef.current ?? undefined) : undefined;
+      const res = await myCardsPage(id, { first: 20, after });
+
+      if (res.ok) {
+        setCards((prev) => uniqBySlug(mode === "reset" ? res.cards : [...prev, ...res.cards]));
+        setEndCursor(res.pageInfo?.endCursor ?? null);
+        setHasNextPage(Boolean(res.pageInfo?.hasNextPage));
+        if (res.meta) setMeta(res.meta);
+      }
+    } catch {
+      // silencieux (pas de debug visible)
     }
 
-    await loadPage("reset");
-    setSyncing(false);
+    if (mode === "reset") setLoading(false);
+    setLoadingMore(false);
+  }, [deviceId]);
+
+  // Sync: silent=true => pas de messages visibles
+  const runSync = useCallback(async (silent: boolean) => {
+    const id = String(deviceId || "").trim();
+    if (!id) return;
+
+    if (!silent) setUserSyncError(null);
+    setSyncing(true);
+
+    try {
+      await myCardsSync(id, { first: 50, maxPages: 6, sleepMs: 0 });
+      await refreshStatus(id);
+      await loadPage("reset");
+    } catch (e: any) {
+      if (!silent) setUserSyncError(String(e?.message || e || "Échec sync"));
+    } finally {
+      setSyncing(false);
+    }
   }, [deviceId, loadPage, refreshStatus]);
+
+  // Premier chargement + auto-sync "en arrière-plan" (tant que l'écran est ouvert)
+  useEffect(() => {
+    const id = String(deviceId || "").trim();
+    if (!id) { setLoading(false); return; }
+
+    (async () => {
+      await loadPage("reset");
+
+      const st = await refreshStatus(id);
+
+      // Heuristique auto-sync:
+      // - si pas de cache, ou cache trop vieux (> 6h), on sync en SILENCIEUX
+      // - anti-spam: au max 1 auto-sync toutes les 3 minutes
+      const now = Date.now();
+      const fetchedAtMs = parseIsoMs(st?.meta?.fetchedAt);
+      const stale = !fetchedAtMs || (now - fetchedAtMs) > (6 * 60 * 60 * 1000);
+      const throttled = (now - xsLastAutoSyncAt.current) < (3 * 60 * 1000);
+
+      if (!throttled && stale && !xsAutoSyncInFlight.current) {
+        xsAutoSyncInFlight.current = true;
+        xsLastAutoSyncAt.current = now;
+        try {
+          await runSync(true);
+        } finally {
+          xsAutoSyncInFlight.current = false;
+        }
+      }
+    })();
+  }, [deviceId, loadPage, refreshStatus, runSync]);
 
   const headerLabel = useMemo(() => {
     const count = meta?.count ?? cards.length;
@@ -209,32 +173,24 @@ const [cards, setCards] = useState<MyCard[]>([]);
     return fetched ? `${count} cartes • ${fetched}` : `${count} cartes`;
   }, [cards.length, meta]);
 
-  const debugLine = useMemo(() => {
-    const st = statusSnap || {};
-    const cached = typeof st.cached === "boolean" ? String(st.cached) : "-";
-    const cnt = (st.count != null) ? String(st.count) : "--";
-    const user = st?.meta?.userSlug ? String(st.meta.userSlug) : "--";
-    return `deviceId=${deviceId || "-"} • cached=${cached} • count=${cnt} • user=${user}`;
-  }, [statusSnap, deviceId]);
+  const onManualSync = useCallback(() => runSync(false), [runSync]);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
       <View style={{ padding: 16, gap: 10 }}>
         <Text style={{ color: theme.text, fontSize: 22, fontWeight: "900" }}>Mes cartes</Text>
 
-        <Text style={{ color: theme.muted, fontSize: 12 }} numberOfLines={2}>
-          {debugLine}</Text>
-        {/* XS_MYCARDS_UI_TAG_V1 */}
-        <Text style={{ color: theme.muted, fontSize: 12 }} numberOfLines={1}>
-          build={String(XS_MYCARDS_SYNC_TAG || "")}
-        </Text>
+        {/* UI produit: on garde seulement une info utile (compte + dernière synchro) */}
+        <Text style={{ color: theme.muted }}>{headerLabel}</Text>
 
-        {lastSync ? <Text style={{ color: theme.muted, fontSize: 12 }}>{lastSync}</Text> : null}
-        {syncError ? <Text style={{ color: theme.bad, fontWeight: "800" }}>Sync: {syncError}</Text> : null}
-        {loadError ? <Text style={{ color: theme.bad, fontWeight: "800" }}>Load: {loadError}</Text> : null}
+        {userSyncError ? (
+          <Text style={{ color: theme.bad, fontWeight: "800" }}>
+            Impossible de synchroniser. Réessaie.
+          </Text>
+        ) : null}
 
         <Pressable
-          onPress={onSync}
+          onPress={onManualSync}
           disabled={syncing}
           style={{
             alignSelf: "flex-start",
@@ -245,44 +201,16 @@ const [cards, setCards] = useState<MyCard[]>([]);
             borderWidth: 1,
             borderColor: "rgba(59,130,246,0.35)",
             opacity: syncing ? 0.7 : 1,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 8,
           }}
         >
+          {syncing ? <ActivityIndicator /> : null}
           <Text style={{ color: theme.text, fontWeight: "800" }}>
             {syncing ? "Synchronisation…" : "Synchroniser"}
           </Text>
         </Pressable>
-        {/* XS_MYCARDS_LINK_BUTTON_V2 */}
-        {deviceLinked === false && (
-          <Pressable
-            onPress={async () => {
-              try {
-                const id = String(deviceId || "").trim();
-                if (!id) return;
-                const url = sorareDeviceLoginUrl(id, { devLocal: true });
-                await Linking.openURL(url);
-              } catch {
-                // ignore
-              }
-            }}
-            style={{
-              alignSelf: "flex-start",
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-              borderRadius: 12,
-              backgroundColor: "rgba(245,158,11,0.16)",
-              borderWidth: 1,
-              borderColor: "rgba(245,158,11,0.35)",
-              marginTop: 6,
-            }}
-          >
-            <Text style={{ color: theme.text, fontWeight: "800" }}>
-              Lier Sorare (PC)
-            </Text>
-          </Pressable>
-        )}
-
-
-        <Text style={{ color: theme.muted }}>{headerLabel}</Text>
       </View>
 
       {loading ? (
@@ -297,6 +225,9 @@ const [cards, setCards] = useState<MyCard[]>([]);
           numColumns={2}
           contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 120 }}
           columnWrapperStyle={{ gap: 10 }}
+          refreshControl={
+            <RefreshControl refreshing={false} onRefresh={() => loadPage("reset")} />
+          }
           renderItem={({ item }) => (
             <View
               style={{
@@ -354,9 +285,4 @@ const [cards, setCards] = useState<MyCard[]>([]);
     </SafeAreaView>
   );
 }
-// XS_MY_CARDS_TAB_V4_END
-
-
-
-
-
+// XS_MY_CARDS_TAB_V5_END
