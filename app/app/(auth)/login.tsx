@@ -1,10 +1,10 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, Pressable, ActivityIndicator, Linking } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { theme } from "../../src/theme";
 
-const BASE_URL = process.env.EXPO_PUBLIC_BASE_URL ?? "http://127.0.0.1:3000";
+const BASE_URL = process.env.EXPO_PUBLIC_BASE_URL ?? "http://192.168.1.19:3000";
 const DEVICE_KEY = "xs_device_id_v2";
 
 function makeDeviceId() {

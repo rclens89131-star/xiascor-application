@@ -42,3 +42,5 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   }
   return data as T;
 }
+
+export const BASE_URL = XS_FORCED_LAN_BASEURL;
