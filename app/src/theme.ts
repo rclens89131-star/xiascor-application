@@ -3,15 +3,15 @@
 const base = Colors.dark ?? Colors;
 
 export const theme = {
-  bg: base.background ?? "#070A12",
-  panel: base.background ?? "#0B1220",
-  panel2: base.background ?? "#0F1B33",
+  bg: (base as any).background ?? "#070A12",
+  panel: (base as any).background ?? "#0B1220",
+  panel2: (base as any).background ?? "#0F1B33",
 
-  text: base.text ?? "#EAF0FF",
-  muted: base.icon ?? "rgba(234,240,255,0.65)",
+  text: (base as any).text ?? "#EAF0FF",
+  muted: (base as any).icon ?? "rgba(234,240,255,0.65)",
   stroke: "rgba(255,255,255,0.10)",
 
-  accent: base.tint ?? "#3B82F6",
+  accent: (base as any).tint ?? "#3B82F6",
   good: "#22C55E",
   warn: "#F59E0B",
   bad: "#EF4444",
@@ -28,6 +28,9 @@ export const rarityColor = (rarity: string) => {
     case "unique":
       return "#B44DFF";
     default:
-      return base.icon ?? "#9AA4B2";
+      return (base as any).icon ?? "#9AA4B2";
   }
 };
+
+
+

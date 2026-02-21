@@ -1,4 +1,4 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+﻿# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
 # dependencies
 node_modules/
@@ -49,3 +49,31 @@ app-example
 oauth_tokens.json
 *.pem
 *.key
+# local backups
+_backups/
+**/_backups/**
+*.bak
+*.bak_*
+
+
+# build artifacts
+companion-sorare-app.bundle
+
+
+# local backups
+_backups/
+# bundles
+*.bundle
+
+
+
+
+_session_logs/
+
+
+# XS_IGNORE_LOGS_V1
+_logs/
+
+
+_trash_sorare_backend_*/
+

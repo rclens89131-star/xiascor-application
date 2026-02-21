@@ -10,11 +10,22 @@ type Props = {
 };
 
 const CARD_AR = 320 / 448; // ≈ Sorare card ratio
+function xsFmtEur(value: unknown): string {
+  const n = typeof value === "number" ? value : null;
+  if (n == null || !Number.isFinite(n)) return "—";
+  return `${n.toFixed(2)}€`;
+}
 
+function xsFmtAsOf(value: unknown): string {
+  const iso = typeof value === "string" ? value : "";
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
 export function CardListItem({ card, selected, onPress, rightSlot }: Props) {
   const [imgOk, setImgOk] = useState(true);
   const border = selected ? "rgba(59,130,246,0.55)" : theme.stroke;
-
   const url = String(card?.pictureUrl || "").trim();
 
   return (
@@ -45,7 +56,7 @@ export function CardListItem({ card, selected, onPress, rightSlot }: Props) {
             <Image
               source={{ uri: url }}
               style={{ width: "100%", height: "100%" }}
-              resizeMode="contain"   // ✅ pas de crop, cadrage comme Sorare
+              resizeMode="contain" // ✅ pas de crop, cadrage comme Sorare
               onError={() => setImgOk(false)}
             />
           ) : (
@@ -90,7 +101,6 @@ export function CardListItem({ card, selected, onPress, rightSlot }: Props) {
 
           {rightSlot ? <View style={{ justifyContent: "center" }}>{rightSlot}</View> : null}
         </View>
-
         {selected ? (
           <Text style={{ color: theme.accent, fontWeight: "900", marginTop: 6 }}>Sélectionnée</Text>
         ) : null}

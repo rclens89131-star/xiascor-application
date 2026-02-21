@@ -1,551 +1,157 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  SafeAreaView,
-  Text,
-  TouchableOpacity,
-  View,
-  Image,
-  Modal,
-  Pressable,
-} from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { fetchScoutCards, type PageInfo as ScoutPageInfo, type ScoutOffer } from "../../src/scoutApi";
+﻿import React, { useCallback, useMemo, useState } from "react";
+import { ActivityIndicator, FlatList, Image, RefreshControl, SafeAreaView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useFocusEffect, useRouter } from "expo-router";
+import { apiFetch } from "../../src/api";
+import { scoutRecruter } from "../../src/scoutApi";
 
-type MarketOffer = {
-  id: string;
-  status?: string;
-  cardSlug?: string;
-  cardName?: string;
-  pictureUrl?: string;  // XS_MARKET_APP_IMG_V1
-  rarity?: string;
-  collection?: string;
-  eur?: number | null;
-  wei?: string | null;
-  price?: { currency: "EUR" | "WEI" | string; amount: any } | null;
-  priceText?: string;
+// XS_RECRUTER_TAB_V1_BEGIN
+type RecruterItem = {
+
+  slug: string;
+  displayName?: string | null;
+  team?: string | null;
+  position?: string | null;
+  pictureUrl?: string | null;
+  minEur?: number | null;
+  offersCount?: number | null;
+
+  // XS_RECRUTER_SHAPE_TYPES_V1
+  playerSlug?: string;
+  playerName?: string;
+  minPriceEur?: number;
+  activeClubName?: string;
+  activeClub?: { name?: string };
+  player?: {
+    slug?: string;
+    displayName?: string;
+  };
 };
 
-async function getStoredDeviceId(): Promise<string | null> {
-  const v = await AsyncStorage.getItem("deviceId");
-  return (v && v.trim() ? v.trim() : "dev_mkwlzdch_ux00v6v0qj"); // fallback debug
+function norm(v?: string | null) {
+  return String(v || "").trim().toLowerCase();
 }
 
-const getOfferKey = (offer: MarketOffer) => String(offer.id || offer.cardSlug || "");
-
-function mergeOffers(prev: MarketOffer[], next: MarketOffer[]) {
-  const map = new Map<string, MarketOffer>();
-  const put = (offer: MarketOffer) => {
-    const key = getOfferKey(offer);
-    if (!key) return;
-    map.set(key, offer);
-  };
-  prev.forEach(put);
-  next.forEach(put);
-  return Array.from(map.values());
-}
-
-function normalizeScoutOffer(offer: ScoutOffer): MarketOffer {
-  return {
-    id: offer.offerId || offer.slug,
-    cardSlug: offer.slug,
-    pictureUrl: offer.pictureUrl ?? undefined,
-    rarity: offer.rarity ?? undefined,
-    eur: offer.eur ?? null,
-  };
-}
-
-function formatPrice(o: MarketOffer) {
-  if (o?.priceText && o.priceText.trim()) return o.priceText;
-  if (typeof o?.eur === "number") return `€${o.eur.toFixed(2)}`;
-  if (o?.wei) return `WEI ${o.wei}`;
-  if (o?.price?.currency === "WEI" && o?.price?.amount) return `WEI ${String(o.price.amount)}`;
-  return "—";
-}
-
-function norm(s?: string) {
-  return String(s || "").trim().toLowerCase();
-}
-
-export default function MarketScreen() {
-  
-  
-  // XS_DEVICEID_STATE_V3_BEGIN
-  const [deviceId, setDeviceId] = useState<string>("");
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const v = await AsyncStorage.getItem("deviceId");
-        if (alive && v) setDeviceId(String(v));
-      } catch {}
-    })();
-    return () => { alive = false; };
-  }, []);
-  // XS_DEVICEID_STATE_V3_END
-// XS_MARKET_V3_STATE_V1_BEGIN
-  const [selected, setSelected] = useState<MarketOffer | null>(null);
-  const [modalOpen, setModalOpen] = useState(false);
-
-  const xsOpenOffer = (it: MarketOffer) => {
-    setSelected(it);
-    setModalOpen(true);
-  };
-  const xsCloseOffer = () => setModalOpen(false);
-  // XS_MARKET_V3_STATE_V1_END
-  const [offers, setOffers] = useState<MarketOffer[]>([]);
-  const [pageInfo, setPageInfo] = useState<ScoutPageInfo | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
+export default function RecruiterTabScreen() {
+  const router = useRouter();
+  const [items, setItems] = useState<RecruterItem[]>([]);
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [health, setHealth] = useState<"idle" | "ok" | "ko">("idle");
 
-  const [meta, setMeta] = useState<{ note?: string } | null>(null);
-
-  // UI settings
-  const [first, setFirst] = useState(50);
-  const [eurOnly, setEurOnly] = useState(true);
-  const [footballOnly, setFootballOnly] = useState(true);
-  const [rarity, setRarity] = useState<"all" | "limited" | "rare" | "super_rare" | "unique">("all");
-  const [sortAsc, setSortAsc] = useState(true);
-  const [showDebug, setShowDebug] = useState(false);
-
-  // debug
-  const [lastUrl, setLastUrl] = useState<string | null>(null);
-  const [lastDeviceId, setLastDeviceId] = useState<string | null>(null);
-
-  const stats = useMemo(() => {
-    const fetched = offers.length;
-    const eurCount = offers.filter(o => typeof o.eur === "number" && o.eur !== null).length;
-    return { fetched, eurCount };
-  }, [offers]);
-
-  const shown = useMemo(() => {
-    let arr = offers.slice();
-    if (footballOnly) {
-      arr = arr.filter(o => !o.collection || norm(o.collection) === "football");
-    }
-
-    if (eurOnly) {
-      arr = arr.filter(o => typeof o.eur === "number" && o.eur !== null);
-    }
-
-    if (rarity !== "all") {
-      arr = arr.filter(o => norm(o.rarity) === rarity);
-    }
-
-    // tri prix EUR (les null vont à la fin si eurOnly=false)
-    arr.sort((a, b) => {
-      const ae = typeof a.eur === "number" ? a.eur : Number.POSITIVE_INFINITY;
-      const be = typeof b.eur === "number" ? b.eur : Number.POSITIVE_INFINITY;
-      return sortAsc ? (ae - be) : (be - ae);
-    });
-
-    return arr;
-  }, [offers, eurOnly, footballOnly, rarity, sortAsc]);
-  // XS_MARKET_V3_PREFETCH_V1_BEGIN
-  useEffect(() => {
+  const load = useCallback(async (isRefresh = false) => {
     try {
-      const urls = (shown || [])
-        .map((o: any) => o?.pictureUrl)
-        .filter((u: any) => typeof u === "string" && u.startsWith("http"));
-      // évite d'exploser la RAM: on précharge juste les 12 premières
-      urls.slice(0, 12).forEach((u: string) => { Image.prefetch(u); });
-    } catch {}
-  }, [shown]);
-  // XS_MARKET_V3_PREFETCH_V1_END
+      if (isRefresh) setRefreshing(true);
+      else setLoading(true);
+      setError(null);
 
-  const loadOffers = async (mode: "reset" | "more" = "reset") => {
-    if (loading || loadingMore) return;
-    if (mode === "more" && !pageInfo?.hasNextPage) return;
-    try {
-      if (mode === "reset") {
-        setLoading(true);
-        setError(null);
-        setPageInfo(null);
+      const [dataRes, healthRes] = await Promise.allSettled([
+        scoutRecruter({ first: 120 }),
+        apiFetch<{ ok?: boolean }>("/health"),
+      ]);
+
+      if (dataRes.status === "fulfilled") {
+        const raw = (dataRes.value as any)?.items;
+        setItems(Array.isArray(raw) ? (raw as RecruterItem[]) : []);
       } else {
-        setLoadingMore(true);
+        throw dataRes.reason;
       }
 
-      const deviceId = await getStoredDeviceId();
-      if (!deviceId) throw new Error("deviceId introuvable. Connecte l'app (device login) puis réessaie.");
-
-      setLastDeviceId(deviceId);
-
-      const qs = new URLSearchParams();
-      qs.set("first", String(first));
-      if (eurOnly) qs.set("eurOnly", "1");
-      if (mode === "more" && pageInfo?.endCursor) qs.set("after", pageInfo.endCursor);
-      setLastUrl(`/scout/cards?${qs.toString()}`);
-
-      const data = await fetchScoutCards({
-        first,
-        after: mode === "more" ? pageInfo?.endCursor ?? null : null,
-        eurOnly,
-      });
-
-      const items = Array.isArray(data.items) ? data.items : [];
-      const normalized = items.map(normalizeScoutOffer);
-      setOffers((prev) => (mode === "reset" ? mergeOffers([], normalized) : mergeOffers(prev, normalized)));
-      setPageInfo(data.pageInfo ?? null);
-      setMeta({ note: data.note });
+      setHealth(healthRes.status === "fulfilled" && healthRes.value?.ok ? "ok" : "ko");
     } catch (e: any) {
-      setError(e?.message ?? String(e));
+      setError(e?.message || "Erreur réseau");
     } finally {
       setLoading(false);
-      setLoadingMore(false);
+      setRefreshing(false);
     }
-  };
+  }, []);
 
-  const Chip = ({
-    label,
-    active,
-    onPress,
-  }: {
-    label: string;
-    active: boolean;
-    onPress: () => void;
-  }) => (
-    <TouchableOpacity
-      onPress={onPress}
-      style={{
-        paddingVertical: 8,
-        paddingHorizontal: 10,
-        borderRadius: 999,
-        backgroundColor: active ? "#1f6feb" : "#222",
-        marginRight: 8,
-        marginTop: 8,
-      }}
-    >
-      <Text style={{ color: "white", fontWeight: "700", fontSize: 12 }}>{label}</Text>
-    </TouchableOpacity>
+  useFocusEffect(
+    useCallback(() => {
+      load(false);
+    }, [load]),
   );
 
-        const renderItem = ({ item }: { item: MarketOffer }) => {
-    const isSkeleton = typeof item?.id === "string" && item.id.startsWith("sk-");
+  const filtered = useMemo(() => {
+    const q = norm(query);
+    const base = q
+      ? items.filter((p) => [p.displayName, p.slug, p.team, p.position].some((x) => norm(x).includes(q)))
+      : items;
 
-    const rarityKey = String(item?.rarity || "").toLowerCase();
-    const rarityLabel = (rarityKey || "—").replace(/_/g, " ").toUpperCase();
-
-    const rarityStyle = (() => {
-      if (rarityKey === "unique") return { bg: "rgba(255, 215, 0, 0.16)", bd: "rgba(255, 215, 0, 0.35)" };
-      if (rarityKey === "super_rare") return { bg: "rgba(0, 200, 255, 0.14)", bd: "rgba(0, 200, 255, 0.32)" };
-      if (rarityKey === "rare") return { bg: "rgba(255, 80, 180, 0.14)", bd: "rgba(255, 80, 180, 0.30)" };
-      if (rarityKey === "limited") return { bg: "rgba(120, 255, 120, 0.12)", bd: "rgba(120, 255, 120, 0.26)" };
-      return { bg: "rgba(255,255,255,0.10)", bd: "rgba(255,255,255,0.18)" };
-    })();
-
-    if (isSkeleton) {
-      return (
-        <View style={{ flex: 1, margin: 6 }}>
-          <View
-            style={{
-              borderRadius: 18,
-              overflow: "hidden",
-              borderWidth: 1,
-              borderColor: "#1d1d1f",
-              backgroundColor: "#0b0b10",
-            }}
-          >
-            <View style={{ width: "100%", aspectRatio: 0.72, backgroundColor: "#14141a" }} />
-            <View style={{ padding: 12 }}>
-              <View style={{ height: 14, borderRadius: 8, backgroundColor: "#1b1b22", width: "88%" }} />
-              <View style={{ height: 12, borderRadius: 8, backgroundColor: "#1b1b22", width: "60%", marginTop: 10 }} />
-              <View style={{ height: 12, borderRadius: 8, backgroundColor: "#1b1b22", width: "40%", marginTop: 8 }} />
-            </View>
-          </View>
-        </View>
-      );
-    }
-
-    const priceLabel = formatPrice(item);
-
-    return (
-      <Pressable onPress={() => xsOpenOffer(item)} style={{ flex: 1, margin: 6 }}>
-        <View
-          style={{
-            borderRadius: 18,
-            overflow: "hidden",
-            borderWidth: 1,
-            borderColor: "#1d1d1f",
-            backgroundColor: "#0b0b10",
-          }}
-        >
-          {item.pictureUrl ? (
-            <Image
-              source={{ uri: item.pictureUrl }}
-              style={{ width: "100%", aspectRatio: 0.72 }}
-              resizeMode="cover"
-            />
-          ) : (
-            <View
-              style={{
-                width: "100%",
-                aspectRatio: 0.72,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: "#111",
-              }}
-            >
-              <Text style={{ color: "#666", fontWeight: "800" }}>Image indisponible</Text>
-            </View>
-          )}
-
-          {/* Gloss */}
-          <View
-            pointerEvents="none"
-            style={{
-              position: "absolute",
-              top: -50,
-              left: -70,
-              width: 190,
-              height: 140,
-              backgroundColor: "rgba(255,255,255,0.10)",
-              borderRadius: 40,
-              transform: [{ rotate: "-22deg" }],
-            }}
-          />
-
-          {/* Bottom overlay */}
-          <View style={{ position: "absolute", left: 0, right: 0, bottom: 0 }}>
-            <View style={{ padding: 12 }}>
-              <View
-                style={{
-                  position: "absolute",
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  top: 0,
-                  backgroundColor: "rgba(0,0,0,0.62)",
-                }}
-              />
-
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <View style={{ flex: 1, paddingRight: 8 }}>
-                  <Text numberOfLines={2} style={{ color: "white", fontSize: 14, fontWeight: "900" }}>
-                    {item.cardName || item.cardSlug || item.id}
-                  </Text>
-
-                  <View style={{ flexDirection: "row", alignItems: "center", marginTop: 8, gap: 8 }}>
-                    <View
-                      style={{
-                        paddingVertical: 4,
-                        paddingHorizontal: 10,
-                        borderRadius: 999,
-                        backgroundColor: rarityStyle.bg,
-                        borderWidth: 1,
-                        borderColor: rarityStyle.bd,
-                      }}
-                    >
-                      <Text style={{ color: "white", fontSize: 11, fontWeight: "900" }}>{rarityLabel}</Text>
-                    </View>
-                  </View>
-                </View>
-
-                <View style={{ alignItems: "flex-end" }}>
-                  <View
-                    style={{
-                      paddingVertical: 7,
-                      paddingHorizontal: 12,
-                      borderRadius: 999,
-                      backgroundColor: "rgba(255,255,255,0.14)",
-                      borderWidth: 1,
-                      borderColor: "rgba(255,255,255,0.20)",
-                    }}
-                  >
-                    <Text style={{ color: "white", fontWeight: "900", fontSize: 13 }}>{priceLabel}</Text>
-                  </View>
-                </View>
-              </View>
-            </View>
-
-            {showDebug && item.cardSlug ? (
-              <View style={{ paddingHorizontal: 12, paddingBottom: 10 }}>
-                <Text style={{ color: "rgba(255,255,255,0.55)", fontSize: 11 }}>{item.cardSlug}</Text>
-              </View>
-            ) : null}
-          </View>
-        </View>
-      </Pressable>
-    );
-  };
-  // XS_MARKET_GRID_V2
-  // XS_MARKET_V3_V1
-  // XS_MARKET_CARD_UI_V1
+    return [...base].sort((a, b) => (a.minEur ?? Number.POSITIVE_INFINITY) - (b.minEur ?? Number.POSITIVE_INFINITY));
+  }, [items, query]);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#050509" }}>
-      <View style={{ padding: 12 }}>
-        <Text style={{ fontSize: 20, fontWeight: "800", color: "white" }}>Marché</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#0f1115" }}>
+      <View style={{ padding: 12, gap: 10 }}>
+        <Text style={{ color: "white", fontSize: 24, fontWeight: "800" }}>Recruter</Text>
+        <Text style={{ color: "#9ba1a6" }}>Marché public · santé API: {health === "ok" ? "OK" : health === "ko" ? "KO" : "…"}</Text>
 
-        {/* XS_FIX_HOOKS_GATING_UI_V1_BEGIN */}
-        {(!deviceId || !String(deviceId).trim()) ? (
-          <View style={{ marginTop: 10, padding: 12, borderRadius: 14, backgroundColor: "#111", borderWidth: 1, borderColor: "#222" }}>
-            <Text style={{ color: "white", fontWeight: "900" }}>Compte non lié</Text>
-            <Text style={{ marginTop: 6, color: "#bbb" }}>
-              Connecte ton compte Sorare (deviceId) puis reviens ici.
-            </Text>
-          </View>
-        ) : null}
-        {/* XS_FIX_HOOKS_GATING_UI_V1_END */}
-
-        <TouchableOpacity
-          onPress={() => loadOffers("reset")}
-          disabled={loading}
-          style={{
-            marginTop: 12,
-            paddingVertical: 12,
-            paddingHorizontal: 14,
-            borderRadius: 10,
-            backgroundColor: loading ? "#333" : "#1f6feb",
-          }}
-        >
-          <Text style={{ color: "white", fontWeight: "800" }}>
-            {loading ? "Chargement..." : "Charger les offres"}
-          </Text>
-        </TouchableOpacity>
-
-        <Text style={{ marginTop: 10, color: "#bbb" }}>
-          affichées: {shown.length} • EUR: {stats.eurCount}/{stats.fetched} • next={pageInfo?.hasNextPage ? "oui" : "non"}
-        </Text>
-
-        <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 6 }}>
-          <Chip label={sortAsc ? "Tri: prix ↑" : "Tri: prix ↓"} active={true} onPress={() => setSortAsc(v => !v)} />
-          <Chip label={footballOnly ? "FOOTBALL: ON" : "FOOTBALL: OFF"} active={footballOnly} onPress={() => setFootballOnly(v => !v)} />
-          <Chip label={eurOnly ? "EUR: ON" : "EUR: OFF"} active={eurOnly} onPress={() => setEurOnly(v => !v)} />
-          <Chip label={showDebug ? "Debug: ON" : "Debug: OFF"} active={showDebug} onPress={() => setShowDebug(v => !v)} />
-        </View>
-
-        <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 2 }}>
-          <Chip label="Rareté: ALL" active={rarity === "all"} onPress={() => setRarity("all")} />
-          <Chip label="LIMITED" active={rarity === "limited"} onPress={() => setRarity("limited")} />
-          <Chip label="RARE" active={rarity === "rare"} onPress={() => setRarity("rare")} />
-          <Chip label="SUPER RARE" active={rarity === "super_rare"} onPress={() => setRarity("super_rare")} />
-          <Chip label="UNIQUE" active={rarity === "unique"} onPress={() => setRarity("unique")} />
-        </View>
-
-        {showDebug ? (
-          <>
-            {lastDeviceId ? <Text style={{ marginTop: 6, color: "#777" }}>deviceId: {lastDeviceId}</Text> : null}
-            {lastUrl ? <Text style={{ marginTop: 6, color: "#777" }}>url: {lastUrl}</Text> : null}
-            {meta?.note ? <Text style={{ marginTop: 6, color: "#777" }}>note: {meta.note}</Text> : null}
-          </>
-        ) : null}
-
-        {error ? (
-          <Text style={{ marginTop: 10, color: "#ff6b6b" }}>Erreur: {error}</Text>
-        ) : null}
+        <TextInput
+          placeholder="Rechercher joueur, club, position"
+          placeholderTextColor="#70757a"
+          value={query}
+          onChangeText={setQuery}
+          style={{ backgroundColor: "#1a1d24", color: "#fff", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 }}
+        />
       </View>
 
       {loading ? (
-        <View style={{ paddingTop: 20 }}>
-          <ActivityIndicator />
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <ActivityIndicator color="#58a6ff" />
         </View>
-      ) : null}
-
-      <FlatList
-        numColumns={2}
-        columnWrapperStyle={{ gap: 0 }}
-        data={(loading && shown.length === 0) ? Array.from({ length: 6 }, (_, i) => ({ id: "sk-" + i } as any)) : shown}
-        keyExtractor={(it) => getOfferKey(it)}
-        renderItem={renderItem}
-        contentContainerStyle={{ paddingBottom: 30 }}
-        refreshing={loading}
-        onRefresh={() => loadOffers("reset")}
-        onEndReached={() => loadOffers("more")}
-        onEndReachedThreshold={0.6}
-        ListFooterComponent={
-          loadingMore ? (
-            <View style={{ paddingVertical: 16 }}>
-              <ActivityIndicator />
-            </View>
-          ) : (
-            <View style={{ height: 16 }} />
-          )
-        }
-      />
-          {/* XS_MARKET_V3_MODAL_V1_BEGIN */}
-      <Modal visible={modalOpen} animationType="slide" transparent={true} onRequestClose={xsCloseOffer}>
-        <Pressable
-          onPress={xsCloseOffer}
-          style={{
-            flex: 1,
-            backgroundColor: "rgba(0,0,0,0.72)",
-            padding: 14,
-            justifyContent: "flex-end",
-          }}
-        >
-          <Pressable
-            onPress={() => {}}
-            style={{
-              borderRadius: 22,
-              overflow: "hidden",
-              borderWidth: 1,
-              borderColor: "#1d1d1f",
-              backgroundColor: "#0b0b10",
-            }}
-          >
-            {selected?.pictureUrl ? (
+      ) : error ? (
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <Text style={{ color: "#ff7b72", textAlign: "center", marginBottom: 8 }}>{error}</Text>
+          <TouchableOpacity onPress={() => load(false)} style={{ backgroundColor: "#1f6feb", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }}>
+            <Text style={{ color: "white", fontWeight: "700" }}>Réessayer</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={(item) => item.slug}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor="#58a6ff" />}
+          contentContainerStyle={{ paddingBottom: 30 }}
+          ListEmptyComponent={<Text style={{ color: "#9ba1a6", textAlign: "center", marginTop: 30 }}>Aucun joueur trouvé.</Text>}
+          renderItem={({ item }) => {
+            // XS_RECRUTER_SHAPE_COMPAT_V1_BEGIN
+            const xsSlug = String((item?.playerSlug ?? item?.slug ?? item?.player?.slug ?? "") || "").trim();
+            const xsName = String((item?.playerName ?? item?.displayName ?? item?.player?.displayName ?? "—") || "—");
+            const xsMin = (typeof item?.minPriceEur === "number")
+              ? item.minPriceEur
+              : ((typeof item?.minEur === "number") ? item.minEur : null);
+            const xsTeam = String((item?.team ?? item?.activeClubName ?? item?.activeClub?.name ?? "") || "").trim();
+            // XS_RECRUTER_SHAPE_COMPAT_V1_END
+            return (
+            <TouchableOpacity
+              onPress={() => { const s = String(xsSlug || (item as any)?.slug || "").trim(); if (!s) return; router.push({ pathname: "/player/[slug]", params: { slug: s } }); }}
+              style={{ marginHorizontal: 12, marginBottom: 10, backgroundColor: "#161b22", borderRadius: 12, padding: 10, flexDirection: "row", gap: 10 }}
+            >
               <Image
-                source={{ uri: selected.pictureUrl }}
-                style={{ width: "100%", aspectRatio: 0.72 }}
-                resizeMode="cover"
+                source={{ uri: item.pictureUrl || "https://via.placeholder.com/120x160.png?text=Card" }}
+                style={{ width: 62, height: 82, borderRadius: 8, backgroundColor: "#0d1117" }}
               />
-            ) : (
-              <View style={{ width: "100%", aspectRatio: 0.72, alignItems: "center", justifyContent: "center", backgroundColor: "#111" }}>
-                <Text style={{ color: "#666", fontWeight: "900" }}>Image indisponible</Text>
-              </View>
-            )}
-
-            <View style={{ padding: 14 }}>
-              <Text style={{ color: "white", fontWeight: "900", fontSize: 18 }}>
-                {selected?.cardName || selected?.cardSlug || selected?.id || "—"}
-              </Text>
-
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
-                <Text style={{ color: "rgba(255,255,255,0.70)", fontWeight: "800" }}>
-                  Rareté: {String(selected?.rarity || "—").replace(/_/g," ").toUpperCase()}
+              <View style={{ flex: 1, justifyContent: "center", gap: 4 }}>
+                <Text style={{ color: "#fff", fontWeight: "700" }} numberOfLines={1}>{xsName || xsSlug || "—"}</Text>
+                <Text style={{ color: "#9ba1a6" }} numberOfLines={1}>{(xsTeam || "Club inconnu")} · {(item.position || "N/A")}</Text>
+                <Text style={{ color: "#58a6ff", fontWeight: "800" }}>
+                  Prix min {typeof xsMin === "number" ? `€${xsMin.toFixed(2)}` : "—"}
                 </Text>
-
-                <View
-                  style={{
-                    paddingVertical: 8,
-                    paddingHorizontal: 14,
-                    borderRadius: 999,
-                    backgroundColor: "rgba(255,255,255,0.14)",
-                    borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.20)",
-                  }}
-                >
-                  <Text style={{ color: "white", fontWeight: "900", fontSize: 14 }}>{selected ? formatPrice(selected) : "—"}</Text>
-                </View>
+                <Text style={{ color: "#8b949e" }}>{item.offersCount || 0} offre(s)</Text>
               </View>
-
-              {selected?.cardSlug ? (
-                <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.50)", fontSize: 12 }}>
-                  {selected.cardSlug}
-                </Text>
-              ) : null}
-
-              <Pressable
-                onPress={xsCloseOffer}
-                style={{
-                  marginTop: 14,
-                  paddingVertical: 12,
-                  borderRadius: 14,
-                  backgroundColor: "#1f6feb",
-                  alignItems: "center",
-                }}
-              >
-                <Text style={{ color: "white", fontWeight: "900" }}>Fermer</Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
-      {/* XS_MARKET_V3_MODAL_V1_END */}
-</SafeAreaView>
+            </TouchableOpacity>
+          );
+        }}
+        />
+      )}
+    </SafeAreaView>
   );
 }
+// XS_RECRUTER_TAB_V1_END
+
+
+
+
 

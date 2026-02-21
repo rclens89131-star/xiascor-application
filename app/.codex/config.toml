@@ -1,0 +1,4 @@
+# XS_CODEX_PROJECT_CONFIG_V1
+project_root_markers = []
+sandbox_mode = "workspace-write"
+approval_policy = "on-request"

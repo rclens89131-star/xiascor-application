@@ -1,4 +1,7 @@
 ﻿import { create } from "zustand";
+/* XS_STORE_PERSIST_V1 */
+import { persist, createJSONStorage } from "zustand/middleware";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { Lineup, SorareCard, Tag } from "../types";
 
 type CopilotAction =
@@ -31,9 +34,7 @@ type State = {
   pushCopilot: (m: State["copilotMessages"][number]) => void;
 };
 
-const getCardKey = (c: SorareCard) => String(c.slug || c.id);
-
-export const useAppStore = create<State>((set, get) => ({
+export const useAppStore = create<State>()(persist((set, get) => ({
   identifier: "darkflow",
   setIdentifier: (v) => set({ identifier: v }),
 
@@ -43,9 +44,8 @@ export const useAppStore = create<State>((set, get) => ({
   selected: [],
   toggleSelected: (c) => {
     const s = get().selected;
-    const key = getCardKey(c);
-    const exists = s.some((x) => getCardKey(x) === key);
-    if (exists) return set({ selected: s.filter((x) => getCardKey(x) !== key) });
+    const exists = s.some((x) => x.slug === c.slug);
+    if (exists) return set({ selected: s.filter((x) => x.slug !== c.slug) });
     if (s.length >= 5) return;
     set({ selected: [...s, c] });
   },
@@ -76,4 +76,15 @@ export const useAppStore = create<State>((set, get) => ({
     },
   ],
   pushCopilot: (m) => set({ copilotMessages: [...get().copilotMessages, m] }),
+}), {
+  name: "xs_app_store_v1",
+  storage: createJSONStorage(() => AsyncStorage),
+  partialize: (s) => ({
+    identifier: s.identifier,
+    gallery: s.gallery,
+    tagsBySlug: s.tagsBySlug,
+    watchlist: s.watchlist,
+    selected: s.selected,
+    copilotMessages: s.copilotMessages,
+  }),
 }));

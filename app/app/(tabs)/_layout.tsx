@@ -1,4 +1,4 @@
-﻿import { Tabs } from "expo-router";
+import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { theme } from "../../src/theme";
 
@@ -43,7 +43,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="market"
         options={{
-          title: "Scout-Marché",
+          title: "Recruter",
           tabBarIcon: ({ color, size }) => <Ionicons name="search" color={color} size={size} />,
         }}
       />
@@ -61,7 +61,11 @@ export default function TabsLayout() {
           href: null,
         }}
       />
-    </Tabs>
+</Tabs>
   );
 }
+
+
+
+
 
