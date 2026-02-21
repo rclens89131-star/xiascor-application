@@ -5956,11 +5956,17 @@ app.get("/auth/jwt/logout", async (req,res)=>{
   if(!xsJwtOnly) return;
 
   function xsOauthDisabled(res){
-    return res.status(410).json({
-      ok:false,
-      error:"oauth_disabled",
-      hint:"JWT only. Use POST /auth/jwt/login then GET /me-jwt?deviceId=..."
-    });
+    // XS_OAUTH_DISABLED_RESTORE_V2 — safe blocker (syntax-proof)
+    try {
+      return res.status(403).json({
+        ok: false,
+        error: 'oauth_disabled',
+        hint: 'JWT only. Use POST /auth/jwt/login then GET /me-jwt?deviceId=...'
+      });
+    } catch (e) {
+      try { return res.status(403).send('oauth_disabled'); } catch (_) {}
+      return;
+    }
   }
 
   app.get("/auth/sorare-device/login", (req,res)=> xsOauthDisabled(res));
