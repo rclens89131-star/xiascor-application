@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { SafeAreaView, Text, View, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -61,7 +61,15 @@ export default function HomeScreen() {
         >
           <Ionicons name="notifications-outline" size={20} color={theme.text} />
         </Pressable>
-      </View>
+      {/* XS_BUILD_WATERMARK_V1_BEGIN */}
+<View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
+  <Text style={{ color: theme.muted, fontSize: 11 }}>
+    BUILD: 641b515 • {new Date().toISOString()}
+  </Text>
+</View>
+{/* XS_BUILD_WATERMARK_V1_END */}
+
+</View>
 
       <View style={{ paddingHorizontal: 16, gap: 12 }}>
         <View style={{ backgroundColor: theme.panel, borderRadius: 16, padding: 14, borderWidth: 1, borderColor: theme.stroke }}>
