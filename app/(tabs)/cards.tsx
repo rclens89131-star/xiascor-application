@@ -187,7 +187,7 @@ const [cards, setCards] = useState<MyCard[]>([]);
     setLastSync("");
 
     try {
-      const r: any = await myCardsSync(id, { first: 50, maxPages: 2, sleepMs: 0 });
+      const r: any = await myCardsSync(id, { first: 50, maxPages: 200, maxCards: 20000, sleepMs: 120 });
       const cnt = (r && r.count != null) ? String(r.count) : "?";
       const pages = (r && r.meta && r.meta.pages != null) ? String(r.meta.pages) : "?";
       setLastSync(`sync ok • count=${cnt} • pages=${pages}`);
@@ -355,6 +355,7 @@ const [cards, setCards] = useState<MyCard[]>([]);
   );
 }
 // XS_MY_CARDS_TAB_V4_END
+
 
 
 
