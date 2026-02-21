@@ -1,83 +1,121 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { View, Text, Pressable, ActivityIndicator, Linking } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { router } from "expo-router";
-import { theme } from "../../src/theme";
+import { useRouter } from "expo-router";
+import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
+import { BASE_URL } from "../../src/api";
 
-const BASE_URL = process.env.EXPO_PUBLIC_BASE_URL ?? "http://192.168.1.19:3000";
-const DEVICE_KEY = "xs_device_id_v2";
+/* XS_LOGIN_JWT_ONLY_V2_BEGIN
+   Flow:
+   - deviceId from AsyncStorage (or generate)
+   - POST /auth/jwt/login { email, password, deviceId }
+   - GET  /me-jwt?deviceId=...
+   - on success: router.replace("/(tabs)")
+XS_LOGIN_JWT_ONLY_V2_END */
 
-function makeDeviceId() {
-  return "dev_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2);
+const theme = {
+  bg: "#0b0c0f",
+  text: "#f3f5f7",
+  muted: "#9aa4b2",
+  panel: "#12141a",
+  stroke: "#232734",
+  danger: "#ff5a5a",
+};
+
+type MeJwtResponse = {
+  ok?: boolean;
+  linked?: boolean;
+  user?: { slug?: string; nickname?: string };
+  error?: string;
+  hint?: string;
+};
+
+async function getOrCreateDeviceId(): Promise<string> {
+  const key = "xs_device_id_v1";
+  const existing = await AsyncStorage.getItem(key);
+  if (existing) return existing;
+  const id = "dev_" + Date.now().toString(10) + "_" + Math.random().toString(36).slice(2, 10);
+  await AsyncStorage.setItem(key, id);
+  return id;
 }
 
 export default function LoginScreen() {
-  const [deviceId, setDeviceId] = useState<string>("");
-  const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<{ linked: boolean; userSlug?: string; nickname?: string } | null>(null);
-  const [err, setErr] = useState<string>("");
+  const router = useRouter();
 
-  const loginUrl = useMemo(() => {
-    if (!deviceId) return "";
-    return BASE_URL + "/auth/sorare-device/login?deviceId=" + encodeURIComponent(deviceId);
-  }, [deviceId]);
+  const [deviceId, setDeviceId] = useState<string>("");
+  const [email, setEmail] = useState<string>("");
+  const [password, setPassword] = useState<string>("");
+
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string>("");
+  const [status, setStatus] = useState<MeJwtResponse | null>(null);
+
+  const canSubmit = useMemo(() => !!deviceId && !!email.trim() && !!password, [deviceId, email, password]);
 
   useEffect(() => {
+    let alive = true;
     (async () => {
       try {
-        const existing = await AsyncStorage.getItem(DEVICE_KEY);
-        if (existing) { setDeviceId(existing); return; }
-        const id = makeDeviceId();
-        await AsyncStorage.setItem(DEVICE_KEY, id);
+        const id = await getOrCreateDeviceId();
+        if (!alive) return;
         setDeviceId(id);
+        // try silent status
+        await refreshMe(id);
       } catch (e: any) {
+        if (!alive) return;
         setErr(String(e?.message || e));
       }
     })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    let t: any = null;
-    let alive = true;
-
-    async function poll() {
-      if (!deviceId) return;
-      try {
-        const r = await fetch(BASE_URL + "/auth/device-status?deviceId=" + encodeURIComponent(deviceId), {
-          headers: { accept: "application/json" },
-        });
-        const j = await r.json().catch(() => ({}));
-        if (!alive) return;
-        setStatus(j);
-
-        if (j && j.linked) {
-          await AsyncStorage.setItem("xs_linked_v1", "1");
-          router.replace("/(tabs)");
-        }
-      } catch (e: any) {
-        if (!alive) return;
-        setErr(String(e?.message || e));
+  async function refreshMe(id: string) {
+    try {
+      const r = await fetch(BASE_URL + "/me-jwt?deviceId=" + encodeURIComponent(id), { headers: { accept: "application/json" } });
+      const j = (await r.json().catch(() => ({}))) as MeJwtResponse;
+      setStatus(j);
+      if (j && (j.ok === true || j.linked === true)) {
+        await AsyncStorage.setItem("xs_linked_v1", "1");
+        router.replace("/(tabs)");
       }
+    } catch (e: any) {
+      setStatus({ ok: false, error: String(e?.message || e) });
     }
-
-    t = setInterval(poll, 1500);
-    poll();
-
-    return () => { alive = false; if (t) clearInterval(t); };
-  }, [deviceId]);
+  }
 
   async function onLogin() {
     setErr("");
-    if (!loginUrl) return;
+    if (!canSubmit) return;
     setLoading(true);
     try {
-      await Linking.openURL(loginUrl);
+      const r = await fetch(BASE_URL + "/auth/jwt/login", {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ email: email.trim(), password, deviceId }),
+      });
+      const j = await r.json().catch(() => ({} as any));
+      if (!r.ok || (j && j.ok === false)) {
+        const msg = (j && (j.error || j.message || j.hint)) || ("HTTP " + r.status);
+        setErr(String(msg));
+        return;
+      }
+      await refreshMe(deviceId);
     } catch (e: any) {
       setErr(String(e?.message || e));
     } finally {
       setLoading(false);
     }
   }
+
+  const statusText = useMemo(() => {
+    if (!status) return "…";
+    if (status.ok === true || status.linked === true) {
+      const nick = status.user?.nickname || status.user?.slug || "ok";
+      return "✅ Connecté (" + nick + ")";
+    }
+    if (status.error) return "⏳ Non connecté";
+    return "⏳ Non connecté";
+  }, [status]);
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, padding: 18, justifyContent: "center" }}>
@@ -86,21 +124,32 @@ export default function LoginScreen() {
         Connecte-toi pour afficher tes cartes et utiliser le marché avec ton compte.
       </Text>
 
-      <View style={{ padding: 12, borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, marginBottom: 14 }}>
-        <Text style={{ color: theme.text, fontWeight: "800" }}>DeviceId</Text>
-        <Text selectable style={{ color: theme.muted }}>{deviceId || "..."}</Text>
+      <View style={{ gap: 10 }}>
+        <TextInput
+          value={email}
+          onChangeText={setEmail}
+          autoCapitalize="none"
+          keyboardType="email-address"
+          placeholder="Email Sorare"
+          placeholderTextColor={theme.muted}
+          style={{ color: theme.text, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14 }}
+        />
+        <TextInput
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          placeholder="Mot de passe"
+          placeholderTextColor={theme.muted}
+          style={{ color: theme.text, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14 }}
+        />
       </View>
+
+      <View style={{ height: 14 }} />
 
       <Pressable
         onPress={onLogin}
-        disabled={!deviceId || loading}
-        style={{
-          paddingVertical: 14,
-          borderRadius: 16,
-          alignItems: "center",
-          backgroundColor: theme.text,
-          opacity: (!deviceId || loading) ? 0.6 : 1,
-        }}
+        disabled={!canSubmit || loading}
+        style={{ paddingVertical: 14, borderRadius: 16, alignItems: "center", backgroundColor: theme.text, opacity: (!canSubmit || loading) ? 0.6 : 1 }}
       >
         {loading ? <ActivityIndicator /> : <Text style={{ color: theme.bg, fontWeight: "900" }}>Se connecter à Sorare</Text>}
       </Pressable>
@@ -109,23 +158,11 @@ export default function LoginScreen() {
 
       <View style={{ padding: 12, borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke }}>
         <Text style={{ color: theme.text, fontWeight: "800" }}>Statut</Text>
-        <Text style={{ color: theme.muted, marginTop: 6 }}>
-          {status ? (status.linked ? ("✅ Connecté (" + (status.nickname || status.userSlug || "ok") + ")") : "⏳ En attente d'autorisation") : "…"}
-        </Text>
+        <Text style={{ color: theme.muted, marginTop: 6 }}>⏳ {statusText}</Text>
+        <Text style={{ color: theme.muted, marginTop: 6, fontSize: 12 }}>Backend: {BASE_URL}</Text>
       </View>
 
-      {!!err && (
-        <Text style={{ color: "#ff5a5a", marginTop: 12 }}>
-          Erreur: {err}
-        </Text>
-      )}
-
-      <Text style={{ color: theme.muted, marginTop: 14, fontSize: 12 }}>
-        Backend: {BASE_URL}
-      </Text>
+      {!!err && <Text style={{ color: theme.danger, marginTop: 12 }}>Erreur: {err}</Text>}
     </View>
   );
 }
-
-
-
