@@ -5173,34 +5173,32 @@ try {
     return null;
   }
 
-  async function xsMcGraphQLV1(accessToken, query, variables, jwtAud) {
-    const url = "https://api.sorare.com/graphql";
+  async function xsMcGraphQLV1(accessToken, query, variables, jwtAud){
+    // XS_MYCARDS_GQL_JWT_HEADERS_V1 — stable GraphQL call for my-cards sync
+    const t = (accessToken || '').toString().trim();
+    if(!t) { const e = new Error('missing_token'); e.status = 401; e.body = 'missing_token'; throw e; }
+    const aud = (jwtAud || process.env.SORARE_JWT_AUD || 'sorare:com').toString().trim();
     const body = JSON.stringify({ query, variables: variables || {} });
-
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "authorization": `Bearer ${accessToken}`,
-      /* XS_MYCARDS_GQL_JWT_AUD_V1_BEGIN */
-      ...(jwtAud ? { "JWT-AUD": String(jwtAud) } : {}),
-      /* XS_MYCARDS_GQL_JWT_AUD_V1_END */
-        "user-agent": "companion-sorare-backend/1.0"
-      },
-      body
-    });
-
-    const text = await resp.text();
-    let json = null;
-    try { json = JSON.parse(text); } catch(e) { json = null; }
-
-    if (!resp.ok) {
-      const err = new Error(`GraphQL HTTP ${resp.status}`);
-      err.status = resp.status;
+    const headers = {
+      'content-type': 'application/json',
+      'authorization': 'Bearer ' + t,
+      'JWT-AUD': aud
+    };
+    const r = await fetch('https://api.sorare.com/graphql', { method:'POST', headers, body });
+    const text = await r.text().catch(()=> '');
+    if(!r.ok){
+      const e = new Error('gql_http_' + r.status);
+      e.status = r.status;
+      e.body = text;
+      throw e;
+    }
+    try { return text ? JSON.parse(text) : {}; }
+    catch(e){
+      const err = new Error('gql_json_parse_failed');
+      err.status = 502;
       err.body = text;
       throw err;
     }
-    return json;
   }
 
   // ---- Normalisation minimaliste (on réutilise tes champs existants) ----
@@ -5358,7 +5356,7 @@ try {
           nickname
           cards(first: $first, after: $after) {
             /* XS_MYCARDS_QUERY_ANYCARD_FRAGMENT_V1_BEGIN */
- {
+ nodes {
               ... on Card {
                 slug
                 pictureUrl
@@ -6749,6 +6747,8 @@ res.json({
 
 
 /* XS_JWT_FIX_REMOVE_SLASH_COMMENTS_V1 applied */
+
+
 
 
 
