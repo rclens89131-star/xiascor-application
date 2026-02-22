@@ -1,4 +1,5 @@
-﻿/* XS_FIX_TREND_DUP_KEYS_V1 */
+﻿/* XS_TILE_ROW1_STRICT_NO_OVERLAP_V1 */
+/* XS_FIX_TREND_DUP_KEYS_V1 */
 /* XS_TILE_TREND_PADRIGHT_V1 */
 /* XS_TILE_ROW3_STRICT_LAYOUT_V1 */
 /* XS_FIX_DOUBLE_COMMA_V1 */
@@ -213,6 +214,7 @@ const styles = StyleSheet.create({
   },
 
   trend: {
+    flexShrink: 0,
     alignItems: "center",
     position: "relative",
     flexDirection: "row",
@@ -301,6 +303,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
 });
+
 
 
 
