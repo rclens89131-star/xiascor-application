@@ -1,4 +1,4 @@
-/* XS_CARDS_CENTER_ITEMWIDTH_V1 */
+﻿/* XS_CARDS_CENTER_ITEMWIDTH_V1 */
 /* XS_CARDS_CENTER_2COL_V2 */
 /* XS_FIX_L5_FALLBACK_V1 */
 /* XS_CARDS_CENTER_2COL_V1 */
@@ -322,9 +322,6 @@ const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
         </View>
       ) : (
         <FlatList
-        contentContainerStyle={{ paddingHorizontal: XS_GRID_PADDING, paddingBottom: 24 }}
-        columnWrapperStyle={{ gap: XS_GRID_GAP }}
-        columnWrapperStyle={{ justifyContent: "center", gap: 12 }} key="grid2"
           data={items}
           keyExtractor={(item) => cardKey(item)}
           numColumns={2}
@@ -387,6 +384,7 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 

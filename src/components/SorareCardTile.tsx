@@ -1,8 +1,3 @@
-/* XS_TILE_L5_VISUAL_V1
-   Objectif:
-   - le mini-graph ne doit PAS ressembler à une barre réseau
-   - afficher clairement 'L5' + 5 barres (comme Sorare)
-*/
 /* XS_TILE_TREND_LAYOUT_V1 */
 /* XS_TILE_ROW1_STYLES_BRACESCAN_V2 */
 /* XS_TILE_ROW1_STRICT_NO_OVERLAP_V1 */
@@ -15,12 +10,6 @@
 /* XS_TILE_TREND_BADGE_FIT_V1 */
 import React from "react";
 import { View, Text, StyleSheet, ImageBackground } from "react-native";
-    color: "rgba(255,255,255,0.75)",
-    fontSize: 11,
-    fontWeight: "700",
-    marginRight: 2,
-  },
-
 
 export type SorareCardTileProps = {
   l5?: number | null; // XS_SORARE_TILE_FOOTER_FIT_V1
@@ -52,13 +41,7 @@ function formatDelta(deltaPct?: number | null){
   return `${sign}${Math.round(deltaPct)}%`;
 }
 
-// XS_SORARE_TILE_V1 — Sorare-like card tile (image + info footer) 
-    color: "rgba(255,255,255,0.75)",
-    fontSize: 11,
-    fontWeight: "700",
-    marginRight: 2,
-  },
-
+// XS_SORARE_TILE_V1 — Sorare-like card tile (image + info footer)
 export function SorareCardTile(props: SorareCardTileProps){
   /* XS_SORARE_TILE_FOOTER_FIT_V1_BEGIN */
   const xsL5 = (typeof props.l5 === "number") ? props.l5 : null;
@@ -108,17 +91,17 @@ export function SorareCardTile(props: SorareCardTileProps){
           </View>
 
           <View style={styles.trend}>
+            {/* XS_TILE_L5_SORARE_V2 */}
             <Text style={styles.trendLabel}>L5</Text>
-{[0,1,2,3,4].map((i) => {
+            {[0,1,2,3,4].map((i) => {
               const on = i < barCount;
-              // petites barres de hauteurs progressives comme Sorare
-              const h = 6 + i * 3;
+              const h = 6 + i * 3; // barres progressives (Sorare-like)
               return (
                 <View
-                  key={i}
+                  key={`b_${i}`}
                   style={[
                     styles.trendBar,
-                    { height: h, opacity: on ? 1 : 0.25 },
+                    { height: h, opacity: on ? 1 : 0.25 }
                   ]}
                 />
               );
@@ -235,7 +218,7 @@ const styles = StyleSheet.create({
   },
   trend: {
     flexShrink: 0,
-    minWidth: 56,
+    minWidth: 62,
     flexDirection: "row",
     alignItems: "flex-end",
     justifyContent: "flex-end",
@@ -245,14 +228,14 @@ const styles = StyleSheet.create({
   trendLabel: {
     color: "rgba(255,255,255,0.75)",
     fontSize: 11,
-    fontWeight: "700",
+    fontWeight: "800",
     marginRight: 2,
   },
 
   trendBar: {
     width: 4,
     borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.85)",
+    backgroundColor: "rgba(255,255,255,0.9)",
   },
 
   club: {
@@ -331,7 +314,6 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
 });
-
 
 
 
