@@ -1,4 +1,5 @@
-﻿/* XS_TILE_ROW1_STYLES_BRACESCAN_V2 */
+﻿/* XS_TILE_TREND_LAYOUT_V1 */
+/* XS_TILE_ROW1_STYLES_BRACESCAN_V2 */
 /* XS_TILE_ROW1_STRICT_NO_OVERLAP_V1 */
 /* XS_FIX_TREND_DUP_KEYS_V1 */
 /* XS_TILE_TREND_PADRIGHT_V1 */
@@ -216,6 +217,12 @@ const styles = StyleSheet.create({
   },
   trend: {
     flexShrink: 0,
+    minWidth: 34,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "flex-end",
+    gap: 2,
+    marginLeft: 10,
   },
   trendBar: {
     width: 4,
@@ -299,6 +306,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
 });
+
 
 
 
