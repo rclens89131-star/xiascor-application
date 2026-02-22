@@ -1,4 +1,5 @@
-﻿import React from "react";
+﻿/* XS_TILE_TREND_BADGE_FIT_V1 */
+import React from "react";
 import { View, Text, StyleSheet, ImageBackground } from "react-native";
 
 export type SorareCardTileProps = {
@@ -274,4 +275,19 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   /* XS_SORARE_TILE_FOOTER_FIT_V1_END_STYLES */
+  xsTrendRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    marginTop: 2,
+  },
+  xsTrendBarsWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  xsTrendBadgeWrap: {
+    flexShrink: 0,
+    marginLeft: 8,
+  },
 });

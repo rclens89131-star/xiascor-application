@@ -1,4 +1,5 @@
-﻿/* XS_MYCARDS_REMOVE_UNDER_META_V1 */
+﻿/* XS_CARDS_CENTER_2COL_V1 */
+/* XS_MYCARDS_REMOVE_UNDER_META_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, Image, Pressable, SafeAreaView, Text, View, useWindowDimensions } from "react-native";
@@ -327,7 +328,7 @@ export default function CardsScreen() {
         </View>
       ) : (
         <FlatList
-          key="grid2"
+          columnWrapperStyle={{ justifyContent: "space-between", gap: 12 }} key="grid2"
           data={items}
           keyExtractor={(item) => cardKey(item)}
           numColumns={2}
@@ -362,8 +363,7 @@ export default function CardsScreen() {
   const l5  = xsNum((item as any)?.l5);
   const l15 = xsNum((item as any)?.l15);
                   const bonus = xsBonusPctFromPower((item as any)?.power);
-                  return (
-                  );
+                  return null; // XS_FIX_EMPTY_RETURN_V1
                 })()}
               </View>
             );
@@ -391,6 +391,8 @@ export default function CardsScreen() {
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
+
 
 
 
