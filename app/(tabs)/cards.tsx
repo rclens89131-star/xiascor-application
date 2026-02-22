@@ -14,13 +14,8 @@ import { myCardsList, myCardsSync, type PageInfo } from "../../src/scoutApi";
    - garder 2 colonnes mais remplir l'espace -> tiles plus grandes
    - calcul largeur tuile = (screenWidth - padding*2 - gap) / 2
 */
-/* XS_CARDS_FORCE_WIDE_GRID_NODE_SCRIPT_V1
-   Objectif:
-   - 2 colonnes qui remplissent l’écran (Mes cartes)
-   - cible le FlatList numColumns={2}
-*/
-const XS_GRID_PADDING = 10;
-const XS_GRID_GAP = 10;
+const XS_GRID_PADDING = 16;
+const XS_GRID_GAP = 12;
 const XS_TILE_WIDTH = Math.floor((Dimensions.get("window").width - (XS_GRID_PADDING * 2) - XS_GRID_GAP) / 2);
 
 function xsNum(v: any): number | null {
@@ -173,11 +168,8 @@ const l15 = (typeof (card as any)?.l15 === "number") ? (card as any).l15 : xsGet
 const bonusPct = xsBonusPctFromPower((card as any)?.power ?? (card as any)?.cardPower ?? (card as any)?.playerPower ?? null);
 
   return (
-    {/* XS_TILE_WRAP_WIDTH_V3 */}
-          <View style={{ width: XS_TILE_WIDTH }}>
-            <SorareCardTile
-            width={XS_TILE_WIDTH}
-            width={xsTileWidth2col(width)} imageUrl={xsSafeStr(card?.pictureUrl)}
+    <SorareCardTile
+width={xsTileWidth2col(width)} imageUrl={xsSafeStr(card?.pictureUrl)}
       playerName={playerName}
       clubName={clubName}
       seasonLabel={season}
@@ -189,7 +181,6 @@ const bonusPct = xsBonusPctFromPower((card as any)?.power ?? (card as any)?.card
       l5={(typeof (card as any)?.l5 === "number") ? (card as any).l5 : null} // XS_FIX_L5_FALLBACK_V1 // XS_MYCARDS_PASS_L5_LEVEL_V1
       level={(typeof (card as any)?.level === "number") ? (card as any).level : ((card as any)?.cardLevel ?? 0)} // XS_MYCARDS_PASS_L5_LEVEL_V1
     />
-          </View>
   );
 }
 /* XS_MYCARDS_SORARE_TILE_V1_END */
@@ -331,9 +322,11 @@ const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
       ) : (
         <FlatList
           data={items}
-          keyExtractor={(item) => cardKey(item)}        contentContainerStyle={{ paddingHorizontal: XS_GRID_PADDING, paddingBottom: 120 }}
-        columnWrapperStyle={{ justifyContent: "space-between", gap: XS_GRID_GAP }}
-        numColumns={2}          onEndReachedThreshold={0.6}
+          keyExtractor={(item) => cardKey(item)}
+        contentContainerStyle={{ paddingHorizontal: XS_MYCARDS_PAD, paddingBottom: 120 }}
+        columnWrapperStyle={{ justifyContent: "space-between", gap: XS_MYCARDS_GAP }}
+        numColumns={2}
+          onEndReachedThreshold={0.6}
           renderItem={({ item, index }) => {
 const isLeft = index % 2 === 0;
             return (
@@ -390,6 +383,8 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
+
 
 
 
