@@ -364,12 +364,15 @@ export default function CardsScreen() {
                     xsTxt((item as any)?.player?.activeClub?.name) ||
                     xsTxt((item as any)?.anyTeam?.slug) ||
                     "—";
-                  const grade = xsNum((item as any)?.grade);
+                    const grade = xsNum((item as any)?.grade);
+  /* XS_UI_L5L15_V1 */
+  const l5  = xsNum((item as any)?.l5);
+  const l15 = xsNum((item as any)?.l15);
                   const bonus = xsBonusPctFromPower((item as any)?.power);
                   return (
                     <Text style={{ color: theme.text, opacity: 0.88, marginTop: 6, lineHeight: 18 }}>
                       {player} • {club}{"\n"}
-                      Bonus: {bonus === null ? "—" : bonus.toFixed(1) + "%"}   Level: {grade === null ? "—" : String(grade)}
+                      Bonus: {bonus === null ? "—" : bonus.toFixed(1) + "%"}   Level: {grade === null ? "—" : String(grade)}{"\n"}L5: {l5 === null ? "—" : String(l5)}   L15: {l15 === null ? "—" : String(l15)}
                     </Text>
                   );
                 })()}
@@ -399,6 +402,7 @@ export default function CardsScreen() {
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
