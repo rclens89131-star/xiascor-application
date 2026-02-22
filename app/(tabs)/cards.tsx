@@ -329,13 +329,13 @@ const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
         numColumns={2}
           onEndReachedThreshold={0.6}
           renderItem={({ item, index }) => {
-const isLeft = index % 2 === 0;
+            /* XS_MYCARDS_WIDEN_GRID_REAL_V2 — removed isLeft (gap handled by columnWrapperStyle) */
             return (
               <View
                 style={{
-                  width: layout.itemWidth,
-                  marginBottom: layout.GAP,
-                  marginRight: isLeft ? layout.GAP : 0,
+                  /* XS_MYCARDS_WIDEN_GRID_REAL_V2 */
+                  width: xsTileWidth2col(width),
+                  marginBottom: XS_MYCARDS_GAP,
                 }}
               >
                 <CardTile card={item} width={xsTileWidth2col(width)} />
@@ -384,6 +384,7 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
