@@ -19,6 +19,7 @@ function xsBonusPctFromPower(power: any): number | null {
   return (p - 1) * 100;
 }
 /* XS_MYCARDS_UI_META_V1_END */
+import { SorareCardTile } from "../../src/components/SorareCardTile"; // XS_SORARE_TILE_IMPORT_V1
 
 
 const DEVICE_ID_KEY = "XS_DEVICE_ID_V1";
@@ -139,66 +140,45 @@ function xsGetLastScoreValueV1(card: any): number | null {
   return null;
 }
 /* XS_CARDS_L15_LAST_HELPERS_V2_END */
+/* XS_MYCARDS_SORARE_TILE_V1_BEGIN */
+function xsSafeStr(v: any): string {
+  const s = (v == null) ? "" : String(v);
+  return s.trim();
+}
+
+function xsTrendBarsFromL15(l15: number | null): 0|1|2|3|4 {
+  if(typeof l15 !== "number") return 0;
+  if(l15 >= 60) return 4;
+  if(l15 >= 50) return 3;
+  if(l15 >= 40) return 2;
+  return 1;
+}
+
 function CardTile({ card, width }: { card: MyCardItemLocal; width: number }) {
-  const playerName = card?.anyPlayer?.displayName || card?.player?.displayName || "Unknown";
-  const club = card?.anyTeam?.name || card?.player?.activeClub?.name || "—";
-  const rarity = (card?.rarityTyped || card?.rarity || "limited").toString().toLowerCase();
+  const playerName = xsSafeStr(card?.anyPlayer?.displayName || card?.player?.displayName || "Unknown");
+  const clubName   = xsSafeStr(card?.anyTeam?.name || card?.player?.activeClub?.name || "—");
+  const rarity     = xsSafeStr((card?.rarityTyped || card?.rarity || "limited")).toLowerCase();
+  const season     = (card?.seasonYear != null) ? String(card.seasonYear) : "—";
+  const serial     = (card?.serialNumber != null) ? "#" + String(card.serialNumber) : "#—";
+
+  const l15 = (typeof (card as any)?.l15 === "number") ? (card as any).l15 : xsGetL15ValueV1(card as any);
+  const bonusPct = xsBonusPctFromPower((card as any)?.power ?? (card as any)?.cardPower ?? (card as any)?.playerPower ?? null);
 
   return (
-    <View
-      style={{
-        width,
-        backgroundColor: theme.panel,
-        borderWidth: 1,
-        borderColor: theme.stroke,
-        borderRadius: 16,
-        overflow: "hidden",
-      }}
-    >
-      <View style={{ width: "100%", aspectRatio: 320 / 448, backgroundColor: theme.panel2 }}>
-        {card?.pictureUrl ? (
-          <Image source={{ uri: card.pictureUrl }} style={{ width: "100%", height: "100%" }} resizeMode="contain" />
-        ) : null}
-      </View>
-      <View style={{ padding: 10, gap: 2 }}>
-        <Text style={{ color: theme.text, fontWeight: "900" }} numberOfLines={1}>
-          {playerName}
-        </Text>
-        <Text style={{ color: theme.muted }} numberOfLines={1}>
-          {club}
-        </Text>
-        <Text style={{ color: theme.muted }} numberOfLines={1}>
-          {card?.seasonYear || "—"} • #{card?.serialNumber || "—"} • {rarity}
-        </Text>
-      </View>
-          {/* XS_CARDS_L15_LAST_UI_V1 */}
-      <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 6 }}>
-        <View style={{ flexDirection: "row", gap: 10 }}>
-          <Text style={{ fontSize: 12, color: "#777" }}>
-            L15:{" "}
-            <Text style={{ color: "#111", fontWeight: "800" }}>
-              {(() => {
-                const v = xsGetL15ValueV1(card as any);
-                return v == null ? "—" : v.toFixed(1);
-              })()}
-            </Text>
-          </Text>
-
-          <Text style={{ fontSize: 12, color: "#777" }}>
-            Last:{" "}
-            <Text style={{ color: "#111", fontWeight: "800" }}>
-              {(() => {
-                const v = xsGetLastScoreValueV1(card as any);
-                return v == null ? "—" : String(Math.round(v));
-              })()}
-            </Text>
-          </Text>
-        </View>
-      </View>
-      {/* XS_CARDS_L15_LAST_UI_V1_END */}
-</View>
+    <SorareCardTile
+      imageUrl={xsSafeStr(card?.pictureUrl)}
+      playerName={playerName}
+      clubName={clubName}
+      seasonLabel={season}
+      serialLabel={serial}
+      scarcityLabel={rarity}
+      l15={l15}
+      deltaPct={bonusPct}
+      trendBars={xsTrendBarsFromL15(l15)}
+    />
   );
 }
+/* XS_MYCARDS_SORARE_TILE_V1_END */
 
 export default function CardsScreen() {
   /* XS_MY_CARDS_UI_V1_BEGIN */
