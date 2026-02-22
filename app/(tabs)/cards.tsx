@@ -6,8 +6,7 @@ import { myCardsList, myCardsSync, type PageInfo } from "../../src/scoutApi";
 
 const DEVICE_ID_KEY = "XS_DEVICE_ID_V1";
 const JWT_DEVICE_ID_KEY = "XS_JWT_DEVICE_ID_V1";
-
-/* XS_MY_CARDS_UI_TYPING_V1_BEGIN */
+const OAUTH_DEVICE_ID_KEY = "xs_device_id"; // XS_PREFER_OAUTH_DEVICEID_V2
 type MyCardItemLocal = {
   slug?: string;
   pictureUrl?: string | null;
@@ -25,10 +24,104 @@ type MyCardItemLocal = {
 function cardKey(card: MyCardItemLocal) {
   return String(
     card?.slug ||
-      `${card?.anyPlayer?.displayName || card?.player?.displayName || "unknown"}-${card?.seasonYear || "na"}-${card?.serialNumber || "na"}`
+      `${card?.anyPlayer?.displayName || card?.player?.displayName || "unknown"}
+
+/* XS_CARDS_L15_LAST_V1 — helpers safe (L15 + last score) */
+function getL15Value(card: any): number | null {
+  const v =
+    card?.l15 ??
+    card?.L15 ??
+    card?.l15Score ??
+    card?.scoreL15 ??
+    card?.player?.l15 ??
+    card?.card?.l15 ??
+    null;
+  const n = typeof v === "number" ? v : (typeof v === "string" ? Number(v) : NaN);
+  return Number.isFinite(n) ? n : null;
+}
+
+function getLastScoreValue(card: any): number | null {
+  const direct =
+    card?.lastScore ??
+    card?.last_score ??
+    card?.score ??
+    card?.lastGameScore ??
+    null;
+
+  if (typeof direct === "number") return Number.isFinite(direct) ? direct : null;
+  if (typeof direct === "string") {
+    const n = Number(direct);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  const arr =
+    card?.scores ??
+    card?.gameScores ??
+    card?.scoreHistory ??
+    card?.games ??
+    card?.recentScores ??
+    null;
+
+  if (Array.isArray(arr) && arr.length > 0) {
+    const last = arr[arr.length - 1];
+    const v = last?.score ?? last?.total ?? last?.value ?? last;
+    const n = typeof v === "number" ? v : (typeof v === "string" ? Number(v) : NaN);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  return null;
+}
+/* XS_CARDS_L15_LAST_V1_END */
+-${card?.seasonYear || "na"}-${card?.serialNumber || "na"}`
   );
 }
 
+/* XS_CARDS_L15_LAST_HELPERS_V2 — helpers safe (L15 + last score) */
+function xsGetL15ValueV1(card: any): number | null {
+  const v =
+    card?.l15 ??
+    card?.L15 ??
+    card?.l15Score ??
+    card?.scoreL15 ??
+    card?.player?.l15 ??
+    card?.card?.l15 ??
+    null;
+  const n = typeof v === "number" ? v : (typeof v === "string" ? Number(v) : NaN);
+  return Number.isFinite(n) ? n : null;
+}
+
+function xsGetLastScoreValueV1(card: any): number | null {
+  const direct =
+    card?.lastScore ??
+    card?.last_score ??
+    card?.score ??
+    card?.lastGameScore ??
+    null;
+
+  if (typeof direct === "number") return Number.isFinite(direct) ? direct : null;
+  if (typeof direct === "string") {
+    const n = Number(direct);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  const arr =
+    card?.scores ??
+    card?.gameScores ??
+    card?.scoreHistory ??
+    card?.games ??
+    card?.recentScores ??
+    null;
+
+  if (Array.isArray(arr) && arr.length > 0) {
+    const last = arr[arr.length - 1];
+    const v = last?.score ?? last?.total ?? last?.value ?? last;
+    const n = typeof v === "number" ? v : (typeof v === "string" ? Number(v) : NaN);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  return null;
+}
+/* XS_CARDS_L15_LAST_HELPERS_V2_END */
 function CardTile({ card, width }: { card: MyCardItemLocal; width: number }) {
   const playerName = card?.anyPlayer?.displayName || card?.player?.displayName || "Unknown";
   const club = card?.anyTeam?.name || card?.player?.activeClub?.name || "—";
@@ -61,7 +154,32 @@ function CardTile({ card, width }: { card: MyCardItemLocal; width: number }) {
           {card?.seasonYear || "—"} • #{card?.serialNumber || "—"} • {rarity}
         </Text>
       </View>
-    </View>
+          {/* XS_CARDS_L15_LAST_UI_V1 */}
+      <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 6 }}>
+        <View style={{ flexDirection: "row", gap: 10 }}>
+          <Text style={{ fontSize: 12, color: "#777" }}>
+            L15:{" "}
+            <Text style={{ color: "#111", fontWeight: "800" }}>
+              {(() => {
+                const v = xsGetL15ValueV1(card as any);
+                return v == null ? "—" : v.toFixed(1);
+              })()}
+            </Text>
+          </Text>
+
+          <Text style={{ fontSize: 12, color: "#777" }}>
+            Last:{" "}
+            <Text style={{ color: "#111", fontWeight: "800" }}>
+              {(() => {
+                const v = xsGetLastScoreValueV1(card as any);
+                return v == null ? "—" : String(Math.round(v));
+              })()}
+            </Text>
+          </Text>
+        </View>
+      </View>
+      {/* XS_CARDS_L15_LAST_UI_V1_END */}
+</View>
   );
 }
 
@@ -79,7 +197,14 @@ export default function CardsScreen() {
   const loadingMoreRef = useRef(false);
 
   const ensureDeviceId = useCallback(async () => {
-  // XS_PREFER_JWT_DEVICEID_V2 — prefer the JWT-linked deviceId set in Settings
+  // XS_PREFER_OAUTH_DEVICEID_V2 — prefer OAuth deviceId (xs_device_id) when available
+  const oauthId = (await AsyncStorage.getItem(OAUTH_DEVICE_ID_KEY)) || "";
+  if (oauthId.trim()) {
+    try { await AsyncStorage.setItem(DEVICE_ID_KEY, oauthId.trim()); } catch {}
+    return oauthId.trim();
+  }
+
+  // XS_PREFER_JWT_DEVICEID_V2 — then prefer the JWT-linked deviceId set in Settings
   const jwtId = (await AsyncStorage.getItem(JWT_DEVICE_ID_KEY)) || "";
   if (jwtId.trim()) return jwtId.trim();
 
@@ -173,7 +298,7 @@ export default function CardsScreen() {
           }}
         >
           <Text style={{ color: theme.text, fontWeight: "900" }}>{syncing ? "Synchronisation…" : "Synchroniser"}</Text>
-        </Pressable>
+</Pressable>
 
         {error ? (
           <Text style={{ color: theme.bad, fontWeight: "800" }}>Erreur: {error}</Text>
@@ -236,6 +361,12 @@ export default function CardsScreen() {
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
+
+
+
+
+
 
 
 
