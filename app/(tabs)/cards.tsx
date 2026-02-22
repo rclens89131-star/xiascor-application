@@ -187,12 +187,13 @@ width={xsTileWidth2col(width)} imageUrl={xsSafeStr(card?.pictureUrl)}
 
   
 /* XS_CARDS_2COL_WIDTH_V1_BEGIN */
+/* XS_MYCARDS_WIDEN_GRID_REAL_V1 — constants (module scope) */
+const XS_MYCARDS_PAD = 8;
+const XS_MYCARDS_GAP = 8;
+/* XS_MYCARDS_WIDEN_GRID_REAL_V1 — width math */
 function xsTileWidth2col(screenW: number): number {
-  // 2 colonnes + gap central + padding extérieur
-const outer = 16; // padding container (gauche+droite)
-const gap = 12;   // espace entre colonnes
-const w = Math.floor((screenW - outer - gap) / 2);
-  return Math.max(140, w);
+  // 2 colonnes + padding + gap => chaque tuile prend (presque) toute la largeur dispo
+  return Math.floor((screenW - (XS_MYCARDS_PAD * 2) - XS_MYCARDS_GAP) / 2);
 }
 /* XS_CARDS_2COL_WIDTH_V1_END */
 export default function CardsScreen() {
@@ -383,6 +384,7 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
