@@ -77,12 +77,12 @@ export default function CardsScreen() {
   const loadingMoreRef = useRef(false);
 
   const ensureDeviceId = useCallback(async () => {
-  // XS_PREFER_JWT_DEVICEID_V1 — if JWT login already happened, reuse its deviceId
-  const jwtId = await AsyncStorage.getItem(JWT_DEVICE_ID_KEY);
-  if (jwtId) return jwtId;
+  // XS_PREFER_JWT_DEVICEID_V2 — prefer the JWT-linked deviceId set in Settings
+  const jwtId = (await AsyncStorage.getItem(JWT_DEVICE_ID_KEY)) || "";
+  if (jwtId.trim()) return jwtId.trim();
 
-  const existing = await AsyncStorage.getItem(DEVICE_ID_KEY);
-  if (existing) return existing;
+  const existing = (await AsyncStorage.getItem(DEVICE_ID_KEY)) || "";
+  if (existing.trim()) return existing.trim();
 
   const generated = `xs-device-${Date.now()}`;
   await AsyncStorage.setItem(DEVICE_ID_KEY, generated);
@@ -227,5 +227,6 @@ export default function CardsScreen() {
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
