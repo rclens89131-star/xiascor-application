@@ -3,6 +3,23 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ActivityIndicator, FlatList, Image, Pressable, SafeAreaView, Text, View, useWindowDimensions } from "react-native";
 import { theme } from "../../src/theme";
 import { myCardsList, myCardsSync, type PageInfo } from "../../src/scoutApi";
+/* XS_MYCARDS_UI_META_V1_BEGIN */
+function xsNum(v: any): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+function xsTxt(v: any): string {
+  const s = (v == null) ? "" : String(v);
+  return s.trim();
+}
+function xsBonusPctFromPower(power: any): number | null {
+  // Sorare power is usually a multiplier string like "1.040"
+  const p = xsNum(power);
+  if (p === null) return null;
+  return (p - 1) * 100;
+}
+/* XS_MYCARDS_UI_META_V1_END */
+
 
 const DEVICE_ID_KEY = "XS_DEVICE_ID_V1";
 const JWT_DEVICE_ID_KEY = "XS_JWT_DEVICE_ID_V1";
@@ -335,6 +352,27 @@ export default function CardsScreen() {
                 }}
               >
                 <CardTile card={item} width={layout.itemWidth} />
+                {/* XS_MYCARDS_UI_META_ITEM_V1 */}
+                {(() => {
+                  const player =
+                    xsTxt((item as any)?.anyPlayer?.displayName) ||
+                    xsTxt((item as any)?.player?.displayName) ||
+                    xsTxt((item as any)?.anyPlayer?.slug) ||
+                    "—";
+                  const club =
+                    xsTxt((item as any)?.anyTeam?.name) ||
+                    xsTxt((item as any)?.player?.activeClub?.name) ||
+                    xsTxt((item as any)?.anyTeam?.slug) ||
+                    "—";
+                  const grade = xsNum((item as any)?.grade);
+                  const bonus = xsBonusPctFromPower((item as any)?.power);
+                  return (
+                    <Text style={{ color: theme.text, opacity: 0.88, marginTop: 6, lineHeight: 18 }}>
+                      {player} • {club}{"\n"}
+                      Bonus: {bonus === null ? "—" : bonus.toFixed(1) + "%"}   Level: {grade === null ? "—" : String(grade)}
+                    </Text>
+                  );
+                })()}
               </View>
             );
           }}
@@ -352,7 +390,7 @@ export default function CardsScreen() {
               <Text style={{ color: theme.muted }}>Aucune carte en cache. Lance une synchronisation.</Text>
               <Pressable onPress={onSync} style={{ marginTop: 12 }}>
                 <Text style={{ color: theme.accent, fontWeight: "900" }}>Synchroniser</Text>
-              </Pressable>
+</Pressable>
             </View>
           }
         />
@@ -361,6 +399,7 @@ export default function CardsScreen() {
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
