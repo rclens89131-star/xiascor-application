@@ -338,7 +338,7 @@ const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
                   marginBottom: XS_MYCARDS_GAP,
                 }}
               >
-                <CardTile card={item} width={xsTileWidth2col(width)} />
+                <CardTile card={item} width={width} />{/* XS_MYCARDS_TILEWIDTH_CALL_FIX_V1 */}
                 {/* XS_MYCARDS_UI_META_ITEM_V1 */}
                 {(() => {
 const player =
@@ -384,6 +384,7 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
