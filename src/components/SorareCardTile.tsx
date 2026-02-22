@@ -1,4 +1,5 @@
-﻿/* XS_TILE_TREND_BADGE_FIT_V1 */
+﻿/* XS_FIX_DUP_TEXT_ATTRS_V1 */
+/* XS_TILE_TREND_BADGE_FIT_V1 */
 import React from "react";
 import { View, Text, StyleSheet, ImageBackground } from "react-native";
 
@@ -99,7 +100,7 @@ export function SorareCardTile(props: SorareCardTileProps){
           </View>
         </View>
 
-        <Text style={styles.club} numberOfLines={1} numberOfLines={1} ellipsizeMode="tail">
+        <Text style={styles.club} numberOfLines={1} ellipsizeMode="tail">
           {props.clubName ?? ""}
         </Text>
 

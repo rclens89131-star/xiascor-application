@@ -1,4 +1,5 @@
-﻿/* XS_CARDS_CENTER_2COL_V1 */
+﻿/* XS_FIX_L5_FALLBACK_V1 */
+/* XS_CARDS_CENTER_2COL_V1 */
 /* XS_MYCARDS_REMOVE_UNDER_META_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -178,7 +179,7 @@ function CardTile({ card, width }: { card: MyCardItemLocal; width: number }) {
       l15={l15}
       deltaPct={bonusPct}
       trendBars={xsTrendBarsFromL15(l15)}
-      l5={(typeof (card as any)?.l5 === "number") ? (card as any).l5 : xsGetL5ValueV1(card as any)} // XS_MYCARDS_PASS_L5_LEVEL_V1
+      l5={(typeof (card as any)?.l5 === "number") ? (card as any).l5 : null} // XS_FIX_L5_FALLBACK_V1 // XS_MYCARDS_PASS_L5_LEVEL_V1
       level={(typeof (card as any)?.level === "number") ? (card as any).level : ((card as any)?.cardLevel ?? 0)} // XS_MYCARDS_PASS_L5_LEVEL_V1
     />
   );
@@ -391,6 +392,7 @@ export default function CardsScreen() {
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
