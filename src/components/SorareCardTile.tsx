@@ -2,6 +2,8 @@
 import { View, Text, StyleSheet, ImageBackground } from "react-native";
 
 export type SorareCardTileProps = {
+  l5?: number | null; // XS_SORARE_TILE_FOOTER_FIT_V1
+  level?: number | null; // XS_SORARE_TILE_FOOTER_FIT_V1
   width?: number; // XS_SORARE_TILE_WIDTH_V2
   imageUrl: string;
   playerName: string;
@@ -31,6 +33,12 @@ function formatDelta(deltaPct?: number | null){
 
 // XS_SORARE_TILE_V1 — Sorare-like card tile (image + info footer)
 export function SorareCardTile(props: SorareCardTileProps){
+  /* XS_SORARE_TILE_FOOTER_FIT_V1_BEGIN */
+  const xsL5 = (typeof props.l5 === "number") ? props.l5 : null;
+  const xsL15 = (typeof props.l15 === "number") ? props.l15 : null;
+  const xsLevel = (typeof props.level === "number") ? props.level : null;
+  const xsDelta = (typeof props.deltaPct === "number") ? props.deltaPct : null;
+  /* XS_SORARE_TILE_FOOTER_FIT_V1_END */
   const level = l15Level(props.l15);
   const delta = formatDelta(props.deltaPct);
 
@@ -90,7 +98,7 @@ export function SorareCardTile(props: SorareCardTileProps){
           </View>
         </View>
 
-        <Text style={styles.club} numberOfLines={1}>
+        <Text style={styles.club} numberOfLines={1} numberOfLines={1} ellipsizeMode="tail">
           {props.clubName ?? ""}
         </Text>
 
@@ -107,6 +115,7 @@ export function SorareCardTile(props: SorareCardTileProps){
 }
 
 const styles = StyleSheet.create({
+  /* XS_SORARE_TILE_FOOTER_FIT_V1_BEGIN_STYLES */
   wrap: {
     width: 175,
   },
@@ -254,6 +263,15 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFD84D",
     transform: [{ scale: 1.04 }],
   },
+  metaRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 2,
+  },
+  metaText: {
+    fontSize: 11,
+    opacity: 0.9,
+  },
+  /* XS_SORARE_TILE_FOOTER_FIT_V1_END_STYLES */
 });
-
-

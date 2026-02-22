@@ -1,4 +1,5 @@
-﻿import AsyncStorage from "@react-native-async-storage/async-storage";
+﻿/* XS_MYCARDS_REMOVE_UNDER_META_V1 */
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, Image, Pressable, SafeAreaView, Text, View, useWindowDimensions } from "react-native";
 import { theme } from "../../src/theme";
@@ -176,6 +177,8 @@ function CardTile({ card, width }: { card: MyCardItemLocal; width: number }) {
       l15={l15}
       deltaPct={bonusPct}
       trendBars={xsTrendBarsFromL15(l15)}
+      l5={(typeof (card as any)?.l5 === "number") ? (card as any).l5 : xsGetL5ValueV1(card as any)} // XS_MYCARDS_PASS_L5_LEVEL_V1
+      level={(typeof (card as any)?.level === "number") ? (card as any).level : ((card as any)?.cardLevel ?? 0)} // XS_MYCARDS_PASS_L5_LEVEL_V1
     />
   );
 }
@@ -312,7 +315,6 @@ export default function CardsScreen() {
           <Text style={{ color: theme.bad, fontWeight: "800" }}>Erreur: {error}</Text>
         ) : (
           <View style={{ gap: 2 }}>
-            <Text style={{ color: theme.muted }}>{items.length} cartes • Device: {deviceId || "—"}</Text>
             {lastSync ? <Text style={{ color: theme.muted }}>Dernière sync: {lastSync}</Text> : null}
           </View>
         )}
@@ -361,10 +363,6 @@ export default function CardsScreen() {
   const l15 = xsNum((item as any)?.l15);
                   const bonus = xsBonusPctFromPower((item as any)?.power);
                   return (
-                    <Text style={{ color: theme.text, opacity: 0.88, marginTop: 6, lineHeight: 18 }}>
-                      {player} • {club}{"\n"}
-                      Bonus: {bonus === null ? "—" : bonus.toFixed(1) + "%"}   Level: {grade === null ? "—" : String(grade)}{"\n"}L5: {l5 === null ? "—" : String(l5)}   L15: {l15 === null ? "—" : String(l15)}
-                    </Text>
                   );
                 })()}
               </View>
@@ -393,6 +391,8 @@ export default function CardsScreen() {
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
+
 
 
 
