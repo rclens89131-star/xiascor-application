@@ -1,4 +1,5 @@
-﻿/* XS_TILE_ROW3_STRICT_LAYOUT_V1 */
+﻿/* XS_TILE_TREND_PADRIGHT_V1 */
+/* XS_TILE_ROW3_STRICT_LAYOUT_V1 */
 /* XS_FIX_DOUBLE_COMMA_V1 */
 /* XS_TILE_PILL_NO_OVERLAP_V1 */
 /* XS_FIX_DUP_TEXT_ATTRS_V1 */
@@ -211,10 +212,12 @@ const styles = StyleSheet.create({
   },
 
   trend: {
+    alignItems: "center",
+    position: "relative",
     flexDirection: "row",
     alignItems: "flex-end",
     gap: 3,
-    paddingRight: 2,
+    paddingRight: 56, // XS_TILE_TREND_PADRIGHT_V1
   },
   trendBar: {
     width: 4,
@@ -298,6 +301,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
 });
+
 
 
 
