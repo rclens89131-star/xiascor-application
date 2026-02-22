@@ -192,6 +192,10 @@ function xsTileWidth2col(screenW: number): number {
 }
 /* XS_CARDS_2COL_WIDTH_V1_END */
 export default function CardsScreen() {
+  /* XS_FIX_SCREENWIDTH_V1 (BEGIN) */
+  const screenWidth = Dimensions.get("window").width;
+  /* XS_FIX_SCREENWIDTH_V1 (END) */
+
   /* XS_MY_CARDS_UI_V1_BEGIN */
   const [deviceId, setDeviceId] = useState("");
   const [items, setItems] = useState<MyCardItemLocal[]>([]);
@@ -393,6 +397,7 @@ export default function CardsScreen() {
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
