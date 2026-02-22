@@ -166,7 +166,8 @@ function CardTile({ card, width }: { card: MyCardItemLocal; width: number }) {
 
   return (
     <SorareCardTile
-      imageUrl={xsSafeStr(card?.pictureUrl)}
+      
+      width={width} imageUrl={xsSafeStr(card?.pictureUrl)}
       playerName={playerName}
       clubName={clubName}
       seasonLabel={season}
@@ -382,6 +383,7 @@ export default function CardsScreen() {
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 

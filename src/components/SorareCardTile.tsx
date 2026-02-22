@@ -2,6 +2,7 @@
 import { View, Text, StyleSheet, ImageBackground } from "react-native";
 
 export type SorareCardTileProps = {
+  width?: number; // XS_SORARE_TILE_WIDTH_V2
   imageUrl: string;
   playerName: string;
   clubName?: string | null;
@@ -45,7 +46,7 @@ export function SorareCardTile(props: SorareCardTileProps){
   const l15Text = (typeof props.l15 === "number" && isFinite(props.l15)) ? String(Math.round(props.l15)) : "—";
 
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, (typeof props.width === "number" ? { width: props.width } : null)]}>
       <View style={styles.cardShell}>
         <ImageBackground
           source={{ uri: props.imageUrl }}
@@ -149,15 +150,14 @@ const styles = StyleSheet.create({
   },
 
   footer: {
+    /* XS_SORARE_TILE_WIDTH_V2_BEGIN */
     backgroundColor: "#101114",
+    /* XS_SORARE_TILE_WIDTH_V2_END */
     paddingHorizontal: 10,
     paddingTop: 8,
     paddingBottom: 10,
     borderBottomLeftRadius: 18,
     borderBottomRightRadius: 18,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderBottomWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
   },
 
@@ -255,4 +255,5 @@ const styles = StyleSheet.create({
     transform: [{ scale: 1.04 }],
   },
 });
+
 
