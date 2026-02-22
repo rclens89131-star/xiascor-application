@@ -1,4 +1,5 @@
-﻿/* XS_TILE_ROW1_STRICT_NO_OVERLAP_V1 */
+﻿/* XS_TILE_ROW1_STYLES_BRACESCAN_V2 */
+/* XS_TILE_ROW1_STRICT_NO_OVERLAP_V1 */
 /* XS_FIX_TREND_DUP_KEYS_V1 */
 /* XS_TILE_TREND_PADRIGHT_V1 */
 /* XS_TILE_ROW3_STRICT_LAYOUT_V1 */
@@ -177,49 +178,44 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 18,
     borderColor: "rgba(255,255,255,0.08)",
   },
-
   row1: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
+    gap: 10,
   },
   row1Left: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
     flex: 1,
     minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
   },
   playerName: {
     color: "#fff",
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: "800",
-    letterSpacing: 0.2,
-    maxWidth: 110,
+    flexShrink: 1,
+    minWidth: 0,
   },
-
   deltaPill: {
-    paddingHorizontal: 7,
-    paddingVertical: 2,
+    flexShrink: 0,
+    marginLeft: 8,
+    paddingHorizontal: 8,
+    height: 22,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.10)",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(44, 255, 128, 0.16)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: "rgba(44, 255, 128, 0.35)",
   },
   deltaTxt: {
     color: "rgba(255,255,255,0.92)",
     fontSize: 11,
     fontWeight: "700",
   },
-
   trend: {
     flexShrink: 0,
-    alignItems: "center",
-    position: "relative",
-    flexDirection: "row",
-    gap: 3,
-    paddingRight: 56, // XS_TILE_TREND_PADRIGHT_V1
   },
   trendBar: {
     width: 4,
@@ -303,6 +299,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
 });
+
 
 
 
