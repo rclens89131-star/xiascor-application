@@ -167,7 +167,7 @@ function CardTile({ card, width }: { card: MyCardItemLocal; width: number }) {
   return (
     <SorareCardTile
       
-      width={width} imageUrl={xsSafeStr(card?.pictureUrl)}
+      width={xsTileWidth2col(screenWidth)} imageUrl={xsSafeStr(card?.pictureUrl)}
       playerName={playerName}
       clubName={clubName}
       seasonLabel={season}
@@ -181,6 +181,16 @@ function CardTile({ card, width }: { card: MyCardItemLocal; width: number }) {
 }
 /* XS_MYCARDS_SORARE_TILE_V1_END */
 
+  
+/* XS_CARDS_2COL_WIDTH_V1_BEGIN */
+function xsTileWidth2col(screenW: number): number {
+  // 2 colonnes + gap central + padding extérieur
+  const outer = 16; // padding container (gauche+droite)
+  const gap = 12;   // espace entre colonnes
+  const w = Math.floor((screenW - outer - gap) / 2);
+  return Math.max(140, w);
+}
+/* XS_CARDS_2COL_WIDTH_V1_END */
 export default function CardsScreen() {
   /* XS_MY_CARDS_UI_V1_BEGIN */
   const [deviceId, setDeviceId] = useState("");
@@ -332,7 +342,7 @@ export default function CardsScreen() {
                   marginRight: isLeft ? layout.GAP : 0,
                 }}
               >
-                <CardTile card={item} width={layout.itemWidth} />
+                <CardTile card={item} width={xsTileWidth2col(screenWidth)} />
                 {/* XS_MYCARDS_UI_META_ITEM_V1 */}
                 {(() => {
                   const player =
@@ -383,6 +393,7 @@ export default function CardsScreen() {
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
