@@ -1,4 +1,5 @@
-﻿/* XS_TILE_PILL_NO_OVERLAP_V1 */
+﻿/* XS_FIX_DOUBLE_COMMA_V1 */
+/* XS_TILE_PILL_NO_OVERLAP_V1 */
 /* XS_FIX_DUP_TEXT_ATTRS_V1 */
 /* XS_TILE_TREND_BADGE_FIT_V1 */
 import React from "react";
@@ -232,7 +233,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginTop: 6,
-},,
+},
   meta: {
     color: "rgba(255,255,255,0.55)",
     fontSize: 12,
@@ -295,4 +296,5 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
 });
+
 
