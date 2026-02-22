@@ -74,6 +74,8 @@ export default function CardsScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState("");
+  /* XS_UI_LAST_SYNC_LABEL_V1 */
+  const [lastSync, setLastSync] = useState<string>("");
   const loadingMoreRef = useRef(false);
 
   const ensureDeviceId = useCallback(async () => {
@@ -96,6 +98,8 @@ export default function CardsScreen() {
       const id = await ensureDeviceId();
       setDeviceId(id);
       const res = await myCardsList(id, 50);
+      
+      try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
       setItems(res.cards || []);
       setPageInfo(res.pageInfo);
     } catch (e: any) {
@@ -111,6 +115,8 @@ export default function CardsScreen() {
     setLoadingMore(true);
     try {
       const res = await myCardsList(deviceId, 50, pageInfo.endCursor || undefined);
+      
+      try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
       setItems((prev) => [...prev, ...(res.cards || [])]);
       setPageInfo(res.pageInfo);
     } catch (e: any) {
@@ -172,7 +178,10 @@ export default function CardsScreen() {
         {error ? (
           <Text style={{ color: theme.bad, fontWeight: "800" }}>Erreur: {error}</Text>
         ) : (
-          <Text style={{ color: theme.muted }}>{items.length} cartes • Device: {deviceId || "—"}</Text>
+          <View style={{ gap: 2 }}>
+            <Text style={{ color: theme.muted }}>{items.length} cartes • Device: {deviceId || "—"}</Text>
+            {lastSync ? <Text style={{ color: theme.muted }}>Dernière sync: {lastSync}</Text> : null}
+          </View>
         )}
       </View>
 
@@ -227,6 +236,8 @@ export default function CardsScreen() {
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
+
 
 
 
