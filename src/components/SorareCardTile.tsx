@@ -1,4 +1,5 @@
-﻿/* XS_FIX_DUP_TEXT_ATTRS_V1 */
+﻿/* XS_TILE_PILL_NO_OVERLAP_V1 */
+/* XS_FIX_DUP_TEXT_ATTRS_V1 */
 /* XS_TILE_TREND_BADGE_FIT_V1 */
 import React from "react";
 import { View, Text, StyleSheet, ImageBackground } from "react-native";
@@ -227,12 +228,11 @@ const styles = StyleSheet.create({
   },
 
   row3: {
-    marginTop: 6,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
-  },
+    marginTop: 6,
+},,
   meta: {
     color: "rgba(255,255,255,0.55)",
     fontSize: 12,
@@ -249,7 +249,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#F4C21A", // jaune Sorare-like
-  },
+  
+    flexShrink: 0,
+    marginLeft: 10,
+},
   l15Txt: {
     color: "#0b0b0d",
     fontSize: 13,
@@ -292,3 +295,4 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
 });
+
