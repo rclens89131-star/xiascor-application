@@ -51,7 +51,7 @@ export function SorareCardTile(props: SorareCardTileProps){
           source={{ uri: props.imageUrl }}
           style={styles.img}
           imageStyle={styles.imgRadius}
-          resizeMode="cover"
+          resizeMode="contain"
         >
           {/* L'image Sorare a déjà souvent le texte/overlay imprimé dedans.
               On laisse "clean" ici pour matcher le screenshot. */}
@@ -255,3 +255,4 @@ const styles = StyleSheet.create({
     transform: [{ scale: 1.04 }],
   },
 });
+
