@@ -1,4 +1,5 @@
-﻿/* XS_CARDS_CENTER_2COL_V2 */
+﻿/* XS_CARDS_CENTER_ITEMWIDTH_V1 */
+/* XS_CARDS_CENTER_2COL_V2 */
 /* XS_FIX_L5_FALLBACK_V1 */
 /* XS_CARDS_CENTER_2COL_V1 */
 /* XS_MYCARDS_REMOVE_UNDER_META_V1 */
@@ -393,6 +394,7 @@ export default function CardsScreen() {
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
