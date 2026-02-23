@@ -1,4 +1,4 @@
-/* XS_PLAY_REPAIR_ESCAPED_PATCH_V1 */
+﻿/* XS_PLAY_REPAIR_ESCAPED_PATCH_V1 */
 import React, { useEffect, useMemo, useState } from "react";
 import { FlatList, Image, Pressable, SafeAreaView, ScrollView, Switch, Text, TextInput, View, Modal } from "react-native"; /* XS_PLAY_SCROLL_HEADER_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -763,7 +763,10 @@ if (parsed?.picked) {
   <View style={{ padding: 10, borderRadius: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.14)", backgroundColor: "rgba(255,255,255,0.04)" }}>
     <Text style={{ color: theme.text, fontWeight: "900", fontSize: 12 }}>XS_PICKED_UI_V2</Text>
     <Text style={{ color: theme.muted, marginTop: 4, fontSize: 12 }} numberOfLines={3}>
-      {(() => { try { return JSON.stringify(picked ?? {}); } catch { return "picked: <unstringifiable>"; } })()}
+      {/* XS_FIX_TEXT_OUTSIDE_TEXT_PLAY_V1 — wrap raw string in <Text> (React Native requires <Text>) */}
+<Text selectable={true} style={{ color: theme.text, fontSize: 11, marginTop: 6 }}>
+  {(() => { try { return JSON.stringify(picked ?? {}); } catch { return "picked: <unstringifiable>"; } })()}
+</Text>
     </Text>
   </View>
 </View>
@@ -1046,4 +1049,5 @@ try { showToast(`TAP PICKER ${xsPickerSlot}`); } catch {}
 </SafeAreaView>
   );
 }
+
 
