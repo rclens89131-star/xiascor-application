@@ -3,6 +3,7 @@ import { ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { theme } from "../../src/theme";
 import { xsCardNavGet } from "../_lib/cardNavCache";
+import { publicPlayerPerformance } from "../../src/scoutApi"; /* XS_CARD_PUBLIC_PLAYER_PERF_IMPORT_V4 */
 /* XS_PERF_SECTION_V1_BEGIN */
 function xsClamp01(n: number){ return Math.max(0, Math.min(1, n)); }
 function xsClampScore(n: number){ return Math.max(0, Math.min(100, n)); }
@@ -41,12 +42,13 @@ function XSPerfChart({ scores }: { scores: number[] }){
   );
 }
 
-function XSPerformanceSection({ card }: { card: any }){
-  const l5  = (typeof card?.l5 === "number") ? card.l5 : null;
+function XSPerformanceSection({ card, perf }: { card: any; perf?: any }){ /* XS_CARD_PUBLIC_PLAYER_PERF_SECTION_SIG_V4 */
+  const l5  = (typeof perf?.l5 === "number") ? perf.l5 : ((typeof card?.l5 === "number") ? card.l5 : null); /* XS_CARD_PUBLIC_PLAYER_PERF_L5_V4 */
   const l10 = (typeof card?.l10 === "number") ? card.l10 : null;
   const l40 = (typeof card?.l40 === "number") ? card.l40 : null;
 
   const raw =
+    perf?.recentScores ?? /* XS_CARD_PUBLIC_PLAYER_PERF_RAW_V4 */
     card?.recentScores ??
     card?.scores ??
     card?.lastScores ??
@@ -120,6 +122,39 @@ export default function CardDetailScreen() {
     return xsCardNavGet(id);
   }, [id]);
 
+  const [xsPerfRemote, setXsPerfRemote] = React.useState<any>(null); /* XS_CARD_PUBLIC_PLAYER_PERF_HOOK_V4 */
+
+  /* XS_CARD_PUBLIC_PLAYER_PERF_EFFECT_V4_BEGIN */
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const slug =
+          (card as any)?.playerSlug ??
+          (card as any)?.player?.slug ??
+          (card as any)?.anyPlayer?.slug ??
+          null;
+
+        if (!slug) {
+          if (alive) setXsPerfRemote(null);
+          return;
+        }
+
+        const perf = await publicPlayerPerformance(String(slug));
+        if (alive) setXsPerfRemote(perf || null);
+      } catch {
+        if (alive) setXsPerfRemote(null);
+      }
+    })();
+
+    return () => { alive = false; };
+  }, [
+    (card as any)?.playerSlug,
+    (card as any)?.player?.slug,
+    (card as any)?.anyPlayer?.slug,
+  ]);
+  /* XS_CARD_PUBLIC_PLAYER_PERF_EFFECT_V4_END */
+
   if (!card) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg, padding: 16, justifyContent: "center" }}>
@@ -146,7 +181,7 @@ export default function CardDetailScreen() {
         {pickStr((card as any)?.playerName)}
       </Text>
       {/* XS_PERF_SECTION_V1_RENDER */}
-      <XSPerformanceSection card={card as any} />
+      <XSPerformanceSection card={card as any} perf={xsPerfRemote as any} /> {/* XS_CARD_PUBLIC_PLAYER_PERF_RENDER_V4 */}
 
       <Text style={{ color: theme.muted }} numberOfLines={2}>
         {pickStr((card as any)?.teamName)} • {pickStr((card as any)?.position)} • {pickStr((card as any)?.seasonYear)}
@@ -183,6 +218,7 @@ export default function CardDetailScreen() {
     </ScrollView>
   );
 }
+
 
 
 

@@ -384,3 +384,34 @@ export function sorareDeviceLoginUrl(deviceId: string, opts?: { devLocal?: boole
 
 
 
+
+/* XS_PUBLIC_PLAYER_PERF_CLIENT_V1_BEGIN */
+export type PublicPlayerPerformance = {
+  playerSlug: string;
+  playerName?: string | null;
+  position?: string | null;
+  activeClub?: { name?: string | null; slug?: string | null } | null;
+  l5?: number | null;
+  l15?: number | null;
+  lastScore?: number | null;
+  recentScores?: number[];
+  meta?: any;
+};
+
+export async function publicPlayerPerformance(slug: string): Promise<PublicPlayerPerformance> {
+  const s = String(slug || "").trim();
+  if (!s) throw new Error("player slug missing");
+  const r = await fetch(BASE_URL + "/public-player-performance?slug=" + encodeURIComponent(s), {
+    headers: { accept: "application/json" },
+  });
+  const txt = await r.text();
+  let json: any = null;
+  try { json = txt ? JSON.parse(txt) : null; } catch {}
+  if (!r.ok) {
+    const msg = (json && (json.error || json.message)) ? (json.error || json.message) : ("HTTP " + r.status);
+    throw new Error("publicPlayerPerformance failed: " + msg);
+  }
+  return (json || {}) as PublicPlayerPerformance;
+}
+/* XS_PUBLIC_PLAYER_PERF_CLIENT_V1_END */
+
