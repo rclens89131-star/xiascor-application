@@ -213,7 +213,7 @@ width={xsTileWidth2col(width)} imageUrl={xsSafeStr(card?.pictureUrl)}
       seasonLabel={season}
       serialLabel={serial}
       scarcityLabel={rarity}
-      l15={l15}
+      l15={xsGetL15ValueV1(card as any)} /* XS_CARDS_FIX_L15_PROP_SCOPE_V1 */
       deltaPct={bonusPct}
       trendBars={xsTrendBarsFromL15((typeof (card as any)?.l5 === "number") ? (card as any).l5 : xsGetL15ValueV1(card as any))} /* XS_CARDS_FIX_TRENDBARS_SCOPE_V1 */
       l5={(typeof (card as any)?.l5 === "number") ? (card as any).l5 : null} // XS_FIX_L5_FALLBACK_V1 // XS_MYCARDS_PASS_L5_LEVEL_V1
@@ -421,6 +421,7 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
