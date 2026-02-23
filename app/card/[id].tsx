@@ -122,7 +122,8 @@ export default function CardDetailScreen() {
 
   if (!card) {
     return (
-      <View style={{ flex: 1, backgroundColor: theme.bg, padding: 16, justifyContent: "center" }}>        <Text style={{ color: theme.text, fontWeight: "900", fontSize: 18 }}>Carte introuvable</Text>
+      <View style={{ flex: 1, backgroundColor: theme.bg, padding: 16, justifyContent: "center" }}>
+        <Text style={{ color: theme.text, fontWeight: "900", fontSize: 18 }}>Carte introuvable</Text>
         <Text style={{ color: theme.muted, marginTop: 8 }}>
           Ouvre la fiche en cliquant depuis la liste (cache navigation).
         </Text>
@@ -140,11 +141,12 @@ export default function CardDetailScreen() {
       : ((trend >= 0 ? "+" : "") + trend.toFixed(2) + " €");
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16, gap: 12 }}>      <Text style={{ color: theme.text, fontWeight: "900", fontSize: 20 }} numberOfLines={2}>
-      {/* XS_PERF_SECTION_V1_RENDER */}
-      <XSPerformanceSection card={card as any} />
+    <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16, gap: 12 }}>
+      <Text style={{ color: theme.text, fontWeight: "900", fontSize: 20 }} numberOfLines={2}>
         {pickStr((card as any)?.playerName)}
       </Text>
+      {/* XS_PERF_SECTION_V1_RENDER */}
+      <XSPerformanceSection card={card as any} />
       <Text style={{ color: theme.muted }} numberOfLines={2}>
         {pickStr((card as any)?.teamName)} • {pickStr((card as any)?.position)} • {pickStr((card as any)?.seasonYear)}
       </Text>
@@ -180,4 +182,5 @@ export default function CardDetailScreen() {
     </ScrollView>
   );
 }
+
 
