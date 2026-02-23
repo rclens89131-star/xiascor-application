@@ -1,4 +1,4 @@
-/* XS_CARDS_CENTER_ITEMWIDTH_V1 */
+﻿/* XS_CARDS_CENTER_ITEMWIDTH_V1 */
 /* XS_CARDS_CENTER_2COL_V2 */
 /* XS_FIX_L5_FALLBACK_V1 */
 /* XS_CARDS_CENTER_2COL_V1 */
@@ -203,11 +203,6 @@ const clubName   = xsSafeStr(card?.anyTeam?.name || card?.player?.activeClub?.na
 const rarity     = xsSafeStr((card?.rarityTyped || card?.rarity || "limited")).toLowerCase();
 const season     = (card?.seasonYear != null) ? String(card.seasonYear) : "—";
 const serial     = (card?.serialNumber != null) ? "#" + String(card.serialNumber) : "#—";
-const l5  = (typeof (card as any)?.l5 === "number") ? (card as any).l5 : null;
-const l10 = (typeof (card as any)?.l10 === "number") ? (card as any).l10 : null;
-const l40 = (typeof (card as any)?.l40 === "number") ? (card as any).l40 : null;
-const l15 = (typeof (card as any)?.l15 === "number") ? (card as any).l15 : xsGetL15ValueV1(card as any);
-const xsL5Bars = xsL5BarsFromCard(card as any);
 const bonusPct = xsBonusPctFromPower((card as any)?.power ?? (card as any)?.cardPower ?? (card as any)?.playerPower ?? null);
 
   return (
@@ -220,7 +215,7 @@ width={xsTileWidth2col(width)} imageUrl={xsSafeStr(card?.pictureUrl)}
       scarcityLabel={rarity}
       l15={l15}
       deltaPct={bonusPct}
-      trendBars={xsTrendBarsFromL15((typeof l5 === "number") ? l5 : l15)} /* XS_L5_MINICHART_TILE_V1 */
+      trendBars={xsTrendBarsFromL15((typeof ctL5 === "number") ? ctL5 : l15)} /* XS_L5_MINICHART_TILE_V1 */
       l5={(typeof (card as any)?.l5 === "number") ? (card as any).l5 : null} // XS_FIX_L5_FALLBACK_V1 // XS_MYCARDS_PASS_L5_LEVEL_V1
       level={(typeof (card as any)?.level === "number") ? (card as any).level : ((card as any)?.cardLevel ?? 0)} // XS_MYCARDS_PASS_L5_LEVEL_V1
     />
@@ -397,11 +392,6 @@ const club =
 const grade = xsNum((item as any)?.grade);
   /* XS_UI_L5L15_V1 */
 const l5  = xsNum((item as any)?.l5);
-const l5  = (typeof (card as any)?.l5 === "number") ? (card as any).l5 : null;
-const l10 = (typeof (card as any)?.l10 === "number") ? (card as any).l10 : null;
-const l40 = (typeof (card as any)?.l40 === "number") ? (card as any).l40 : null;
-const l15 = (typeof (card as any)?.l15 === "number") ? (card as any).l15 : xsGetL15ValueV1(card as any);
-const xsL5Bars = xsL5BarsFromCard(card as any);
 const bonus = xsBonusPctFromPower((item as any)?.power);
                   return null; // XS_FIX_EMPTY_RETURN_V1
                 })()}
@@ -431,6 +421,7 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
