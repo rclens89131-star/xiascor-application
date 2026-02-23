@@ -1,4 +1,4 @@
-/* XS_TILE_TREND_LAYOUT_V1 */
+﻿/* XS_TILE_TREND_LAYOUT_V1 */
 /* XS_TILE_ROW1_STYLES_BRACESCAN_V2 */
 /* XS_TILE_ROW1_STRICT_NO_OVERLAP_V1 */
 /* XS_FIX_TREND_DUP_KEYS_V1 */
@@ -10,8 +10,36 @@
 /* XS_TILE_TREND_BADGE_FIT_V1 */
 import React from "react";
 import { View, Text, StyleSheet, ImageBackground } from "react-native";
+/* XS_SORARE_TILE_L5BARS_V1_BEGIN */
+function XSL5MiniBars({ values }: { values?: number[] }) {
+  const arr = Array.isArray(values) ? values.slice(-5) : [];
+  if(arr.length === 0) return null;
 
+  return (
+    <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 3, marginTop: 6 }}>
+      {arr.map((s, i) => {
+        const n = (typeof s === "number" && Number.isFinite(s)) ? Math.max(0, Math.min(100, s)) : 0;
+        const h = Math.round(6 + (n / 100) * 16);
+        const strong = n >= 60;
+        return (
+          <View
+            key={i}
+            style={{
+              width: 4,
+              height: h,
+              borderRadius: 4,
+              backgroundColor: strong ? "#22c55e" : "#3b82f6",
+              opacity: 0.95,
+            }}
+          />
+        );
+      })}
+    </View>
+  );
+}
+/* XS_SORARE_TILE_L5BARS_V1_END */
 export type SorareCardTileProps = {
+  l5Bars?: number[]; /* XS_SORARE_TILE_L5BARS_V1 */
   l5?: number | null; // XS_SORARE_TILE_FOOTER_FIT_V1
   level?: number | null; // XS_SORARE_TILE_FOOTER_FIT_V1
   width?: number; // XS_SORARE_TILE_WIDTH_V2
@@ -93,6 +121,7 @@ export function SorareCardTile(props: SorareCardTileProps){
           <View style={styles.trend}>
             {/* XS_TILE_L5_SORARE_V2 */}
             <Text style={styles.trendLabel}>L5</Text>
+      <XSL5MiniBars values={(props as any)?.l5Bars} />{/* XS_SORARE_TILE_L5BARS_V1_RENDER */}
             {[0,1,2,3,4].map((i) => {
               const on = i < barCount;
               const h = 6 + i * 3; // barres progressives (Sorare-like)
@@ -314,6 +343,8 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
 });
+
+
 
 
 
