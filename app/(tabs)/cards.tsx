@@ -1,4 +1,4 @@
-﻿/* XS_CARDS_CENTER_ITEMWIDTH_V1 */
+/* XS_CARDS_CENTER_ITEMWIDTH_V1 */
 /* XS_CARDS_CENTER_2COL_V2 */
 /* XS_FIX_L5_FALLBACK_V1 */
 /* XS_CARDS_CENTER_2COL_V1 */
@@ -158,13 +158,56 @@ function xsTrendBarsFromL15(l15: number | null): 0|1|2|3|4 {
   if(l15 >= 40) return 2;
   return 1;
 }
+/* XS_L5_MINICHART_TILE_V1_BEGIN */
+function xsClamp(n: number, a: number, b: number){ return Math.max(a, Math.min(b, n)); }
+function xsScoreToBarLevel(score: number): 0|1|2|3|4 {
+  // proche Sorare: plus le score est haut, plus la barre est "forte"
+  if(!Number.isFinite(score)) return 0;
+  if(score >= 70) return 4;
+  if(score >= 55) return 3;
+  if(score >= 40) return 2;
+  if(score >= 25) return 1;
+  return 0;
+}
+function xsL5BarsFromCard(card: any): number[] {
+  // Priorité: utiliser un historique réel si présent
+  const arr =
+    card?.recentScores ??
+    card?.scores ??
+    card?.lastScores ??
+    card?.player?.recentScores ??
+    card?.anyPlayer?.recentScores ??
+    null;
+
+  if(Array.isArray(arr) && arr.length > 0){
+    const last5 = arr.slice(-5).map((x: any) => {
+      const v = (typeof x === "number") ? x : (typeof x === "string" ? Number(x) : (x?.score ?? x?.total ?? x?.value));
+      const n = (typeof v === "number") ? v : (typeof v === "string" ? Number(v) : NaN);
+      return Number.isFinite(n) ? xsClamp(n, 0, 100) : NaN;
+    }).filter((n: any) => Number.isFinite(n));
+    return last5;
+  }
+
+  // Fallback: pas d’historique -> simuler 5 barres sur la base du L5 moyen
+  const l5 = (typeof card?.l5 === "number") ? card.l5 : null;
+  if(typeof l5 === "number"){
+    const v = xsClamp(l5, 0, 100);
+    return [v, v, v, v, v];
+  }
+  return [];
+}
+/* XS_L5_MINICHART_TILE_V1_END */
 function CardTile({ card, width }: { card: MyCardItemLocal; width: number }) {
 const playerName = xsSafeStr(card?.anyPlayer?.displayName || card?.player?.displayName || "Unknown");
 const clubName   = xsSafeStr(card?.anyTeam?.name || card?.player?.activeClub?.name || "—");
 const rarity     = xsSafeStr((card?.rarityTyped || card?.rarity || "limited")).toLowerCase();
 const season     = (card?.seasonYear != null) ? String(card.seasonYear) : "—";
 const serial     = (card?.serialNumber != null) ? "#" + String(card.serialNumber) : "#—";
+const l5  = (typeof (card as any)?.l5 === "number") ? (card as any).l5 : null;
+const l10 = (typeof (card as any)?.l10 === "number") ? (card as any).l10 : null;
+const l40 = (typeof (card as any)?.l40 === "number") ? (card as any).l40 : null;
 const l15 = (typeof (card as any)?.l15 === "number") ? (card as any).l15 : xsGetL15ValueV1(card as any);
+const xsL5Bars = xsL5BarsFromCard(card as any);
 const bonusPct = xsBonusPctFromPower((card as any)?.power ?? (card as any)?.cardPower ?? (card as any)?.playerPower ?? null);
 
   return (
@@ -177,7 +220,7 @@ width={xsTileWidth2col(width)} imageUrl={xsSafeStr(card?.pictureUrl)}
       scarcityLabel={rarity}
       l15={l15}
       deltaPct={bonusPct}
-      trendBars={xsTrendBarsFromL15(l15)}
+      trendBars={xsTrendBarsFromL15((typeof l5 === "number") ? l5 : l15)} /* XS_L5_MINICHART_TILE_V1 */
       l5={(typeof (card as any)?.l5 === "number") ? (card as any).l5 : null} // XS_FIX_L5_FALLBACK_V1 // XS_MYCARDS_PASS_L5_LEVEL_V1
       level={(typeof (card as any)?.level === "number") ? (card as any).level : ((card as any)?.cardLevel ?? 0)} // XS_MYCARDS_PASS_L5_LEVEL_V1
     />
@@ -354,7 +397,11 @@ const club =
 const grade = xsNum((item as any)?.grade);
   /* XS_UI_L5L15_V1 */
 const l5  = xsNum((item as any)?.l5);
-const l15 = xsNum((item as any)?.l15);
+const l5  = (typeof (card as any)?.l5 === "number") ? (card as any).l5 : null;
+const l10 = (typeof (card as any)?.l10 === "number") ? (card as any).l10 : null;
+const l40 = (typeof (card as any)?.l40 === "number") ? (card as any).l40 : null;
+const l15 = (typeof (card as any)?.l15 === "number") ? (card as any).l15 : xsGetL15ValueV1(card as any);
+const xsL5Bars = xsL5BarsFromCard(card as any);
 const bonus = xsBonusPctFromPower((item as any)?.power);
                   return null; // XS_FIX_EMPTY_RETURN_V1
                 })()}
@@ -384,6 +431,7 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
