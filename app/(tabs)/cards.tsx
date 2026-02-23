@@ -215,7 +215,7 @@ width={xsTileWidth2col(width)} imageUrl={xsSafeStr(card?.pictureUrl)}
       scarcityLabel={rarity}
       l15={l15}
       deltaPct={bonusPct}
-      trendBars={xsTrendBarsFromL15((typeof ctL5 === "number") ? ctL5 : l15)} /* XS_L5_MINICHART_TILE_V1 */
+      trendBars={xsTrendBarsFromL15((typeof (card as any)?.l5 === "number") ? (card as any).l5 : xsGetL15ValueV1(card as any))} /* XS_CARDS_FIX_TRENDBARS_SCOPE_V1 */
       l5={(typeof (card as any)?.l5 === "number") ? (card as any).l5 : null} // XS_FIX_L5_FALLBACK_V1 // XS_MYCARDS_PASS_L5_LEVEL_V1
       level={(typeof (card as any)?.level === "number") ? (card as any).level : ((card as any)?.cardLevel ?? 0)} // XS_MYCARDS_PASS_L5_LEVEL_V1
     />
@@ -421,6 +421,7 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
