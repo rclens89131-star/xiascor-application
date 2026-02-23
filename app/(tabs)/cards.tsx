@@ -8,6 +8,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ActivityIndicator, FlatList, Image, Pressable, SafeAreaView, Text, View, useWindowDimensions, Dimensions } from "react-native";
 import { theme } from "../../src/theme";
 import { myCardsList, myCardsSync, type PageInfo } from "../../src/scoutApi";
+import { useRouter } from "expo-router";
 /* XS_MYCARDS_UI_META_V1_BEGIN */
 /* XS_CARDS_GRID_GROW_V1
    Objectif:
@@ -34,6 +35,7 @@ const p = xsNum(power);
 }
 /* XS_MYCARDS_UI_META_V1_END */
 import { SorareCardTile } from "../../src/components/SorareCardTile"; // XS_SORARE_TILE_IMPORT_V1
+import { useRouter } from "expo-router";
 const DEVICE_ID_KEY = "XS_DEVICE_ID_V1";
 const JWT_DEVICE_ID_KEY = "XS_JWT_DEVICE_ID_V1";
 const OAUTH_DEVICE_ID_KEY = "xs_device_id"; // XS_PREFER_OAUTH_DEVICEID_V2
@@ -197,16 +199,54 @@ function xsL5BarsFromCard(card: any): number[] {
   return [];
 }
 /* XS_L5_MINICHART_TILE_V1_END */
+/* XS_L5_MINICHART_TILE_RENDER_V1_BEGIN */
+function XSL5MiniBars({ values }: { values: number[] }) {
+  const arr = Array.isArray(values) ? values.slice(-5) : [];
+  if(arr.length === 0) return null;
+
+  // map score(0..100) -> bar height(6..22)
+  return (
+    <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 3 }}>
+      {arr.map((s, i) => {
+        const n = (typeof s === "number" && Number.isFinite(s)) ? Math.max(0, Math.min(100, s)) : 0;
+        const h = Math.round(6 + (n / 100) * 16);
+        const strong = n >= 60;
+        return (
+          <View
+            key={i}
+            style={{
+              width: 4,
+              height: h,
+              borderRadius: 4,
+              backgroundColor: strong ? "#22c55e" : "#3b82f6",
+              opacity: 0.95,
+            }}
+          />
+        );
+      })}
+    </View>
+  );
+}
+/* XS_L5_MINICHART_TILE_RENDER_V1_END */
 function CardTile({ card, width }: { card: MyCardItemLocal; width: number }) {
+  const router = useRouter(); /* XS_CARD_TILE_NAV_V1 */
 const playerName = xsSafeStr(card?.anyPlayer?.displayName || card?.player?.displayName || "Unknown");
 const clubName   = xsSafeStr(card?.anyTeam?.name || card?.player?.activeClub?.name || "—");
 const rarity     = xsSafeStr((card?.rarityTyped || card?.rarity || "limited")).toLowerCase();
 const season     = (card?.seasonYear != null) ? String(card.seasonYear) : "—";
 const serial     = (card?.serialNumber != null) ? "#" + String(card.serialNumber) : "#—";
 const bonusPct = xsBonusPctFromPower((card as any)?.power ?? (card as any)?.cardPower ?? (card as any)?.playerPower ?? null);
+const xsL5Mini = xsL5BarsFromCard(card as any); /* XS_L5_MINICHART_TILE_RENDER_V1_PASS */
 
   return (
-    <SorareCardTile
+        <Pressable
+      onPress={() => {
+        const id = (card as any)?.id ?? (card as any)?.cardId ?? (card as any)?.slug ?? "";
+        if (id) router.push({ pathname: "/card/[id]", params: { id: String(id) } });
+      }}
+      style={{ alignSelf: "stretch" }}
+    >
+<SorareCardTile
 width={xsTileWidth2col(width)} imageUrl={xsSafeStr(card?.pictureUrl)}
       playerName={playerName}
       clubName={clubName}
@@ -217,9 +257,11 @@ width={xsTileWidth2col(width)} imageUrl={xsSafeStr(card?.pictureUrl)}
       deltaPct={bonusPct}
       trendBars={xsTrendBarsFromL15((typeof (card as any)?.l5 === "number") ? (card as any).l5 : xsGetL15ValueV1(card as any))} /* XS_CARDS_FIX_TRENDBARS_SCOPE_V1 */
       l5={(typeof (card as any)?.l5 === "number") ? (card as any).l5 : null} // XS_FIX_L5_FALLBACK_V1 // XS_MYCARDS_PASS_L5_LEVEL_V1
+      l5Bars={xsL5Mini} /* XS_L5_MINICHART_TILE_RENDER_V1 */
       level={(typeof (card as any)?.level === "number") ? (card as any).level : ((card as any)?.cardLevel ?? 0)} // XS_MYCARDS_PASS_L5_LEVEL_V1
     />
-  );
+  
+    </Pressable>);
 }
 /* XS_MYCARDS_SORARE_TILE_V1_END */
 
@@ -421,6 +463,7 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
