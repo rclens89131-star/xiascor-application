@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+﻿import React, { useMemo, useState } from "react";
 import { Image, Pressable, Text, View } from "react-native";
 import { theme, rarityColor } from "../theme";
 
@@ -7,6 +7,8 @@ type Props = {
   selected?: boolean;
   onPress?: () => void;
   rightSlot?: React.ReactNode;
+
+  mode?: "default" | "gallery"; /* XS_CARDLIST_GALLERY_UI_V1 */
 };
 
 const CARD_AR = 320 / 448; // ≈ Sorare card ratio
@@ -23,29 +25,85 @@ function xsFmtAsOf(value: unknown): string {
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
-export function CardListItem({ card, selected, onPress, rightSlot }: Props) {
+/* XS_CARDLIST_GALLERY_UI_V1_BEGIN */
+function toNum(v: any): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function getRecentScores(card: any): number[] {
+  const raw =
+    card?.recentScores ??
+    card?.lastFiveScores ??
+    card?.l5Scores ??
+    card?.stats?.lastFive ??
+    [];
+  if (!Array.isArray(raw)) return [];
+  return raw.map(toNum).slice(-5);
+}
+
+function MiniL5Graph({ scores }: { scores: number[] }) {
+  const max = Math.max(60, ...scores, 1);
+
+  return (
+    <View style={{ marginTop: 8, flexDirection: "row", alignItems: "flex-end", gap: 4, height: 28 }}>
+      {scores.length ? (
+        scores.map((s, idx) => (
+          <View
+            key={"l5-" + String(idx)}
+            style={{
+              flex: 1,
+              height: `${Math.max(12, Math.round((s / max) * 100))}%`,
+              borderRadius: 3,
+              backgroundColor: "rgba(59,130,246,0.75)",
+              opacity: 0.9,
+            }}
+          />
+        ))
+      ) : (
+        <Text style={{ color: theme.muted, fontSize: 11 }}>L5 indisponible</Text>
+      )}
+    </View>
+  );
+}
+/* XS_CARDLIST_GALLERY_UI_V1_END */
+export function CardListItem({ card, selected, onPress, rightSlot, mode = "default" }: Props) {
   const [imgOk, setImgOk] = useState(true);
   const border = selected ? "rgba(59,130,246,0.55)" : theme.stroke;
   const url = String(card?.pictureUrl || "").trim();
 
-  return (
+  
+  const score = useMemo(() => {
+    const raw = card?.score ?? card?.level ?? card?.playerScore ?? 0;
+    return Math.round(toNum(raw));
+  }, [card]);
+
+  const bonusPct = useMemo(() => {
+    const raw = card?.totalBonus ?? card?.bonusPct ?? card?.bonus ?? card?.xpBonus ?? 0;
+    const n = toNum(raw);
+    return n > 1 ? n : n * 100;
+  }, [card]);
+
+  const recentScores = useMemo(() => getRecentScores(card), [card]);
+  const galleryMode = mode === "gallery";
+return (
     <Pressable
       onPress={onPress}
       style={{
         backgroundColor: theme.panel,
-        borderRadius: 18,
+        borderRadius: (typeof galleryMode !== "undefined" && galleryMode) ? 20 : 18,
         overflow: "hidden",
         borderWidth: 1,
         borderColor: border,
       }}
     >
       {/* Frame Sorare-like */}
-      <View style={{ padding: 12, backgroundColor: theme.panel }}>
+      <View style={{ padding: (typeof galleryMode !== "undefined" && galleryMode) ? 10 : 12, backgroundColor: theme.panel }}>
         <View
           style={{
             width: "100%",
             aspectRatio: CARD_AR,
-            borderRadius: 16,
+            borderRadius: (typeof galleryMode !== "undefined" && galleryMode) ? 18 : 16,
             overflow: "hidden",
             backgroundColor: theme.panel2,
             borderWidth: 1,
@@ -108,4 +166,5 @@ export function CardListItem({ card, selected, onPress, rightSlot }: Props) {
     </Pressable>
   );
 }
+
 
