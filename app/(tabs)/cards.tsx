@@ -4,11 +4,11 @@
 /* XS_CARDS_CENTER_2COL_V1 */
 /* XS_MYCARDS_REMOVE_UNDER_META_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, Image, Pressable, SafeAreaView, Text, View, useWindowDimensions, Dimensions } from "react-native";
 import { theme } from "../../src/theme";
 import { myCardsList, myCardsSync, type PageInfo } from "../../src/scoutApi";
-import { useRouter } from "expo-router";
 /* XS_MYCARDS_UI_META_V1_BEGIN */
 /* XS_CARDS_GRID_GROW_V1
    Objectif:
@@ -35,7 +35,6 @@ const p = xsNum(power);
 }
 /* XS_MYCARDS_UI_META_V1_END */
 import { SorareCardTile } from "../../src/components/SorareCardTile"; // XS_SORARE_TILE_IMPORT_V1
-import { useRouter } from "expo-router";
 const DEVICE_ID_KEY = "XS_DEVICE_ID_V1";
 const JWT_DEVICE_ID_KEY = "XS_JWT_DEVICE_ID_V1";
 const OAUTH_DEVICE_ID_KEY = "xs_device_id"; // XS_PREFER_OAUTH_DEVICEID_V2
@@ -463,39 +462,4 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
