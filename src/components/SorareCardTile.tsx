@@ -144,8 +144,13 @@ export function SorareCardTile(props: SorareCardTileProps){
 
         <View style={styles.row3}>
           <Text style={styles.meta} numberOfLines={1}>{metaLeft}</Text>
-
-          <View style={[styles.l15Pill, level === "hot1" ? styles.l15Hot1 : null, level === "hot2" ? styles.l15Hot2 : null]}>
+          {/* XS_SORARE_TILE_LEVEL_PILL_V1_BEGIN */}
+          {typeof xsLevel === "number" ? (
+            <View style={styles.levelPill}>
+              <Text style={styles.levelTxt}>LVL {Math.max(0, Math.round(xsLevel))}</Text>
+            </View>
+          ) : null}
+          {/* XS_SORARE_TILE_LEVEL_PILL_V1_END */}          <View style={[styles.l15Pill, level === "hot1" ? styles.l15Hot1 : null, level === "hot2" ? styles.l15Hot2 : null]}>
             <Text style={styles.l15Txt}>{l15Text}</Text>
           </View>
         </View>
@@ -213,7 +218,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 10,
+    gap: 8,
   },
   row1Left: {
     flex: 1,
@@ -279,7 +284,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginTop: 6,
-    gap: 10,
+    gap: 8,
   },
   meta: {
     color: "rgba(255,255,255,0.55)",
@@ -287,7 +292,26 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     flex: 1,
     minWidth: 0,
+  },  /* XS_SORARE_TILE_LEVEL_PILL_V1_STYLES_BEGIN */
+  levelPill: {
+    height: 24,
+    paddingHorizontal: 8,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    flexShrink: 0,
   },
+  levelTxt: {
+    color: "rgba(255,255,255,0.86)",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.2,
+  },
+  /* XS_SORARE_TILE_LEVEL_PILL_V1_STYLES_END */
+
 
   l15Pill: {
     minWidth: 34,
@@ -343,6 +367,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
 });
+
 
 
 
