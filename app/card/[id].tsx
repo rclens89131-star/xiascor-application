@@ -147,6 +147,7 @@ export default function CardDetailScreen() {
       </Text>
       {/* XS_PERF_SECTION_V1_RENDER */}
       <XSPerformanceSection card={card as any} />
+
       <Text style={{ color: theme.muted }} numberOfLines={2}>
         {pickStr((card as any)?.teamName)} • {pickStr((card as any)?.position)} • {pickStr((card as any)?.seasonYear)}
       </Text>
@@ -182,5 +183,6 @@ export default function CardDetailScreen() {
     </ScrollView>
   );
 }
+
 
 
