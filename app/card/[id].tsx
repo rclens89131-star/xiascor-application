@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+﻿import React, { useMemo } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { theme } from "../../src/theme";
@@ -16,10 +16,7 @@ function xsColorKey(score: number): "r"|"o"|"y"|"g" {
 function XSScorePill({ label, value }: { label: string; value: number | null | undefined }){
   const v = (typeof value === "number" && Number.isFinite(value)) ? Math.round(value) : null;
   return (
-    <View style={{ alignItems: "center", gap: 6 }}>
-      {/* XS_PERF_SECTION_V1_RENDER */}
-      <XSPerformanceSection card={card as any} />
-      <Text style={{ color: "#9aa0a6", fontSize: 12 }}>{label}</Text>
+    <View style={{ alignItems: "center", gap: 6 }}>      <Text style={{ color: "#9aa0a6", fontSize: 12 }}>{label}</Text>
       <View style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: "#141414", borderWidth: 1, borderColor: "#242424", minWidth: 54, alignItems: "center" }}>
         <Text style={{ color: "white", fontWeight: "700" }}>{v == null ? "—" : String(v)}</Text>
       </View>
@@ -31,20 +28,14 @@ function XSPerfChart({ scores }: { scores: number[] }){
   const arr = (Array.isArray(scores) ? scores : []).slice(-15).map((n) => xsClampScore(n));
   const max = 100;
   return (
-    <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8, paddingVertical: 12 }}>
-      {/* XS_PERF_SECTION_V1_RENDER */}
-      <XSPerformanceSection card={card as any} />
-      {arr.length === 0 ? (
+    <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8, paddingVertical: 12 }}>      {arr.length === 0 ? (
         <Text style={{ color: "#9aa0a6" }}>Historique indisponible (mode public / pas encore sync).</Text>
       ) : arr.map((s, i) => {
         const h = Math.round(10 + xsClamp01(s / max) * 110);
         const key = xsColorKey(s);
         const bg = key === "g" ? "#22c55e" : (key === "y" ? "#facc15" : (key === "o" ? "#fb923c" : "#ef4444"));
         return (
-          <View key={i} style={{ width: 16, height: h, borderRadius: 8, backgroundColor: bg, opacity: 0.92 }} />
-      {/* XS_PERF_SECTION_V1_RENDER */}
-      <XSPerformanceSection card={card as any} />
-        );
+          <View key={i} style={{ width: 16, height: h, borderRadius: 8, backgroundColor: bg, opacity: 0.92 }} />        );
       })}
     </View>
   );
@@ -70,10 +61,7 @@ function XSPerformanceSection({ card }: { card: any }){
   }).filter((n: any) => typeof n === "number") : [];
 
   return (
-    <View style={{ marginTop: 16, padding: 14, borderRadius: 16, backgroundColor: "#0f0f0f", borderWidth: 1, borderColor: "#1f1f1f" }}>
-      {/* XS_PERF_SECTION_V1_RENDER */}
-      <XSPerformanceSection card={card as any} />
-      <Text style={{ color: "white", fontSize: 18, fontWeight: "800", marginBottom: 10 }}>Performance du joueur</Text>
+    <View style={{ marginTop: 16, padding: 14, borderRadius: 16, backgroundColor: "#0f0f0f", borderWidth: 1, borderColor: "#1f1f1f" }}>      <Text style={{ color: "white", fontSize: 18, fontWeight: "800", marginBottom: 10 }}>Performance du joueur</Text>
 
       <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
         <XSScorePill label="5 derniers" value={l5} />
@@ -134,10 +122,7 @@ export default function CardDetailScreen() {
 
   if (!card) {
     return (
-      <View style={{ flex: 1, backgroundColor: theme.bg, padding: 16, justifyContent: "center" }}>
-      {/* XS_PERF_SECTION_V1_RENDER */}
-      <XSPerformanceSection card={card as any} />
-        <Text style={{ color: theme.text, fontWeight: "900", fontSize: 18 }}>Carte introuvable</Text>
+      <View style={{ flex: 1, backgroundColor: theme.bg, padding: 16, justifyContent: "center" }}>        <Text style={{ color: theme.text, fontWeight: "900", fontSize: 18 }}>Carte introuvable</Text>
         <Text style={{ color: theme.muted, marginTop: 8 }}>
           Ouvre la fiche en cliquant depuis la liste (cache navigation).
         </Text>
@@ -155,10 +140,9 @@ export default function CardDetailScreen() {
       : ((trend >= 0 ? "+" : "") + trend.toFixed(2) + " €");
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16, gap: 12 }}>
+    <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16, gap: 12 }}>      <Text style={{ color: theme.text, fontWeight: "900", fontSize: 20 }} numberOfLines={2}>
       {/* XS_PERF_SECTION_V1_RENDER */}
       <XSPerformanceSection card={card as any} />
-      <Text style={{ color: theme.text, fontWeight: "900", fontSize: 20 }} numberOfLines={2}>
         {pickStr((card as any)?.playerName)}
       </Text>
       <Text style={{ color: theme.muted }} numberOfLines={2}>
@@ -196,3 +180,4 @@ export default function CardDetailScreen() {
     </ScrollView>
   );
 }
+
