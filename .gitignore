@@ -77,3 +77,5 @@ _logs/
 
 _trash_sorare_backend_*/
 
+expo_out.log
+expo_err.log

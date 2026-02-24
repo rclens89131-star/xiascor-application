@@ -1,4 +1,4 @@
-﻿/* XS_TILE_TREND_LAYOUT_V1 */
+/* XS_TILE_TREND_LAYOUT_V1 */
 /* XS_TILE_ROW1_STYLES_BRACESCAN_V2 */
 /* XS_TILE_ROW1_STRICT_NO_OVERLAP_V1 */
 /* XS_FIX_TREND_DUP_KEYS_V1 */
@@ -11,15 +11,15 @@
 import React from "react";
 import { View, Text, StyleSheet, ImageBackground } from "react-native";
 /* XS_SORARE_TILE_L5BARS_V1_BEGIN */
-function XSL5MiniBars({ values }: { values?: number[] }) {
+function XSL5MiniBars({ values }: {values?: number[];}) {
   const arr = Array.isArray(values) ? values.slice(-5) : [];
-  if(arr.length === 0) return null;
+  if (arr.length === 0) return null;
 
   return (
     <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 3, marginTop: 6 }}>
       {arr.map((s, i) => {
-        const n = (typeof s === "number" && Number.isFinite(s)) ? Math.max(0, Math.min(100, s)) : 0;
-        const h = Math.round(6 + (n / 100) * 16);
+        const n = typeof s === "number" && Number.isFinite(s) ? Math.max(0, Math.min(100, s)) : 0;
+        const h = Math.round(6 + n / 100 * 16);
         const strong = n >= 60;
         return (
           <View
@@ -29,13 +29,13 @@ function XSL5MiniBars({ values }: { values?: number[] }) {
               height: h,
               borderRadius: 4,
               backgroundColor: strong ? "#22c55e" : "#3b82f6",
-              opacity: 0.95,
-            }}
-          />
-        );
+              opacity: 0.95
+            }} />);
+
+
       })}
-    </View>
-  );
+    </View>);
+
 }
 /* XS_SORARE_TILE_L5BARS_V1_END */
 export type SorareCardTileProps = {
@@ -46,62 +46,62 @@ export type SorareCardTileProps = {
   imageUrl: string;
   playerName: string;
   clubName?: string | null;
-  seasonLabel?: string | null;   // ex: "2024"
-  serialLabel?: string | null;   // ex: "#64"
+  seasonLabel?: string | null; // ex: "2024"
+  serialLabel?: string | null; // ex: "#64"
   scarcityLabel?: string | null; // ex: "limited"
-  l15?: number | null;           // ex: 47
-  deltaPct?: number | null;      // ex: +11
-  trendBars?: 0 | 1 | 2 | 3 | 4;  // petit indicateur vert (0-4)
+  l15?: number | null; // ex: 47
+  deltaPct?: number | null; // ex: +11
+  trendBars?: 0 | 1 | 2 | 3 | 4; // petit indicateur vert (0-4)
 };
 
-function clamp01(n: number){ return Math.max(0, Math.min(1, n)); }
+function clamp01(n: number) {return Math.max(0, Math.min(1, n));}
 
-function l15Level(l15?: number | null){
-  if(typeof l15 !== "number") return "none";
-  if(l15 >= 60) return "hot2";
-  if(l15 >= 50) return "hot1";
+function l15Level(l15?: number | null) {
+  if (typeof l15 !== "number") return "none";
+  if (l15 >= 60) return "hot2";
+  if (l15 >= 50) return "hot1";
   return "base";
 }
 
-function formatDelta(deltaPct?: number | null){
-  if(typeof deltaPct !== "number") return null;
+function formatDelta(deltaPct?: number | null) {
+  if (typeof deltaPct !== "number") return null;
   const sign = deltaPct > 0 ? "+" : "";
   return `${sign}${Math.round(deltaPct)}%`;
 }
 
 // XS_SORARE_TILE_V1 — Sorare-like card tile (image + info footer)
-export function SorareCardTile(props: SorareCardTileProps){
+export function SorareCardTile(props: SorareCardTileProps) {
   /* XS_SORARE_TILE_FOOTER_FIT_V1_BEGIN */
-  const xsL5 = (typeof props.l5 === "number") ? props.l5 : null;
-  const xsL15 = (typeof props.l15 === "number") ? props.l15 : null;
-  const xsLevel = (typeof props.level === "number") ? props.level : null;
-  const xsDelta = (typeof props.deltaPct === "number") ? props.deltaPct : null;
+  const xsL5 = typeof props.l5 === "number" ? props.l5 : null;
+  const xsL15 = typeof props.l15 === "number" ? props.l15 : null;
+  const xsLevel = typeof props.level === "number" ? props.level : null;
+  const xsDelta = typeof props.deltaPct === "number" ? props.deltaPct : null;
   /* XS_SORARE_TILE_FOOTER_FIT_V1_END */
   const level = l15Level(props.l15);
   const delta = formatDelta(props.deltaPct);
 
   const season = props.seasonLabel ?? "";
   const serial = props.serialLabel ?? "";
-  const scar   = props.scarcityLabel ?? "";
+  const scar = props.scarcityLabel ?? "";
 
   const metaLeft = [season, serial, scar].filter(Boolean).join(" • ");
 
   const bars = props.trendBars ?? 3;
   const barCount = Math.max(0, Math.min(4, bars));
 
-  const l15Text = (typeof props.l15 === "number" && isFinite(props.l15)) ? String(Math.round(props.l15)) : "—";
+  const l15Text = typeof props.l15 === "number" && isFinite(props.l15) ? String(Math.round(props.l15)) : "—";
 
   return (
-    <View style={[styles.wrap, (typeof props.width === "number" ? { width: props.width } : null)]}>
+    <View style={[styles.wrap, typeof props.width === "number" ? { width: props.width } : null]}>
       <View style={styles.cardShell}>
         <ImageBackground
           source={{ uri: props.imageUrl }}
           style={styles.img}
           imageStyle={styles.imgRadius}
-          resizeMode="contain"
-        >
+          resizeMode="contain">
+
           {/* L'image Sorare a déjà souvent le texte/overlay imprimé dedans.
-              On laisse "clean" ici pour matcher le screenshot. */}
+               On laisse "clean" ici pour matcher le screenshot. */}
           <View style={styles.imgTopFade} />
           <View style={styles.imgBottomFade} />
         </ImageBackground>
@@ -111,28 +111,28 @@ export function SorareCardTile(props: SorareCardTileProps){
         <View style={styles.row1}>
           <View style={styles.row1Left}>
             <Text style={styles.playerName} numberOfLines={1}>{props.playerName}</Text>
-            {delta ? (
-              <View style={styles.deltaPill}>
-                <Text style={styles.deltaTxt}>{delta}</Text>
-              </View>
-            ) : null}
+            {delta ?
+            <View style={styles.deltaPill}>
+              <Text style={styles.deltaTxt}>{delta}</Text>
+            </View> :
+            null}
           </View>
 
           <View style={styles.trend}>
             {/* XS_SORARE_MINI_STYLE_V1: remove L5 label (Sorare-like) */}
-      <XSL5MiniBars values={(props as any)?.l5Bars} />{/* XS_SORARE_TILE_L5BARS_V1_RENDER */}
-            {[0,1,2,3,4].map((i) => {
+            <XSL5MiniBars values={(props as any)?.l5Bars} />{/* XS_SORARE_TILE_L5BARS_V1_RENDER */}
+            {[0, 1, 2, 3, 4].map((i) => {
               const on = i < barCount;
               const h = 6 + i * 3; // barres progressives (Sorare-like)
               return (
                 <View
                   key={`b_${i}`}
                   style={[
-                    styles.trendBar,
-                    { height: h, opacity: on ? 1 : 0.25 }
-                  ]}
-                />
-              );
+                  styles.trendBar,
+                  { height: h, opacity: on ? 1 : 0.25 }]
+                  } />);
+
+
             })}
           </View>
         </View>
@@ -144,24 +144,24 @@ export function SorareCardTile(props: SorareCardTileProps){
         <View style={styles.row3}>
           <Text style={styles.meta} numberOfLines={1}>{metaLeft}</Text>
           {/* XS_SORARE_TILE_LEVEL_PILL_V1_BEGIN */}
-          {typeof xsLevel === "number" ? (
-            <View style={styles.levelPill}>
-              <Text style={styles.levelTxt}>LVL {Math.max(0, Math.round(xsLevel))}</Text>
-            </View>
-          ) : null}
-          {/* XS_SORARE_TILE_LEVEL_PILL_V1_END */}          <View style={[styles.l15Pill, level === "hot1" ? styles.l15Hot1 : null, level === "hot2" ? styles.l15Hot2 : null]}>
+          {typeof xsLevel === "number" ?
+          <View style={styles.levelPill}>
+            <Text style={styles.levelTxt}>LVL {Math.max(0, Math.round(xsLevel))}</Text>
+          </View> :
+          null}
+          {/* XS_SORARE_TILE_LEVEL_PILL_V1_END */}<View style={[styles.l15Pill, level === "hot1" ? styles.l15Hot1 : null, level === "hot2" ? styles.l15Hot2 : null]}>
             <Text style={styles.l15Txt}>{l15Text}</Text>
           </View>
         </View>
       </View>
-    </View>
-  );
+    </View>);
+
 }
 
 const styles = StyleSheet.create({
   /* XS_SORARE_TILE_FOOTER_FIT_V1_BEGIN_STYLES */
   wrap: {
-    width: 175,
+    width: 175
   },
 
   cardShell: {
@@ -175,15 +175,15 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
+    elevation: 6
   },
 
   img: {
     width: "100%",
-    height: 250, // proche screenshot
+    height: 250 // proche screenshot
   },
   imgRadius: {
-    borderRadius: 18,
+    borderRadius: 18
   },
   imgTopFade: {
     position: "absolute",
@@ -191,7 +191,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 18,
-    backgroundColor: "rgba(0,0,0,0.12)",
+    backgroundColor: "rgba(0,0,0,0.12)"
   },
   imgBottomFade: {
     position: "absolute",
@@ -199,7 +199,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 22,
-    backgroundColor: "rgba(0,0,0,0.18)",
+    backgroundColor: "rgba(0,0,0,0.18)"
   },
 
   footer: {
@@ -211,26 +211,26 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     borderBottomLeftRadius: 18,
     borderBottomRightRadius: 18,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: "rgba(255,255,255,0.08)"
   },
   row1: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
+    gap: 8
   },
   row1Left: {
     flex: 1,
     minWidth: 0,
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "center"
   },
   playerName: {
     color: "#fff",
     fontSize: 16,
     fontWeight: "800",
     flexShrink: 1,
-    minWidth: 0,
+    minWidth: 0
   },
   deltaPill: {
     flexShrink: 0,
@@ -242,12 +242,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "rgba(44, 255, 128, 0.16)",
     borderWidth: 1,
-    borderColor: "rgba(44, 255, 128, 0.35)",
+    borderColor: "rgba(44, 255, 128, 0.35)"
   },
   deltaTxt: {
     color: "rgba(255,255,255,0.92)",
     fontSize: 11,
-    fontWeight: "700",
+    fontWeight: "700"
   },
   trend: {
     flexShrink: 0,
@@ -256,42 +256,42 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     justifyContent: "flex-end",
     gap: 6,
-    marginLeft: 10,
+    marginLeft: 10
   },
   trendLabel: {
     color: "rgba(255,255,255,0.75)",
     fontSize: 11,
     fontWeight: "800",
-    marginRight: 2,
+    marginRight: 2
   },
 
   trendBar: {
     width: 4,
     borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.9)",
+    backgroundColor: "rgba(255,255,255,0.9)"
   },
 
   club: {
     marginTop: 6,
     color: "rgba(255,255,255,0.62)",
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: "600"
   },
 
-    row3: {
+  row3: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     marginTop: 6,
-    gap: 8,
+    gap: 8
   },
   meta: {
     color: "rgba(255,255,255,0.55)",
     fontSize: 12,
     fontWeight: "600",
     flex: 1,
-    minWidth: 0,
-  },  /* XS_SORARE_TILE_LEVEL_PILL_V1_STYLES_BEGIN */
+    minWidth: 0
+  }, /* XS_SORARE_TILE_LEVEL_PILL_V1_STYLES_BEGIN */
   levelPill: {
     height: 24,
     paddingHorizontal: 8,
@@ -301,13 +301,13 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.06)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.10)",
-    flexShrink: 0,
+    flexShrink: 0
   },
   levelTxt: {
     color: "rgba(255,255,255,0.86)",
     fontSize: 10,
     fontWeight: "800",
-    letterSpacing: 0.2,
+    letterSpacing: 0.2
   },
   /* XS_SORARE_TILE_LEVEL_PILL_V1_STYLES_END */
 
@@ -320,34 +320,34 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#F4C21A", // jaune Sorare-like
-  
+
     flexShrink: 0,
-    marginLeft: 10,
-},
+    marginLeft: 10
+  },
   l15Txt: {
     color: "#0b0b0d",
     fontSize: 13,
-    fontWeight: "900",
+    fontWeight: "900"
   },
 
   // Indicateurs couleur (L15 > 50 / > 60)
   l15Hot1: {
     backgroundColor: "#FFCC33",
-    transform: [{ scale: 1.02 }],
+    transform: [{ scale: 1.02 }]
   },
   l15Hot2: {
     backgroundColor: "#FFD84D",
-    transform: [{ scale: 1.04 }],
+    transform: [{ scale: 1.04 }]
   },
   metaRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 2,
+    marginTop: 2
   },
   metaText: {
     fontSize: 11,
-    opacity: 0.9,
+    opacity: 0.9
   },
   /* XS_SORARE_TILE_FOOTER_FIT_V1_END_STYLES */
   xsTrendRow: {
@@ -355,26 +355,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
-    marginTop: 2,
+    marginTop: 2
   },
   xsTrendBarsWrap: {
     flex: 1,
-    minWidth: 0,
+    minWidth: 0
   },
   xsTrendBadgeWrap: {
     flexShrink: 0,
-    marginLeft: 8,
-  },
+    marginLeft: 8
+  }
 });
-
-
-
-
-
-
-
-
-
-
-
-
