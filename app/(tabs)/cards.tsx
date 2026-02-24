@@ -365,6 +365,9 @@ const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
+      {/* XS_MYCARDS_BADGE_SAFE_V1 */}
+      <Text style={{ color: '#ffffff', backgroundColor: '#ff2d55', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, alignSelf: 'flex-start', marginBottom: 10, fontWeight: '900' }}>XS MES CARTES V1 • 20260224_191855</Text>
+
 {/* XS_UI_MYCARDS_PROBE_V2_BEGIN */}
 <View style={{ padding: 10, borderRadius: 12, backgroundColor: "#2b0f0f", borderWidth: 1, borderColor: "#ff4d4d", marginBottom: 10 }}>
   <Text style={{ color: "white", fontWeight: "900" }}>
@@ -476,6 +479,7 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
