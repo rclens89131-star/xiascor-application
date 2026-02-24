@@ -17,13 +17,6 @@ function XSL5MiniBars({ values }: {values?: number[];}) {
 
   return (
     <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 3, marginTop: 6 }}>
-{/* XS_TILE_PROBE_V1_BEGIN */}
-<View style={{ position: "absolute", top: 8, right: 8, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: "#ff2d55", borderWidth: 1, borderColor: "#ffffff", zIndex: 9999 }}>
-  <Text style={{ color: "white", fontWeight: "900", fontSize: 12 }}>
-    XS TILE PROBE • b7fb18b • 20260224_191227
-  </Text>
-</View>
-{/* XS_TILE_PROBE_V1_END */}
       {arr.map((s, i) => {
         const n = typeof s === "number" && Number.isFinite(s) ? Math.max(0, Math.min(100, s)) : 0;
         const h = Math.round(6 + n / 100 * 16);
@@ -37,14 +30,7 @@ function XSL5MiniBars({ values }: {values?: number[];}) {
               borderRadius: 4,
               backgroundColor: strong ? "#22c55e" : "#3b82f6",
               opacity: 0.95
-            }} />
-{/* XS_TILE_PROBE_V1_BEGIN */}
-<View style={{ position: "absolute", top: 8, right: 8, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: "#ff2d55", borderWidth: 1, borderColor: "#ffffff", zIndex: 9999 }}>
-  <Text style={{ color: "white", fontWeight: "900", fontSize: 12 }}>
-    XS TILE PROBE • b7fb18b • 20260224_191227
-  </Text>
-</View>
-{/* XS_TILE_PROBE_V1_END */});
+            }} />);
 
 
       })}
@@ -107,13 +93,6 @@ export function SorareCardTile(props: SorareCardTileProps) {
 
   return (
     <View style={[styles.wrap, typeof props.width === "number" ? { width: props.width } : null]}>
-{/* XS_TILE_PROBE_V1_BEGIN */}
-<View style={{ position: "absolute", top: 8, right: 8, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: "#ff2d55", borderWidth: 1, borderColor: "#ffffff", zIndex: 9999 }}>
-  <Text style={{ color: "white", fontWeight: "900", fontSize: 12 }}>
-    XS TILE PROBE • b7fb18b • 20260224_191227
-  </Text>
-</View>
-{/* XS_TILE_PROBE_V1_END */}
       <View style={styles.cardShell}>
         <ImageBackground
           source={{ uri: props.imageUrl }}
@@ -151,14 +130,7 @@ export function SorareCardTile(props: SorareCardTileProps) {
                   style={[
                   styles.trendBar,
                   { height: h, opacity: on ? 1 : 0.25 }]
-                  } />
-{/* XS_TILE_PROBE_V1_BEGIN */}
-<View style={{ position: "absolute", top: 8, right: 8, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: "#ff2d55", borderWidth: 1, borderColor: "#ffffff", zIndex: 9999 }}>
-  <Text style={{ color: "white", fontWeight: "900", fontSize: 12 }}>
-    XS TILE PROBE • b7fb18b • 20260224_191227
-  </Text>
-</View>
-{/* XS_TILE_PROBE_V1_END */});
+                  } />);
 
 
             })}
@@ -395,4 +367,3 @@ const styles = StyleSheet.create({
     marginLeft: 8
   }
 });
-
