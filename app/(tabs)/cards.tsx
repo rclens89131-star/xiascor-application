@@ -365,6 +365,16 @@ const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
+{/* XS_UI_MYCARDS_PROBE_V2_BEGIN */}
+<View style={{ padding: 10, borderRadius: 12, backgroundColor: "#2b0f0f", borderWidth: 1, borderColor: "#ff4d4d", marginBottom: 10 }}>
+  <Text style={{ color: "white", fontWeight: "900" }}>
+    XS PROBE Mes cartes — sha=fdf4089 — ts=20260224_191029
+  </Text>
+  <Text style={{ color: "#ffd0d0", marginTop: 4 }}>
+    Si tu vois ce bandeau, l’iPhone charge bien le dernier bundle.
+  </Text>
+</View>
+{/* XS_UI_MYCARDS_PROBE_V2_END */}
       <View style={{ padding: 16, gap: 10 }}>
         <Text style={{ color: theme.text, fontSize: 22, fontWeight: "900" }}>Mes cartes</Text>
 {/* XS_CARDS_UI_PROBE_V1 */}
@@ -466,5 +476,6 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
