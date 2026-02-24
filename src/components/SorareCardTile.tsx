@@ -119,8 +119,7 @@ export function SorareCardTile(props: SorareCardTileProps){
           </View>
 
           <View style={styles.trend}>
-            {/* XS_TILE_L5_SORARE_V2 */}
-            <Text style={styles.trendLabel}>L5</Text>
+            {/* XS_SORARE_MINI_STYLE_V1: remove L5 label (Sorare-like) */}
       <XSL5MiniBars values={(props as any)?.l5Bars} />{/* XS_SORARE_TILE_L5BARS_V1_RENDER */}
             {[0,1,2,3,4].map((i) => {
               const on = i < barCount;
@@ -367,6 +366,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
 });
+
 
 
 
