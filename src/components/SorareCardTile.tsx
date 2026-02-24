@@ -3,11 +3,10 @@ import { View, Text, Image, TouchableOpacity } from "react-native";
 import { theme } from "../theme";
 
 /**
- * XS_REWRITE_SORARECARDTILE_L5_ONLY_V1
- * Objectif:
- * - Supprimer l'ancien indicateur "+%" (trend) => supprimé
- * - Afficher un mini L5 bars "Sorare-like" à droite en bas
- * - Éviter toute SyntaxError (plus de JSX comment au mauvais endroit)
+ * XS_TILE_RETRO_COMPAT_THEME_FIX_V1
+ * - Support ancien props ET nouveau { card }
+ * - Corrige theme.cardBorder -> theme.stroke
+ * - Corrige theme.card -> theme.panel
  */
 
 function xsNum(v: any): number | null {
@@ -31,8 +30,8 @@ function XSL5MiniBars({ values }: { values?: number[] }) {
       {arr.map((raw, idx) => {
         const v = xsNum(raw);
         const val = v === null ? 0 : xsClamp(v, 0, 100);
-        const isDnp = v === null;
         const h = Math.max(3, Math.round((H * val) / 100));
+
         return (
           <View
             key={"xs-l5-" + idx}
@@ -42,7 +41,7 @@ function XSL5MiniBars({ values }: { values?: number[] }) {
               marginRight: idx === arr.length - 1 ? 0 : GAP,
               borderRadius: 2,
               overflow: "hidden",
-              backgroundColor: theme.cardBorder,
+              backgroundColor: theme.stroke,
               opacity: 0.95,
             }}
           >
@@ -52,8 +51,8 @@ function XSL5MiniBars({ values }: { values?: number[] }) {
                 bottom: 0,
                 left: 0,
                 right: 0,
-                height: isDnp ? Math.max(3, Math.round(H * 0.25)) : h,
-                backgroundColor: isDnp ? "#4B4F58" : "#2D7CFF",
+                height: h,
+                backgroundColor: "#2D7CFF",
                 borderRadius: 2,
               }}
             />
@@ -64,46 +63,49 @@ function XSL5MiniBars({ values }: { values?: number[] }) {
   );
 }
 
-export function SorareCardTile(props: {
-  card: any;
-  onPress?: () => void;
-  width?: number;
-}) {
-  const c = props.card || {};
-  const w = typeof props.width === "number" ? props.width : undefined;
+export function SorareCardTile(props: any) {
+
+  // === RETRO COMPAT MODE ===
+  const c = props.card ?? props;
 
   const pictureUrl =
-    (typeof c.pictureUrl === "string" && c.pictureUrl) ||
-    (typeof c.avatarUrl === "string" && c.avatarUrl) ||
+    c.pictureUrl ??
+    c.avatarUrl ??
+    c.imageUrl ??
     "";
 
   const playerName =
-    (typeof c.playerName === "string" && c.playerName) ||
-    (typeof c.name === "string" && c.name) ||
-    (typeof c.slug === "string" && c.slug) ||
+    c.playerName ??
+    c.name ??
+    c.slug ??
     "Carte";
 
   const teamName =
-    (typeof c.teamName === "string" && c.teamName) ||
-    (typeof c.clubName === "string" && c.clubName) ||
+    c.teamName ??
+    c.clubName ??
     "";
 
   const seasonYear =
-    xsNum(c.seasonYear) ?? xsNum(c?.season?.year) ?? null;
+    xsNum(c.seasonYear) ??
+    xsNum(c?.season?.year) ??
+    null;
 
   const serial =
-    xsNum(c.serialNumber) ?? xsNum(c.serial) ?? null;
+    xsNum(c.serialNumber) ??
+    xsNum(c.serial) ??
+    null;
 
   const rarity =
-    (typeof c.rarityTyped === "string" && c.rarityTyped) ||
-    (typeof c.rarity === "string" && c.rarity) ||
+    c.rarityTyped ??
+    c.rarity ??
     "";
 
   const level =
-    xsNum(c.level) ?? xsNum(c.lvl) ?? null;
+    xsNum(c.level) ??
+    xsNum(c.lvl) ??
+    null;
 
-  // L5 mini bars: on accepte plusieurs shapes (l5Bars, l5, recentScores)
-  const l5Bars: number[] | undefined =
+  const l5Bars =
     Array.isArray(c.l5Bars) ? c.l5Bars :
     Array.isArray(c.l5) ? c.l5 :
     Array.isArray(c.recentScores) ? c.recentScores :
@@ -114,11 +116,11 @@ export function SorareCardTile(props: {
       activeOpacity={0.9}
       onPress={props.onPress}
       style={{
-        width: w,
+        width: props.width,
         borderRadius: 18,
         borderWidth: 1,
-        borderColor: theme.cardBorder,
-        backgroundColor: theme.card,
+        borderColor: theme.stroke,
+        backgroundColor: theme.panel,
         overflow: "hidden",
       }}
     >
@@ -128,7 +130,7 @@ export function SorareCardTile(props: {
             borderRadius: 16,
             overflow: "hidden",
             borderWidth: 1,
-            borderColor: theme.cardBorder,
+            borderColor: theme.stroke,
             backgroundColor: "#0e0f12",
           }}
         >
@@ -149,31 +151,39 @@ export function SorareCardTile(props: {
           <Text style={{ color: theme.text, fontWeight: "900" }} numberOfLines={1}>
             {playerName}
           </Text>
+
           <Text style={{ color: theme.muted, marginTop: 2 }} numberOfLines={1}>
             {teamName}
           </Text>
 
           <View style={{ flexDirection: "row", alignItems: "center", marginTop: 8 }}>
             <Text style={{ color: theme.muted }} numberOfLines={1}>
-              {seasonYear ? String(seasonYear) : "—"}{"  "}•{"  "}
-              {serial !== null ? ("#" + String(serial)) : "#—"}{"  "}•{"  "}
-              {rarity ? rarity : "—"}
+              {seasonYear ?? "—"}{"  "}•{"  "}
+              {serial ? "#" + serial : "#—"}{"  "}•{"  "}
+              {rarity || "—"}
             </Text>
 
             <View style={{ flex: 1 }} />
 
-            {/* ✅ Zone entourée sur ton screenshot: mini L5 bars */}
-            <View style={{ alignItems: "flex-end" }}>
-              <XSL5MiniBars values={l5Bars} />
-            </View>
+            <XSL5MiniBars values={l5Bars} />
           </View>
 
-          {/* ✅ On garde le level si présent (sinon rien) */}
-          {level !== null ? (
-            <View style={{ marginTop: 10, alignSelf: "flex-start", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: "#15171C", borderWidth: 1, borderColor: theme.cardBorder }}>
-              <Text style={{ color: theme.text, fontWeight: "900" }}>LVL {String(level)}</Text>
+          {level !== null && (
+            <View style={{
+              marginTop: 10,
+              alignSelf: "flex-start",
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 999,
+              backgroundColor: "#15171C",
+              borderWidth: 1,
+              borderColor: theme.stroke
+            }}>
+              <Text style={{ color: theme.text, fontWeight: "900" }}>
+                LVL {level}
+              </Text>
             </View>
-          ) : null}
+          )}
         </View>
       </View>
     </TouchableOpacity>
