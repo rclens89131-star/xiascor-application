@@ -817,7 +817,10 @@ if (parsed?.picked) {
           </View>
 
           <Text style={{ color: theme.muted, marginTop: 8 }}>
-            {missingCount > 0 ? `Il manque ${missingCount} carte${missingCount > 1 ? "s" : ""}` : "Lineup complète"} • {pickedSlugs.length}/5 cartes
+            {missingCount > 0 ? `Il manque ${missingCount} carte${missingCount > 1 ? "s" : ""}` : "Lineup complète"}{" "}
+<Text style={{ color: theme.muted, fontWeight: "800" }}>
+  • {pickedSlugs.length}/5 cartes
+</Text>
           </Text>
 
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
@@ -1049,5 +1052,6 @@ try { showToast(`TAP PICKER ${xsPickerSlot}`); } catch {}
 </SafeAreaView>
   );
 }
+
 
 

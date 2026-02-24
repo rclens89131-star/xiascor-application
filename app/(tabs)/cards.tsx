@@ -12,7 +12,7 @@ import { myCardsList, myCardsSync, type PageInfo } from "../../src/scoutApi";
 /* XS_MYCARDS_UI_META_V1_BEGIN */
 /* XS_CARDS_GRID_GROW_V1
    Objectif:
-   - garder 2 colonnes mais remplir l'espace -> tiles plus grandes
+// XS_TEXT_OUTSIDE_TEXT_FIX_V1 - garder 2 colonnes mais remplir l'espace -> tiles plus grandes
    - calcul largeur tuile = (screenWidth - padding*2 - gap) / 2
 */
 const XS_GRID_PADDING = 16;
