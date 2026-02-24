@@ -43,6 +43,17 @@ function XSPerfChart({ scores }: { scores: number[] }){
 }
 
 function XSPerformanceSection({ card, perf }: { card: any; perf?: any }){ /* XS_CARD_PUBLIC_PLAYER_PERF_SECTION_SIG_V4 */
+  /* XS_CARD_SORARE_BIG_BARS_V1 */
+  const xsRaw =
+    perf?.recentScores ??
+    card?.recentScores ??
+    card?.scores ??
+    card?.lastScores ??
+    [];
+
+  const xsScores = Array.isArray(xsRaw)
+    ? xsRaw.map((n: any) => (typeof n === "number" ? n : null)).slice(-40)
+    : [];
   const l5  = (typeof perf?.l5 === "number") ? perf.l5 : ((typeof card?.l5 === "number") ? card.l5 : null); /* XS_CARD_PUBLIC_PLAYER_PERF_L5_V4 */
   const l10 = (typeof card?.l10 === "number") ? card.l10 : null;
   const l40 = (typeof card?.l40 === "number") ? card.l40 : null;
@@ -218,6 +229,7 @@ export default function CardDetailScreen() {
     </ScrollView>
   );
 }
+
 
 
 
