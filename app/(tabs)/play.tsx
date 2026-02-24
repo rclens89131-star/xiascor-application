@@ -1,4 +1,5 @@
-﻿/* XS_PLAY_REPAIR_ESCAPED_PATCH_V1 */
+﻿/* XS_TEXT_OUTSIDE_TEXT_SEP_FIX_V1 */
+/* XS_PLAY_REPAIR_ESCAPED_PATCH_V1 */
 import React, { useEffect, useMemo, useState } from "react";
 import { FlatList, Image, Pressable, SafeAreaView, ScrollView, Switch, Text, TextInput, View, Modal } from "react-native"; /* XS_PLAY_SCROLL_HEADER_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -817,7 +818,7 @@ if (parsed?.picked) {
           </View>
 
           <Text style={{ color: theme.muted, marginTop: 8 }}>
-            {missingCount > 0 ? `Il manque ${missingCount} carte${missingCount > 1 ? "s" : ""}` : "Lineup complète"}{" "}
+            {missingCount > 0 ? `Il manque ${missingCount} carte${missingCount > 1 ? "s" : ""}` : "Lineup complète"}<Text>{" "}</Text>
 <Text style={{ color: theme.muted, fontWeight: "800" }}>
   • {pickedSlugs.length}/5 cartes
 </Text>
@@ -900,10 +901,10 @@ const xsHasKey = !!(slug && (galleryByKey as any)?.has?.(slug));
   return (
                 <Pressable key={item.id} onPress={() => loadHistory(item)} style={{ borderRadius: 12, borderWidth: 1, borderColor: theme.stroke, padding: 10, backgroundColor: "rgba(255,255,255,0.02)" }}>
                   <Text style={{ color: theme.text, fontWeight: "900" }} numberOfLines={1}>
-                    {item.name} • {SCENARIO_LABEL[item.scenario]}
+                    {item.name}<Text>{" • "}</Text>{SCENARIO_LABEL[item.scenario]}
                   </Text>
                   <Text style={{ color: theme.muted, marginTop: 3 }}>
-                    {new Date(item.createdAt).toLocaleString()} • {filled}/5, {gkOk ? "GK OK" : "Pas de GK"}
+                    {new Date(item.createdAt).toLocaleString()}<Text>{" • "}</Text>{filled}/5, {gkOk ? "GK OK" : "Pas de GK"}
                   </Text>
                 </Pressable>
               );
@@ -1052,6 +1053,7 @@ try { showToast(`TAP PICKER ${xsPickerSlot}`); } catch {}
 </SafeAreaView>
   );
 }
+
 
 
 

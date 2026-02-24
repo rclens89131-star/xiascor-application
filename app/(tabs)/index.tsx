@@ -1,4 +1,5 @@
-﻿// XS_HOME_NEWS_V1
+﻿/* XS_TEXT_OUTSIDE_TEXT_SEP_FIX_V1 */
+// XS_HOME_NEWS_V1
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Image, Linking, Pressable, SafeAreaView, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -116,7 +117,7 @@ export default function HomeScreen() {
           {item.title}
         </Text>
         <Text style={{ color: theme.muted, fontSize: 12 }} numberOfLines={1}>
-          {item.source} • {timeAgo(item.publishedAt)}
+          {item.source}<Text>{" • "}</Text>{timeAgo(item.publishedAt)}
         </Text>
         {item.excerpt ? (
           <Text style={{ color: theme.muted, fontSize: 12 }} numberOfLines={2}>
@@ -162,3 +163,4 @@ export default function HomeScreen() {
     </SafeAreaView>
   );
 }
+
