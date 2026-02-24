@@ -1,5 +1,38 @@
 ﻿import React, { useMemo } from "react";
-import { ScrollView, Text, View } from "react-native";
+
+/* XS_CARD_DETAIL_L5_CHART_V2 */
+function XS_L5Chart({ values }: { values?: number[] }) {
+  const arr = Array.isArray(values) ? values.slice(-5) : [];
+  if (!arr.length) return null;
+
+  const H = 80;
+  const W = 16;
+  const GAP = 10;
+
+  const clamp = (n: number, a: number, b: number) => Math.max(a, Math.min(b, n));
+
+  return (
+    <View style={{ marginTop: 18, padding: 14, borderRadius: 16, backgroundColor: "#0f0f0f", borderWidth: 1, borderColor: theme.stroke }}>
+      <Text style={{ color: theme.text, fontWeight: "900", fontSize: 16, marginBottom: 12 }}>L5 Performance</Text>
+
+      <View style={{ flexDirection: "row", alignItems: "flex-end" }}>
+        {arr.map((v, i) => {
+          const val = typeof v === "number" ? clamp(v, 0, 100) : 0;
+          const h = Math.max(6, Math.round((H * val) / 100));
+          return (
+            <View key={"xs-l5c-" + i} style={{ alignItems: "center", marginRight: i === arr.length - 1 ? 0 : GAP }}>
+              <View style={{ width: W, height: H, borderRadius: 6, backgroundColor: theme.stroke, overflow: "hidden" }}>
+                <View style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: h, backgroundColor: "#2D7CFF", borderRadius: 6 }} />
+              </View>
+              <Text style={{ color: theme.muted, marginTop: 6, fontWeight: "800" }}>{String(Math.round(val))}</Text>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+/* XS_CARD_DETAIL_L5_CHART_V2 */import { ScrollView, Text, View } from "react-native";
 import SorarePerformanceChart from "@/src/components/SorarePerformanceChart";
 import { useLocalSearchParams } from "expo-router";
 import { theme } from "../../src/theme";
@@ -243,7 +276,8 @@ export default function CardDetailScreen() {
       <Text style={{ color: theme.text, fontWeight: "900", fontSize: 20 }} numberOfLines={2}>
         {pickStr((card as any)?.playerName)}
       </Text>
-      {/* XS_PERF_SECTION_V1_RENDER */}
+      {/* XS_PERF_SECTION_V1_RENDER */
+      <XS_L5Chart values={(card as any)?.recentScores ?? (card as any)?.l5Bars ?? (card as any)?.l5 ?? []} />}
       <SorarePerformanceChart recentScores={card?.recentScores} l5={card?.l5} l15={card?.l15} /> {/* XS_CARD_PUBLIC_PLAYER_PERF_RENDER_V4 */}
 
       <Text style={{ color: theme.muted }} numberOfLines={2}>
@@ -281,6 +315,7 @@ export default function CardDetailScreen() {
     </ScrollView>
   );
 }
+
 
 
 
