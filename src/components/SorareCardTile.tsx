@@ -1,4 +1,4 @@
-/* XS_TILE_TREND_LAYOUT_V1 */
+﻿/* XS_TILE_TREND_LAYOUT_V1 */
 /* XS_TILE_ROW1_STYLES_BRACESCAN_V2 */
 /* XS_TILE_ROW1_STRICT_NO_OVERLAP_V1 */
 /* XS_FIX_TREND_DUP_KEYS_V1 */
@@ -149,7 +149,8 @@ export function SorareCardTile(props: SorareCardTileProps) {
             <Text style={styles.levelTxt}>LVL {Math.max(0, Math.round(xsLevel))}</Text>
           </View> :
           null}
-          {/* XS_SORARE_TILE_LEVEL_PILL_V1_END */}<View style={[styles.l15Pill, level === "hot1" ? styles.l15Hot1 : null, level === "hot2" ? styles.l15Hot2 : null]}>
+          {/* XS_SORARE_TILE_LEVEL_PILL_V1_END */}
+          <View style={[styles.l15Pill, level === "hot1" ? styles.l15Hot1 : null, level === "hot2" ? styles.l15Hot2 : null]}>
             <Text style={styles.l15Txt}>{l15Text}</Text>
           </View>
         </View>
