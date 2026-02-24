@@ -1,5 +1,6 @@
 ﻿import React, { useMemo } from "react";
 import { ScrollView, Text, View } from "react-native";
+import SorarePerformanceChart from "@/src/components/SorarePerformanceChart";
 import { useLocalSearchParams } from "expo-router";
 import { theme } from "../../src/theme";
 import { xsCardNavGet } from "../_lib/cardNavCache";
@@ -243,7 +244,7 @@ export default function CardDetailScreen() {
         {pickStr((card as any)?.playerName)}
       </Text>
       {/* XS_PERF_SECTION_V1_RENDER */}
-      <XSPerformanceSection card={card as any} perf={xsPerfRemote as any} /> {/* XS_CARD_PUBLIC_PLAYER_PERF_RENDER_V4 */}
+      <SorarePerformanceChart recentScores={card?.recentScores} l5={card?.l5} l15={card?.l15} /> {/* XS_CARD_PUBLIC_PLAYER_PERF_RENDER_V4 */}
 
       <Text style={{ color: theme.muted }} numberOfLines={2}>
         {pickStr((card as any)?.teamName)} • {pickStr((card as any)?.position)} • {pickStr((card as any)?.seasonYear)}
@@ -280,6 +281,9 @@ export default function CardDetailScreen() {
     </ScrollView>
   );
 }
+
+
+
 
 
 
