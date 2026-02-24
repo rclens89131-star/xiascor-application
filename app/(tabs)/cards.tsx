@@ -367,6 +367,10 @@ const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
       <View style={{ padding: 16, gap: 10 }}>
         <Text style={{ color: theme.text, fontSize: 22, fontWeight: "900" }}>Mes cartes</Text>
+{/* XS_CARDS_UI_PROBE_V1 */}
+<Text style={{ color: theme.warn, fontWeight: "900", marginTop: 6 }}>
+  XS_CARDS_UI_PROBE_V1 ✅ bundle=20260224_151348
+</Text>
 
         <Pressable
           onPress={onSync}
@@ -462,4 +466,5 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
