@@ -44,6 +44,16 @@ function XSPerfChart({ scores }: { scores: number[] }){
 
 function XSPerformanceSection({ card, perf }: { card: any; perf?: any }){ /* XS_CARD_PUBLIC_PLAYER_PERF_SECTION_SIG_V4 */
   /* XS_CARD_SORARE_BIG_BARS_V1 */
+    /* XS_CARD_SORARE_HELPERS_V1 */
+  const xsClamp = (n: number, min: number, max: number) =>
+    Math.max(min, Math.min(max, n));
+
+  const xsColor = (score: number) => {
+    if (score < 40) return "#E67E22";
+    if (score < 60) return "#F1C40F";
+    if (score < 80) return "#2ECC71";
+    return "#1ABC9C";
+  };
   const xsRaw =
     perf?.recentScores ??
     card?.recentScores ??
@@ -54,7 +64,12 @@ function XSPerformanceSection({ card, perf }: { card: any; perf?: any }){ /* XS_
   const xsScores = Array.isArray(xsRaw)
     ? xsRaw.map((n: any) => (typeof n === "number" ? n : null)).slice(-40)
     : [];
-  const l5  = (typeof perf?.l5 === "number") ? perf.l5 : ((typeof card?.l5 === "number") ? card.l5 : null); /* XS_CARD_PUBLIC_PLAYER_PERF_L5_V4 */
+
+  /* XS_CARD_SORARE_BIG_BARS_UI_V1 */
+  const xsBarH = 210;
+  const xsBarW = 26;
+  const xsGap  = 10;
+const l5  = (typeof perf?.l5 === "number") ? perf.l5 : ((typeof card?.l5 === "number") ? card.l5 : null); /* XS_CARD_PUBLIC_PLAYER_PERF_L5_V4 */
   const l10 = (typeof card?.l10 === "number") ? card.l10 : null;
   const l40 = (typeof card?.l40 === "number") ? card.l40 : null;
 
@@ -73,7 +88,43 @@ function XSPerformanceSection({ card, perf }: { card: any; perf?: any }){ /* XS_
     return Number.isFinite(n) ? xsClampScore(n) : null;
   }).filter((n: any) => typeof n === "number") : [];
 
-  return (
+        {/* XS_CARD_SORARE_BIG_BARS_CARD_V1 */}
+      <View style={{ marginTop: 12, padding: 14, borderRadius: 16, backgroundColor: "#0f0f0f", borderWidth: 1, borderColor: "#1f1f1f" }}>
+        <Text style={{ color: "white", fontSize: 18, fontWeight: "800", marginBottom: 10 }}>Performance du joueur</Text>
+
+        {xsScores.length ? (
+          <View style={{ paddingTop: 8 }}>
+            <View style={{ height: xsBarH, flexDirection: "row", alignItems: "flex-end" }}>
+              {xsScores.map((sc, idx) => {
+                const isDnp = (sc === null || typeof sc !== "number" || Number.isNaN(sc));
+                const s = isDnp ? 0 : xsClamp(sc, 0, 100);
+                const ratio = isDnp ? 0.18 : xsClamp(s / 100, 0.05, 1);
+                const barH = Math.round(xsBarH * ratio);
+                const bg = isDnp ? "#4B4F58" : xsColor(s);
+
+                return (
+                  <View key={"xs-bigbar-" + idx} style={{ width: xsBarW, marginRight: (idx === xsScores.length - 1 ? 0 : xsGap), alignItems: "center" }}>
+                    <View style={{ width: xsBarW, height: barH, backgroundColor: bg, borderRadius: 8, justifyContent: "flex-start", alignItems: "center" }}>
+                      {!isDnp && (
+                        <Text style={{ color: "#0B0C0F", fontWeight: "900", fontSize: 12, marginTop: 6 }}>
+                          {String(Math.round(s))}
+                        </Text>
+                      )}
+                    </View>
+
+                    {isDnp && (
+                      <Text style={{ color: "#B0B5BD", fontWeight: "800", fontSize: 12, marginTop: 6 }}>DNP</Text>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        ) : (
+          <Text style={{ color: "#9AA0A6" }}>Aucune performance disponible.</Text>
+        )}
+      </View>
+  return(
     <View style={{ marginTop: 16, padding: 14, borderRadius: 16, backgroundColor: "#0f0f0f", borderWidth: 1, borderColor: "#1f1f1f" }}>      <Text style={{ color: "white", fontSize: 18, fontWeight: "800", marginBottom: 10 }}>Performance du joueur</Text>
 
       <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
@@ -229,6 +280,8 @@ export default function CardDetailScreen() {
     </ScrollView>
   );
 }
+
+
 
 
 
