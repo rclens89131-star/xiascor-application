@@ -238,7 +238,7 @@ const bonusPct = xsBonusPctFromPower((card as any)?.power ?? (card as any)?.card
 const xsL5Mini = xsL5BarsFromCard(card as any); /* XS_L5_MINICHART_TILE_RENDER_V1_PASS */
 
   return (
-        <Pressable> true} onResponderGrant={() => { try { Alert.alert("XS_TOUCH_RESPONDER_PROBE_V2","responderGrant ✅"); } catch(e){ console.log("XS_TOUCH_RESPONDER_PROBE_V2 grant", e); } }} onResponderRelease={() => { try { Alert.alert("XS_TOUCH_RESPONDER_PROBE_V2","responderRelease ✅"); } catch(e){ console.log("XS_TOUCH_RESPONDER_PROBE_V2 release", e); } }} onPressIn={() => { try { Alert.alert("XS_TOUCH_RESPONDER_PROBE_V2","pressIn ✅"); } catch(e){ console.log("XS_TOUCH_RESPONDER_PROBE_V2 pressIn", e); } }} hitSlop={{ top: 18, bottom: 18, left: 18, right: 18 }}
+        <Pressable
       onPress={() => {
         /* XS_FIX_CARD_CLICK_NAV_V1_BEGIN */
 // XS_PRESSIN_PROBE_V1B: si tu vois cet alert => le code onPress s'exécute (donc tap arrive au Pressable)
@@ -528,6 +528,7 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
