@@ -1,8 +1,9 @@
-﻿import React, { useMemo } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, ScrollView, Pressable } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
-import { publicPlayerPerformance } from "../../src/scoutApi"; // XS_L5_CHART_DATA_V1_IMPORTimport { theme } from "../../src/theme";
+import { publicPlayerPerformance } from "../../src/scoutApi"; // XS_L5_CHART_DATA_V1_IMPORT
+import { theme } from "../../src/theme";
 
 // =========================
  // XS_L5_CHART_MOCK_V1_BEGIN
@@ -165,5 +166,6 @@ export default function CardDetailScreen() {
     </View>
   );
 }
+
 
 
