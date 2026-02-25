@@ -130,6 +130,10 @@ export default function CardDetailScreen() {
   const [l5, setL5] = useState<number[] | null>(null);
   const [l5State, setL5State] = useState<"idle" | "loading" | "ok" | "err">("idle");
 
+  /* XS_CARD_DETAIL_L5_DEBUG_PANEL_V1 */
+  const [xsPerfDebug, setXsPerfDebug] = useState<any>(null);
+  const [xsPerfErr, setXsPerfErr] = useState<string>("");
+
   useEffect(() => {
     let cancelled = false;
 
@@ -143,7 +147,9 @@ export default function CardDetailScreen() {
       setL5State("loading");
       try {
         const resp = await publicPlayerPerformance(playerSlug as any);
-        if (cancelled) return;
+        
+        try { setXsPerfDebug(resp); } catch (e) {}
+        try { setXsPerfErr(""); } catch (e) {}if (cancelled) return;
         const extracted = xsExtractL5(resp, card);
         setL5(extracted);
         setL5State("ok");
@@ -151,7 +157,8 @@ export default function CardDetailScreen() {
         if (cancelled) return;
         setL5(null);
         setL5State("err");
-      }
+      
+        try { setXsPerfErr(String((e as any)?.message || e || "error")); } catch (ee) {}}
     }
 
     run();
@@ -191,7 +198,21 @@ export default function CardDetailScreen() {
         <Text style={{ color: theme.muted, marginTop: 2 }}>playerSlug: {playerSlug || "—"}</Text>
       </View>
 
-      <Text style={{ color: theme.text, fontWeight: "900", fontSize: 20 }} numberOfLines={2}>
+      
+
+      {/* XS_CARD_DETAIL_L5_DEBUG_PANEL_V1 — DEBUG SHAPE */}
+      <View style={{ borderRadius: 14, borderWidth: 1, borderColor: theme.stroke, backgroundColor: theme.panel, padding: 12 }}>
+        <Text style={{ color: theme.text, fontWeight: "900" }}>DEBUG perf (temp) 🧪</Text>
+        <Text style={{ color: theme.muted, marginTop: 6, fontSize: 12 }}>state: {String(l5State)}</Text>
+        {!!xsPerfErr && <Text style={{ color: theme.muted, marginTop: 4, fontSize: 12 }}>err: {xsPerfErr}</Text>}
+        <Text style={{ color: theme.muted, marginTop: 4, fontSize: 12 }}>keys: {xsPerfDebug ? Object.keys(xsPerfDebug as any).join(", ") : "—"}</Text>
+        <Text style={{ color: theme.muted, marginTop: 4, fontSize: 12 }}>
+          l5Extracted: {Array.isArray(l5) ? "[" + l5.join(", ") + "]" : "—"}
+        </Text>
+        <Text style={{ color: theme.muted, marginTop: 8, fontSize: 11 }}>
+          preview: {xsPerfDebug ? JSON.stringify(xsPerfDebug).slice(0, 600) : "—"}
+        </Text>
+      </View><Text style={{ color: theme.text, fontWeight: "900", fontSize: 20 }} numberOfLines={2}>
         {pickStr((card as any)?.playerName)}
       </Text>
       <Text style={{ color: theme.muted }} numberOfLines={2}>
@@ -258,3 +279,4 @@ export default function CardDetailScreen() {
     </ScrollView>
   );
 }
+
