@@ -6,7 +6,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, Image, Pressable, SafeAreaView, Text, View, useWindowDimensions, Dimensions } from "react-native";
+import { ActivityIndicator, FlatList, Image, Pressable, SafeAreaView, Text, View, useWindowDimensions, Dimensions, Alert } from "react-native";
 import { theme } from "../../src/theme";
 import { myCardsList, myCardsSync, type PageInfo } from "../../src/scoutApi";
 /* XS_MYCARDS_UI_META_V1_BEGIN */
@@ -241,6 +241,8 @@ const xsL5Mini = xsL5BarsFromCard(card as any); /* XS_L5_MINICHART_TILE_RENDER_V
         <Pressable
       onPress={() => {
         /* XS_FIX_CARD_CLICK_NAV_V1_BEGIN */
+// XS_TAP_PROBE_ALERT_V1B: si tu ne vois PAS cet alert sur iPhone => le Pressable ne reçoit pas le touch (overlay/layout)
+try { Alert.alert("XS_TAP_PROBE_ALERT_V1B", "tap reçu"); } catch (e) { console.log("XS_TAP_PROBE_ALERT_V1B alert error", e); }
           const id =
             (card as any)?.id ??
             (card as any)?.cardId ??
@@ -508,6 +510,7 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
