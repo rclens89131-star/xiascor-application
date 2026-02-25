@@ -1,171 +1,111 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
-import { View, Text, ScrollView, Pressable } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
-
-import { publicPlayerPerformance } from "../../src/scoutApi"; // XS_L5_CHART_DATA_V1_IMPORT
+﻿import React, { useMemo } from "react";
+import { ScrollView, Text, View } from "react-native";
+import { useLocalSearchParams } from "expo-router";
 import { theme } from "../../src/theme";
+import { xsCardNavGet } from "../_lib/cardNavCache";
 
-// =========================
- // XS_L5_CHART_MOCK_V1_BEGIN
- // Etape 1: chart Sorare-like avec données fictives pour valider le rendu iPhone
- type XSScoreBar = { score: number; label?: string };
-
- function xsScoreColorV1(s: number): string {
-   if (s < 25) return "#ff3b30";       // rouge
-   if (s < 35) return "#ff9500";       // orange
-   if (s < 55) return "#ffd60a";       // jaune
-   if (s < 65) return "#34c759";       // vert pomme
-   if (s < 75) return "#248a3d";       // vert foncé
-   return "#5ac8fa";                   // bleu clair
- }
-
- function XSL5ChartMockV1(props: { title: string; bars: XSScoreBar[] }) {
-   const H = 140; // hauteur zone barres
-   const bars = props.bars ?? [];
-   return (
-     <View style={{ marginTop: 14, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: "rgba(255,255,255,0.10)", backgroundColor: "rgba(255,255,255,0.03)" }}>
-       <Text style={{ color: "rgba(255,255,255,0.92)", fontSize: 16, fontWeight: "800", marginBottom: 10 }}>
-         {props.title} <Text style={{ color: "rgba(255,255,255,0.55)", fontWeight: "600" }}>(mock)</Text>
-       </Text>
-
-       <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 10, height: H }}>
-         {bars.map((b, i) => {
-           const v = Math.max(0, Math.min(100, Number(b.score ?? 0)));
-           const barH = Math.max(6, Math.round((v / 100) * H));
-           return (
-             <View key={"xsbar-" + i} style={{ width: 34, alignItems: "center", justifyContent: "flex-end" }}>
-               <View style={{ width: 34, height: barH, borderRadius: 10, backgroundColor: xsScoreColorV1(v), alignItems: "center", justifyContent: "flex-end", paddingBottom: 6 }}>
-                 <Text style={{ color: "rgba(0,0,0,0.85)", fontSize: 12, fontWeight: "900" }}>{String(Math.round(v))}</Text>
-               </View>
-               <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.55)", fontSize: 11, fontWeight: "700" }}>
-                 {b.label ?? "J" + (i + 1)}
-               </Text>
-             </View>
-           );
-         })}
-       </View>
-
-       <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.45)", fontSize: 12 }}>
-         XS_L5_CHART_MOCK_V1 ✅ (Etape 1: rendu UI — logos adverses à l'étape data)
-       </Text>
-     </View>
-   );
- }
- // XS_L5_CHART_MOCK_V1_END
- // =========================
-
-
-
-// =========================
-// XS_L5_CHART_DATA_V1_BEGIN
-type XSPerfMatchV1 = { score: number; label: string; opp?: string };
-function xsToBarsFromPerfV1(perf: any): XSPerfMatchV1[] {
-  // On supporte plusieurs shapes possibles (zéro casse)
-  const arr =
-    (perf?.matches ?? perf?.games ?? perf?.items ?? perf?.results ?? perf?.data ?? []) as any[];
-  if (!Array.isArray(arr) || arr.length === 0) return [];
-  const last = arr.slice(0, 5);
-  return last.map((m, i) => {
-    const s =
-      Number(m?.score ?? m?.totalScore ?? m?.playerScore ?? m?.so5Score ?? m?.finalScore ?? 0) || 0;
-    const lbl =
-      String(m?.label ?? m?.gameWeek ?? m?.gw ?? m?.date ?? ("M" + (i + 1)));
-    const opp = String(m?.opponent ?? m?.opp ?? m?.opponentClub ?? m?.awayTeam ?? m?.homeTeam ?? "");
-    return { score: s, label: lbl, opp };
-  });
-}
-// XS_L5_CHART_DATA_V1_END
-// =========================
 /**
- * XS_CARD_DETAIL_STABLE_V1
- * Objectif:
- * - Prouver que le clic ouvre bien un écran détail (sinon: c'est la nav)
- * - Lire { id, playerSlug } depuis les params
- * - Préparer le terrain pour le futur graphique Sorare-like
+ * XS_CARD_DETAIL_SCREEN_V3
+ * - Affiche Prix + L15 + infos détaillées
+ * - N'affiche PAS la rareté (même si dispo)
+ * - PS-safe: pas de template strings/backticks
  */
+
+function asFinite(v: unknown): number | null {
+  if (typeof v !== "number") return null;
+  return Number.isFinite(v) ? v : null;
+}
+
+function formatEur(v: unknown): string {
+  const n = asFinite(v);
+  if (n === null) return "—";
+  return n.toFixed(2) + " €";
+}
+
+function pickStr(v: unknown): string {
+  return typeof v === "string" && v.trim() ? v.trim() : "—";
+}
+
+function pickL15(card: any): string {
+  const v =
+    card?.l15 ??
+    card?.L15 ??
+    card?.l15Score ??
+    card?.l15Avg ??
+    card?.last15 ??
+    card?.last15Avg ??
+    card?.scoreL15 ??
+    null;
+  const n = asFinite(v);
+  return n === null ? "—" : n.toFixed(1);
+}
+
 export default function CardDetailScreen() {
-  const router = useRouter();
-  const params = useLocalSearchParams<any>();
+  const params = useLocalSearchParams();
+  const id = String((params as any)?.id || "").trim();
 
-  const id = typeof params?.id === "string" ? params.id : Array.isArray(params?.id) ? params.id[0] : "";
-  const playerSlug =
-    typeof params?.playerSlug === "string"
-      ? params.playerSlug
-      : Array.isArray(params?.playerSlug)
-        ? params.playerSlug[0]
-        : "";
+  const card = useMemo(() => {
+    if (!id) return null;
+    return xsCardNavGet(id);
+  }, [id]);
 
-  const effective = useMemo(() => {
-    return {
-      id: String(id || ""),
-      playerSlug: String(playerSlug || ""),
-      slugGuess: String(playerSlug || id || ""),
-    };
-  }, [id, playerSlug]);
+  if (!card) {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.bg, padding: 16, justifyContent: "center" }}>
+        <Text style={{ color: theme.text, fontWeight: "900", fontSize: 18 }}>Carte introuvable</Text>
+        <Text style={{ color: theme.muted, marginTop: 8 }}>
+          Ouvre la fiche en cliquant depuis la liste (cache navigation).
+        </Text>
+      </View>
+    );
+  }
+
+  const price = (card as any)?.price || {};
+  const avg7d = asFinite(price?.avg7dEur);
+  const avg30d = asFinite(price?.avg30dEur);
+  const trend = avg7d !== null && avg30d !== null ? (avg7d - avg30d) : null;
+  const trendLabel =
+    trend === null
+      ? "—"
+      : ((trend >= 0 ? "+" : "") + trend.toFixed(2) + " €");
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <View style={{ paddingTop: 52, paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: theme.stroke }}>
-        <Pressable
-          onPress={() => router.back()}
-          style={{ alignSelf: "flex-start", paddingHorizontal: 12, paddingVertical: 10, borderRadius: 999, backgroundColor: theme.panel }}
-        >
-          <Text style={{ color: theme.text, fontWeight: "900" }}>← Retour</Text>
-        </Pressable>
+    <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16, gap: 12 }}>
+      <Text style={{ color: theme.text, fontWeight: "900", fontSize: 20 }} numberOfLines={2}>
+        {pickStr((card as any)?.playerName)}
+      </Text>
+      <Text style={{ color: theme.muted }} numberOfLines={2}>
+        {pickStr((card as any)?.teamName)} • {pickStr((card as any)?.position)} • {pickStr((card as any)?.seasonYear)}
+      </Text>
 
-        <Text style={{ color: theme.text, fontSize: 22, fontWeight: "900", marginTop: 12 }}>
-          Détail carte
-        </Text>
-
-        <View style={{ marginTop: 10, padding: 12, borderRadius: 14, backgroundColor: theme.panel2, borderWidth: 1, borderColor: theme.stroke }}>
-          <Text style={{ color: theme.text, fontWeight: "900" }}>
-            XS_CARD_DETAIL_STABLE_V1 ✅
-          </Text>
-          <Text style={{ color: theme.muted, marginTop: 6 }}>
-            id: {effective.id || "—"}
-          </Text>
-          <Text style={{ color: theme.muted, marginTop: 4 }}>
-            playerSlug: {effective.playerSlug || "—"}
-          </Text>
-          <Text style={{ color: theme.muted, marginTop: 4 }}>
-            slugGuess: {effective.slugGuess || "—"}
-          </Text>
-          <Text style={{ color: theme.muted, marginTop: 8 }}>
-            Si tu vois cet écran, le clic fonctionne. Prochaine étape: vrai graphique L5/L10/L40 Sorare-like.
-          </Text>
-        </View>
+      {/* L15 */}
+      <View style={{ borderRadius: 14, borderWidth: 1, borderColor: theme.stroke, backgroundColor: theme.panel, padding: 12 }}>
+        <Text style={{ color: theme.text, fontWeight: "900" }}>L15</Text>
+        <Text style={{ color: theme.muted, marginTop: 6, fontSize: 16 }}>{pickL15(card)}</Text>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 16 }}>
-        <View style={{ padding: 14, borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke }}>
-          <Text style={{ color: theme.text, fontWeight: "900" }}>Zone graphique (à venir)</Text>
-{/* XS_L5_CHART_DATA_V1 */}
-{xsBarsRealV1.length > 0 ? (
-  <XSL5ChartMockV1
-    title="Graphique L5 (réel)"
-    bars={xsBarsRealV1.map((b) => ({ score: b.score, label: b.label }))}
-  />
-) : (
-  <XSL5ChartMockV1
-    title={xsPerfErrV1 ? "Graphique L5 (erreur — mock)" : "Graphique L5 (mock fallback)"}
-    bars={[{ score: 12, label: "M1" }, { score: 28, label: "M2" }, { score: 42, label: "M3" }, { score: 61, label: "M4" }, { score: 79, label: "M5" }]}
-  />
-)}
-{xsPerfErrV1 ? (
-  <Text style={{ color: "rgba(255,120,120,0.9)", marginTop: 8, fontSize: 12 }}>
-    XS_L5_CHART_DATA_V1 err: {xsPerfErrV1}
-  </Text>
-) : null}
-          <Text style={{ color: theme.muted, marginTop: 8 }}>
-            On branchera ici: scores match, couleurs (rouge/orange/jaune/verts/bleu), logos adverses, labels score dans les barres.
-          </Text>
-        </View>
+      {/* Prix */}
+      <View style={{ borderRadius: 14, borderWidth: 1, borderColor: theme.stroke, backgroundColor: theme.panel, padding: 12, gap: 4 }}>
+        <Text style={{ color: theme.text, fontWeight: "900" }}>Prix</Text>
+        <Text style={{ color: theme.muted }}>Dernière vente: {formatEur(price?.lastSaleEur)}</Text>
+        <Text style={{ color: theme.muted }}>Moy. 7j: {formatEur(price?.avg7dEur)}</Text>
+        <Text style={{ color: theme.muted }}>Moy. 30j: {formatEur(price?.avg30dEur)}</Text>
+        <Text style={{ color: theme.muted }}>Floor: {formatEur(price?.floorEur)}</Text>
+        <Text style={{ color: theme.muted }}>Trend 7j/30j: {trendLabel}</Text>
+        {!!price?.asOf && <Text style={{ color: theme.muted, fontSize: 12 }}>asOf: {String(price.asOf)}</Text>}
+        {!!price?.warning && <Text style={{ color: theme.muted, fontSize: 12 }}>{String(price.warning)}</Text>}
+      </View>
 
-        <View style={{ height: 24 }} />
-      </ScrollView>
-    </View>
+      {/* Détails utiles (sans rareté) */}
+      <View style={{ borderRadius: 14, borderWidth: 1, borderColor: theme.stroke, backgroundColor: theme.panel, padding: 12 }}>
+        <Text style={{ color: theme.text, fontWeight: "900" }}>Détails</Text>
+        <Text style={{ color: theme.muted, marginTop: 6 }}>
+          ID: {pickStr((card as any)?.id ?? (card as any)?.cardId ?? (card as any)?.slug)}
+        </Text>
+        <Text style={{ color: theme.muted }}>Club: {pickStr((card as any)?.teamName)}</Text>
+        <Text style={{ color: theme.muted }}>Poste: {pickStr((card as any)?.position)}</Text>
+        <Text style={{ color: theme.muted }}>Saison: {pickStr((card as any)?.seasonYear)}</Text>
+      </View>
+    </ScrollView>
   );
 }
-
-
-
