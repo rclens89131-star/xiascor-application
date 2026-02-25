@@ -171,7 +171,7 @@ export default function CardDetailScreen() {
       <View style={{ flex: 1, backgroundColor: theme.bg, padding: 16, justifyContent: "center" }}>
         <Text style={{ color: theme.text, fontWeight: "900", fontSize: 18 }}>Carte introuvable</Text>
         <Text style={{ color: theme.muted, marginTop: 8 }}>
-          Ouvre la fiche en cliquant depuis la liste (cache navigation).
+          Cache navigation manquant (xsCardNavGet). On affiche quand même L5 + debug via playerSlug.
         </Text>
 
         <View style={{ marginTop: 14, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 14, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke }}>
@@ -179,11 +179,54 @@ export default function CardDetailScreen() {
           <Text style={{ color: theme.muted, marginTop: 6 }}>id: {id || "—"}</Text>
           <Text style={{ color: theme.muted, marginTop: 2 }}>playerSlug: {playerSlug || "—"}</Text>
         </View>
+
+        {/* XS_SHOW_DEBUG_WHEN_CARD_NULL_V1 */}
+        <View style={{ marginTop: 12, borderRadius: 14, borderWidth: 1, borderColor: theme.stroke, backgroundColor: theme.panel, padding: 12 }}>
+          <Text style={{ color: theme.text, fontWeight: "900" }}>DEBUG perf (temp) 🧪</Text>
+          <Text style={{ color: theme.muted, marginTop: 6, fontSize: 12 }}>state: {String(l5State)}</Text>
+          {!!xsPerfErr && <Text style={{ color: theme.muted, marginTop: 4, fontSize: 12 }}>err: {xsPerfErr}</Text>}
+          <Text style={{ color: theme.muted, marginTop: 4, fontSize: 12 }}>
+            keys: {xsPerfDebug ? Object.keys(xsPerfDebug as any).join(", ") : "—"}
+          </Text>
+          <Text style={{ color: theme.muted, marginTop: 4, fontSize: 12 }}>
+            l5Extracted: {Array.isArray(l5) ? "[" + l5.join(", ") + "]" : "—"}
+          </Text>
+          <Text style={{ color: theme.muted, marginTop: 8, fontSize: 11 }}>
+            preview: {xsPerfDebug ? JSON.stringify(xsPerfDebug).slice(0, 600) : "—"}
+          </Text>
+        </View>
+
+        {/* L5 (bar chart) visible même sans card */}
+        <View style={{ marginTop: 12, borderRadius: 14, borderWidth: 1, borderColor: theme.stroke, backgroundColor: theme.panel, padding: 12 }}>
+          <Text style={{ color: theme.text, fontWeight: "900" }}>L5</Text>
+          <Text style={{ color: theme.muted, marginTop: 4, fontSize: 12 }}>
+            {l5State === "loading" ? "Chargement…" : (l5State === "err" ? "Erreur de chargement" : " ")}
+          </Text>
+
+          {Array.isArray(l5) && l5.length > 0 ? (
+            <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8, marginTop: 10, height: 110 }}>
+              {l5.map((s: number, idx: number) => {
+                const score = clamp(Number(s) || 0, 0, 100);
+                const h = clamp(Math.round((score / 100) * 100), 6, 100);
+                const bg = xsScoreColor(score);
+                return (
+                  <View key={String(idx)} style={{ flex: 1, alignItems: "center", justifyContent: "flex-end" }}>
+                    <View style={{ width: "100%", height: h, borderRadius: 10, backgroundColor: bg, alignItems: "center", justifyContent: "center" }}>
+                      <Text style={{ color: "#0B0B0B", fontWeight: "900", fontSize: 12 }}>{Math.round(score)}</Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          ) : (
+            <Text style={{ color: theme.muted, marginTop: 10 }}>
+              {playerSlug ? "Aucun score L5 disponible." : "playerSlug manquant."}
+            </Text>
+          )}
+        </View>
       </View>
     );
-  }
-
-  const price = (card as any)?.price || {};
+  }const price = (card as any)?.price || {};
   const avg7d = asFinite(price?.avg7dEur);
   const avg30d = asFinite(price?.avg30dEur);
   const trend = avg7d !== null && avg30d !== null ? (avg7d - avg30d) : null;
@@ -282,5 +325,6 @@ export default function CardDetailScreen() {
     </ScrollView>
   );
 }
+
 
 
