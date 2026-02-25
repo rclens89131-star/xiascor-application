@@ -396,6 +396,22 @@ const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
+{/* XS_CARDS_TOP_TEST_BUTTON_V1_BEGIN */}
+<View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 6 }}>
+  <Pressable
+    onPress={() => {
+      try { Alert.alert("XS_CARDS_TOP_TEST_BUTTON_V1", "✅ écran cards.tsx chargé"); }
+      catch (e) { console.log("XS_CARDS_TOP_TEST_BUTTON_V1 alert error", e); }
+    }}
+    style={{ alignSelf: "flex-start", paddingHorizontal: 12, paddingVertical: 10, borderRadius: 999, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke }}
+  >
+    <Text style={{ color: theme.text, fontWeight: "900" }}>TEST TAP</Text>
+  </Pressable>
+  <Text style={{ color: theme.muted, marginTop: 6, fontSize: 12 }}>
+    Si tu vois ce bouton + l'alert, c'est bien CE fichier. Si le tap sur carte ne fait rien, alors c'est un souci overlay/touch sur l'item.
+  </Text>
+</View>
+{/* XS_CARDS_TOP_TEST_BUTTON_V1_END */}
       {/* XS_MYCARDS_BADGE_SAFE_V1 */}
       <Text style={{ color: '#ffffff', backgroundColor: '#ff2d55', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, alignSelf: 'flex-start', marginBottom: 10, fontWeight: '900' }}>XS MES CARTES V1 • 20260224_191855</Text>
 
@@ -510,6 +526,7 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
