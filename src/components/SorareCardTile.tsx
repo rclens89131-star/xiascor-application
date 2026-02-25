@@ -26,7 +26,7 @@ function XSL5MiniBars({ values }: { values?: number[] }) {
   const GAP = 3;
 
   return (
-    <View style={{ flexDirection: "row", alignItems: "flex-end" }}>
+    <View pointerEvents="none" /* XS_TILE_POINTER_EVENTS_NONE_PROBE_V2 */ style={{ flexDirection: "row", alignItems: "flex-end" }}>
       {arr.map((raw, idx) => {
         const v = xsNum(raw);
         const val = v === null ? 0 : xsClamp(v, 0, 100);
@@ -189,3 +189,4 @@ export function SorareCardTile(props: any) {
     </TouchableOpacity>
   );
 }
+
