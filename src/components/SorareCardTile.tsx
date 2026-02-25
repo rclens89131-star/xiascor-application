@@ -1,5 +1,5 @@
 ﻿import React from "react";
-import { View, Text, Image, TouchableOpacity } from "react-native";
+import { View, Text, Image, TouchableOpacity, Alert} from "react-native";
 import { theme } from "../theme";
 
 /**
@@ -114,7 +114,7 @@ export function SorareCardTile(props: any) {
   return (
     <TouchableOpacity
       activeOpacity={0.9}
-      onPress={props.onPress}
+      onPress={() => { /* XS_TILE_TOUCHABLE_PROBE_V1 */ try { Alert.alert("XS_TILE_TOUCHABLE_PROBE_V1","tap reçu INSIDE tile ✅"); } catch(e){ console.log("XS_TILE_TOUCHABLE_PROBE_V1", e); } try { props?.onPress?.(); } catch(e){ console.log("XS_TILE_TOUCHABLE_PROBE_V1 call props.onPress error", e); } }}
       style={{
         width: props.width,
         borderRadius: 18,
@@ -189,4 +189,5 @@ export function SorareCardTile(props: any) {
     </TouchableOpacity>
   );
 }
+
 
