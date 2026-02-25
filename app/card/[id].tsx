@@ -226,7 +226,9 @@ export default function CardDetailScreen() {
         </View>
       </View>
     );
-  }const price = (card as any)?.price || {};
+  }
+
+  const price = (card as any)?.price || {};
   const avg7d = asFinite(price?.avg7dEur);
   const avg30d = asFinite(price?.avg30dEur);
   const trend = avg7d !== null && avg30d !== null ? (avg7d - avg30d) : null;
@@ -325,6 +327,7 @@ export default function CardDetailScreen() {
     </ScrollView>
   );
 }
+
 
 
 
