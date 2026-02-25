@@ -240,8 +240,37 @@ const xsL5Mini = xsL5BarsFromCard(card as any); /* XS_L5_MINICHART_TILE_RENDER_V
   return (
         <Pressable
       onPress={() => {
-        const id = (card as any)?.id ?? (card as any)?.cardId ?? (card as any)?.slug ?? "";
-        if (id) router.push({ pathname: "/card/[id]", params: { id: String(id) } });
+        /* XS_FIX_CARD_CLICK_NAV_V1_BEGIN */
+          const id =
+            (card as any)?.id ??
+            (card as any)?.cardId ??
+            (card as any)?.slug ??
+            (card as any)?.anyCard?.id ??
+            (card as any)?.anyCard?.slug ??
+            "";
+
+          const playerSlug =
+            (card as any)?.anyPlayer?.slug ??
+            (card as any)?.player?.slug ??
+            (card as any)?.slug ??
+            "";
+
+          const navId = String(id || playerSlug || "");
+
+          if (!navId) {
+            // Debug visible via logs; évite le "tap silencieux"
+            console.log("XS_FIX_CARD_CLICK_NAV_V1: missing navId", {
+              id,
+              playerSlug,
+              keys: card ? Object.keys(card as any) : [],
+            });
+          } else {
+            router.push({
+              pathname: "/card/[id]",
+              params: { id: navId, playerSlug: String(playerSlug || "") },
+            });
+          }
+/* XS_FIX_CARD_CLICK_NAV_V1_END */
       }}
       style={{ alignSelf: "stretch" }}
     >
@@ -479,6 +508,7 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
