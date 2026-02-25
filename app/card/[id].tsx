@@ -149,7 +149,8 @@ export default function CardDetailScreen() {
         const resp = await publicPlayerPerformance(playerSlug as any);
         
         try { setXsPerfDebug(resp); } catch (e) {}
-        try { setXsPerfErr(""); } catch (e) {}if (cancelled) return;
+        try { setXsPerfErr(""); } catch (e) {}
+        if (cancelled) return;
         const extracted = xsExtractL5(resp, card);
         setL5(extracted);
         setL5State("ok");
@@ -157,8 +158,8 @@ export default function CardDetailScreen() {
         if (cancelled) return;
         setL5(null);
         setL5State("err");
-      
-        try { setXsPerfErr(String((e as any)?.message || e || "error")); } catch (ee) {}}
+        try { setXsPerfErr(String((e as any)?.message || e || "error")); } catch (ee) {}
+      }
     }
 
     run();
@@ -212,7 +213,9 @@ export default function CardDetailScreen() {
         <Text style={{ color: theme.muted, marginTop: 8, fontSize: 11 }}>
           preview: {xsPerfDebug ? JSON.stringify(xsPerfDebug).slice(0, 600) : "—"}
         </Text>
-      </View><Text style={{ color: theme.text, fontWeight: "900", fontSize: 20 }} numberOfLines={2}>
+      </View>
+
+      <Text style={{ color: theme.text, fontWeight: "900", fontSize: 20 }} numberOfLines={2}>
         {pickStr((card as any)?.playerName)}
       </Text>
       <Text style={{ color: theme.muted }} numberOfLines={2}>
@@ -279,4 +282,5 @@ export default function CardDetailScreen() {
     </ScrollView>
   );
 }
+
 
