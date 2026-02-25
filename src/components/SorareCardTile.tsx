@@ -111,19 +111,10 @@ export function SorareCardTile(props: any) {
     Array.isArray(c.recentScores) ? c.recentScores :
     undefined;
 
-  return (
-    <TouchableOpacity
-      activeOpacity={0.9}
-      onPress={props.onPress}
-      style={{
-        width: props.width,
-        borderRadius: 18,
-        borderWidth: 1,
-        borderColor: theme.stroke,
-        backgroundColor: theme.panel,
-        overflow: "hidden",
-      }}
-    >
+  /* XS_TILE_CONDITIONAL_TOUCHABLE_V5 */
+const xsContentV5 = (
+  <>
+
       <View style={{ padding: 10 }}>
         <View
           style={{
@@ -186,9 +177,44 @@ export function SorareCardTile(props: any) {
           )}
         </View>
       </View>
-    </TouchableOpacity>
+    
+  </>
+);
+
+if (!props?.onPress) {
+  return (
+    <View style={{
+        width: props.width,
+        borderRadius: 18,
+        borderWidth: 1,
+        borderColor: theme.stroke,
+        backgroundColor: theme.panel,
+        overflow: "hidden",
+      }}>
+      {xsContentV5}
+    </View>
   );
 }
+
+return (
+  <TouchableOpacity
+      
+      activeOpacity={0.9}
+      onPress={props.onPress}
+      style={{
+        width: props.width,
+        borderRadius: 18,
+        borderWidth: 1,
+        borderColor: theme.stroke,
+        backgroundColor: theme.panel,
+        overflow: "hidden",
+      }}
+    >
+    {xsContentV5}
+  </TouchableOpacity>
+);}
+
+
 
 
 
