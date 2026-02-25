@@ -112,7 +112,7 @@ export function SorareCardTile(props: any) {
     undefined;
 
   return (
-    <TouchableOpacity pointerEvents={props?.onPress ? "auto" : "none"} disabled={!props?.onPress} /* XS_TILE_PASS_THROUGH_V1 */
+    <TouchableOpacity
       activeOpacity={0.9}
       onPress={props.onPress}
       style={{
@@ -189,6 +189,7 @@ export function SorareCardTile(props: any) {
     </TouchableOpacity>
   );
 }
+
 
 
 
