@@ -1,7 +1,8 @@
 ﻿import React, { useMemo } from "react";
 import { View, Text, ScrollView, Pressable } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { theme } from "../../src/theme";
+
+import { publicPlayerPerformance } from "../../src/scoutApi"; // XS_L5_CHART_DATA_V1_IMPORTimport { theme } from "../../src/theme";
 
 // =========================
  // XS_L5_CHART_MOCK_V1_BEGIN
@@ -52,6 +53,28 @@ import { theme } from "../../src/theme";
  // XS_L5_CHART_MOCK_V1_END
  // =========================
 
+
+
+// =========================
+// XS_L5_CHART_DATA_V1_BEGIN
+type XSPerfMatchV1 = { score: number; label: string; opp?: string };
+function xsToBarsFromPerfV1(perf: any): XSPerfMatchV1[] {
+  // On supporte plusieurs shapes possibles (zéro casse)
+  const arr =
+    (perf?.matches ?? perf?.games ?? perf?.items ?? perf?.results ?? perf?.data ?? []) as any[];
+  if (!Array.isArray(arr) || arr.length === 0) return [];
+  const last = arr.slice(0, 5);
+  return last.map((m, i) => {
+    const s =
+      Number(m?.score ?? m?.totalScore ?? m?.playerScore ?? m?.so5Score ?? m?.finalScore ?? 0) || 0;
+    const lbl =
+      String(m?.label ?? m?.gameWeek ?? m?.gw ?? m?.date ?? ("M" + (i + 1)));
+    const opp = String(m?.opponent ?? m?.opp ?? m?.opponentClub ?? m?.awayTeam ?? m?.homeTeam ?? "");
+    return { score: s, label: lbl, opp };
+  });
+}
+// XS_L5_CHART_DATA_V1_END
+// =========================
 /**
  * XS_CARD_DETAIL_STABLE_V1
  * Objectif:
@@ -115,8 +138,23 @@ export default function CardDetailScreen() {
       <ScrollView contentContainerStyle={{ padding: 16 }}>
         <View style={{ padding: 14, borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke }}>
           <Text style={{ color: theme.text, fontWeight: "900" }}>Zone graphique (à venir)</Text>
-{/* XS_L5_CHART_MOCK_V1_RENDER */}
-<XSL5ChartMockV1 title="Graphique L5" bars={[{ score: 12, label: "M1" }, { score: 28, label: "M2" }, { score: 42, label: "M3" }, { score: 61, label: "M4" }, { score: 79, label: "M5" }]} />
+{/* XS_L5_CHART_DATA_V1 */}
+{xsBarsRealV1.length > 0 ? (
+  <XSL5ChartMockV1
+    title="Graphique L5 (réel)"
+    bars={xsBarsRealV1.map((b) => ({ score: b.score, label: b.label }))}
+  />
+) : (
+  <XSL5ChartMockV1
+    title={xsPerfErrV1 ? "Graphique L5 (erreur — mock)" : "Graphique L5 (mock fallback)"}
+    bars={[{ score: 12, label: "M1" }, { score: 28, label: "M2" }, { score: 42, label: "M3" }, { score: 61, label: "M4" }, { score: 79, label: "M5" }]}
+  />
+)}
+{xsPerfErrV1 ? (
+  <Text style={{ color: "rgba(255,120,120,0.9)", marginTop: 8, fontSize: 12 }}>
+    XS_L5_CHART_DATA_V1 err: {xsPerfErrV1}
+  </Text>
+) : null}
           <Text style={{ color: theme.muted, marginTop: 8 }}>
             On branchera ici: scores match, couleurs (rouge/orange/jaune/verts/bleu), logos adverses, labels score dans les barres.
           </Text>
@@ -127,4 +165,5 @@ export default function CardDetailScreen() {
     </View>
   );
 }
+
 
