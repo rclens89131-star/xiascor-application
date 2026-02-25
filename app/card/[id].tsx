@@ -1,19 +1,24 @@
-﻿import React, { useMemo } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { theme } from "../../src/theme";
 import { xsCardNavGet } from "../_lib/cardNavCache";
+import { publicPlayerPerformance } from "../../src/scoutApi";
 
 /**
- * XS_CARD_DETAIL_SCREEN_V4
- * - Restore écran détail (Prix + L15 + détails)
- * - Ajoute un bandeau PROBE en haut avec id + playerSlug (preuve routing)
+ * XS_CARD_DETAIL_SCREEN_V5
+ * - V4 + ajoute un bloc L5 (bar chart) via /public-player-performance
+ * - Tolérant sur la shape (fallback sur champs déjà en cache si besoin)
  * - Toujours PS-safe (pas de template strings/backticks)
  */
 
 function asFinite(v: unknown): number | null {
   if (typeof v !== "number") return null;
   return Number.isFinite(v) ? v : null;
+}
+
+function clamp(n: number, a: number, b: number): number {
+  return Math.max(a, Math.min(b, n));
 }
 
 function formatEur(v: unknown): string {
@@ -40,15 +45,118 @@ function pickL15(card: any): string {
   return n === null ? "—" : n.toFixed(1);
 }
 
+/**
+ * XS_L5_EXTRACT_V1
+ * Essaie d'extraire un tableau de 5 scores depuis la réponse backend.
+ * Shape inconnue => on tente plusieurs chemins + fallback cache.
+ */
+function xsExtractL5(resp: any, fallbackCard: any): number[] | null {
+  const take5 = (arr: any[]): number[] => {
+    const nums = arr
+      .map((x: any) => {
+        if (typeof x === "number") return x;
+        if (typeof x === "string") return Number(x);
+        return x?.score ?? x?.total ?? x?.value ?? x?.points ?? null;
+      })
+      .map((x: any) => (typeof x === "number" ? x : (typeof x === "string" ? Number(x) : NaN)))
+      .filter((n: any) => typeof n === "number" && Number.isFinite(n)) as number[];
+    const last = nums.slice(-5);
+    return last.length ? last : [];
+  };
+
+  if (Array.isArray(resp?.scores)) {
+    const t = take5(resp.scores);
+    if (t.length) return t;
+  }
+
+  if (Array.isArray(resp?.performances)) {
+    const t = take5(resp.performances);
+    if (t.length) return t;
+  }
+
+  if (Array.isArray(resp?.items)) {
+    const t = take5(resp.items);
+    if (t.length) return t;
+  }
+
+  // Fallback cache card
+  const arr =
+    (fallbackCard as any)?.lastScores ??
+    (fallbackCard as any)?.player?.recentScores ??
+    (fallbackCard as any)?.anyPlayer?.recentScores ??
+    null;
+
+  if (Array.isArray(arr)) {
+    const t = take5(arr);
+    if (t.length) return t;
+  }
+
+  return null;
+}
+
+/**
+ * XS_L5_COLOR_V1
+ * Couleurs par seuil (tu as donné les seuils plus tôt).
+ * NB: on peut ajuster les teintes exactes après.
+ */
+function xsScoreColor(score: number): string {
+  if (score < 25) return "#D64B4B";     // rouge
+  if (score < 35) return "#E57A2E";     // orange
+  if (score < 55) return "#E5C12E";     // jaune
+  if (score < 65) return "#8BC34A";     // vert pomme
+  if (score < 75) return "#2E7D32";     // vert foncé
+  return "#4FC3F7";                     // bleu clair
+}
+
 export default function CardDetailScreen() {
   const params = useLocalSearchParams();
   const id = String((params as any)?.id ?? "").trim();
-  const playerSlug = String((params as any)?.playerSlug ?? "").trim();
+  const playerSlugParam = String((params as any)?.playerSlug ?? "").trim();
 
   const card = useMemo(() => {
     if (!id) return null;
     return xsCardNavGet(id);
   }, [id]);
+
+  const playerSlug = useMemo(() => {
+    const fromCard =
+      (card as any)?.anyPlayer?.slug ??
+      (card as any)?.player?.slug ??
+      (card as any)?.playerSlug ??
+      "";
+    return String(playerSlugParam || fromCard || "").trim();
+  }, [playerSlugParam, card]);
+
+  const [l5, setL5] = useState<number[] | null>(null);
+  const [l5State, setL5State] = useState<"idle" | "loading" | "ok" | "err">("idle");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      if (!playerSlug) {
+        setL5(null);
+        setL5State("idle");
+        return;
+      }
+
+      setL5State("loading");
+      try {
+        const resp = await publicPlayerPerformance(playerSlug as any);
+        if (cancelled) return;
+        const extracted = xsExtractL5(resp, card);
+        setL5(extracted);
+        setL5State("ok");
+      } catch (e) {
+        if (cancelled) return;
+        setL5(null);
+        setL5State("err");
+      }
+    }
+
+    run();
+    return () => { cancelled = true; };
+  }, [playerSlug, card]);
 
   if (!card) {
     return (
@@ -59,7 +167,7 @@ export default function CardDetailScreen() {
         </Text>
 
         <View style={{ marginTop: 14, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 14, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke }}>
-          <Text style={{ color: theme.text, fontWeight: "900" }}>XS_CARD_DETAIL_PROBE_V4 ✅</Text>
+          <Text style={{ color: theme.text, fontWeight: "900" }}>XS_CARD_DETAIL_PROBE_V5 ✅</Text>
           <Text style={{ color: theme.muted, marginTop: 6 }}>id: {id || "—"}</Text>
           <Text style={{ color: theme.muted, marginTop: 2 }}>playerSlug: {playerSlug || "—"}</Text>
         </View>
@@ -78,7 +186,7 @@ export default function CardDetailScreen() {
     <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16, gap: 12 }}>
       {/* PROBE routing (toujours visible) */}
       <View style={{ borderRadius: 14, borderWidth: 1, borderColor: theme.stroke, backgroundColor: theme.panel, padding: 12 }}>
-        <Text style={{ color: theme.text, fontWeight: "900" }}>XS_CARD_DETAIL_PROBE_V4 ✅</Text>
+        <Text style={{ color: theme.text, fontWeight: "900" }}>XS_CARD_DETAIL_PROBE_V5 ✅</Text>
         <Text style={{ color: theme.muted, marginTop: 6 }}>id: {id || "—"}</Text>
         <Text style={{ color: theme.muted, marginTop: 2 }}>playerSlug: {playerSlug || "—"}</Text>
       </View>
@@ -89,6 +197,35 @@ export default function CardDetailScreen() {
       <Text style={{ color: theme.muted }} numberOfLines={2}>
         {pickStr((card as any)?.teamName)} • {pickStr((card as any)?.position)} • {pickStr((card as any)?.seasonYear)}
       </Text>
+
+      {/* L5 (bar chart) */}
+      <View style={{ borderRadius: 14, borderWidth: 1, borderColor: theme.stroke, backgroundColor: theme.panel, padding: 12 }}>
+        <Text style={{ color: theme.text, fontWeight: "900" }}>L5</Text>
+        <Text style={{ color: theme.muted, marginTop: 4, fontSize: 12 }}>
+          {l5State === "loading" ? "Chargement…" : (l5State === "err" ? "Erreur de chargement" : " ")}
+        </Text>
+
+        {Array.isArray(l5) && l5.length > 0 ? (
+          <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8, marginTop: 10, height: 110 }}>
+            {l5.map((s: number, idx: number) => {
+              const score = clamp(Number(s) || 0, 0, 100);
+              const h = clamp(Math.round((score / 100) * 100), 6, 100);
+              const bg = xsScoreColor(score);
+              return (
+                <View key={String(idx)} style={{ flex: 1, alignItems: "center", justifyContent: "flex-end" }}>
+                  <View style={{ width: "100%", height: h, borderRadius: 10, backgroundColor: bg, alignItems: "center", justifyContent: "center" }}>
+                    <Text style={{ color: "#0B0B0B", fontWeight: "900", fontSize: 12 }}>{Math.round(score)}</Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        ) : (
+          <Text style={{ color: theme.muted, marginTop: 10 }}>
+            {playerSlug ? "Aucun score L5 disponible." : "playerSlug manquant."}
+          </Text>
+        )}
+      </View>
 
       {/* L15 */}
       <View style={{ borderRadius: 14, borderWidth: 1, borderColor: theme.stroke, backgroundColor: theme.panel, padding: 12 }}>
