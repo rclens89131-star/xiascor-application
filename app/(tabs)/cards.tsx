@@ -211,10 +211,202 @@ function XSL5MiniBars({ values }: { values: number[] }) {
 
   // map score(0..100) -> bar height(6..22)
   return (
-    
-{/* XS_UI_MYCARDS_PROBE_V2_END */}
+    <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 3 }}>
+      {arr.map((s, i) => {
+        const n = (typeof s === "number" && Number.isFinite(s)) ? Math.max(0, Math.min(100, s)) : 0;
+        const h = Math.round(6 + (n / 100) * 16);
+        const strong = n >= 60;
+        return (
+          <View
+            key={i}
+            style={{
+              width: 4,
+              height: h,
+              borderRadius: 4,
+              backgroundColor: strong ? "#22c55e" : "#3b82f6",
+              opacity: 0.95,
+            }}
+          />
+        );
+      })}
+    </View>
+  );
+}
+/* XS_L5_MINICHART_TILE_RENDER_V1_END */
+function CardTile({ card, width }: { card: MyCardItemLocal; width: number }) {
+  const router = useRouter(); /* XS_CARD_TILE_NAV_V1 */
+const playerName = xsSafeStr(card?.anyPlayer?.displayName || card?.player?.displayName || "Unknown");
+const clubName   = xsSafeStr(card?.anyTeam?.name || card?.player?.activeClub?.name || "—");
+const rarity     = xsSafeStr((card?.rarityTyped || card?.rarity || "limited")).toLowerCase();
+const season     = (card?.seasonYear != null) ? String(card.seasonYear) : "—";
+const serial     = (card?.serialNumber != null) ? "#" + String(card.serialNumber) : "#—";
+const bonusPct = xsBonusPctFromPower((card as any)?.power ?? (card as any)?.cardPower ?? (card as any)?.playerPower ?? null);
+const xsL5Mini = xsL5BarsFromCard(card as any); /* XS_L5_MINICHART_TILE_RENDER_V1_PASS */
+
+  return (
+        <Pressable
+      onPress={() => {
+        /* XS_FIX_CARD_CLICK_NAV_V1_BEGIN */
+// XS_PRESSIN_PROBE_V1B: si tu vois cet alert => le code onPress s'exécute (donc tap arrive au Pressable)
+try { Alert.alert("XS_PRESSIN_PROBE_V1B", "onPress code lancé"); } catch (e) { console.log("XS_PRESSIN_PROBE_V1B", e); }
+// XS_TAP_PROBE_ALERT_V1B: si tu ne vois PAS cet alert sur iPhone => le Pressable ne reçoit pas le touch (overlay/layout)
+try { Alert.alert("XS_TAP_PROBE_ALERT_V1B", "tap reçu"); } catch (e) { console.log("XS_TAP_PROBE_ALERT_V1B alert error", e); }
+          const id =
+            (card as any)?.id ??
+            (card as any)?.cardId ??
+            (card as any)?.slug ??
+            (card as any)?.anyCard?.id ??
+            (card as any)?.anyCard?.slug ??
+            "";
+
+          const playerSlug =
+            (card as any)?.anyPlayer?.slug ??
+            (card as any)?.player?.slug ??
+            (card as any)?.slug ??
+            "";
+
+          const navId = String(id || playerSlug || "");
+
+          if (!navId) {
+            // Debug visible via logs; évite le "tap silencieux"
+            console.log("XS_FIX_CARD_CLICK_NAV_V1: missing navId", {
+              id,
+              playerSlug,
+              keys: card ? Object.keys(card as any) : [],
+            });
+          } else {
+            router.push({
+              pathname: "/card/[id]",
+              params: { id: navId, playerSlug: String(playerSlug || "") },
+            });
+          }
+/* XS_FIX_CARD_CLICK_NAV_V1_END */
+      }}
+      style={{ alignSelf: "stretch" }}
+    >
+<SorareCardTile
+width={xsTileWidth2col(width)} imageUrl={xsSafeStr(card?.pictureUrl)}
+      playerName={playerName}
+      clubName={clubName}
+      seasonLabel={season}
+      serialLabel={serial}
+      scarcityLabel={rarity}
+      l15={xsGetL15ValueV1(card as any)} /* XS_CARDS_FIX_L15_PROP_SCOPE_V1 */
+      deltaPct={bonusPct}
+      trendBars={xsTrendBarsFromL15((typeof (card as any)?.l5 === "number") ? (card as any).l5 : xsGetL15ValueV1(card as any))} /* XS_CARDS_FIX_TRENDBARS_SCOPE_V1 */
+      l5={(typeof (card as any)?.l5 === "number") ? (card as any).l5 : null} // XS_FIX_L5_FALLBACK_V1 // XS_MYCARDS_PASS_L5_LEVEL_V1
+      l5Bars={xsL5Mini} /* XS_L5_MINICHART_TILE_RENDER_V1 */
+      level={(typeof (card as any)?.level === "number") ? (card as any).level : ((card as any)?.cardLevel ?? 0)} // XS_MYCARDS_PASS_L5_LEVEL_V1
+    />
+  
+    </Pressable>);
+}
+/* XS_MYCARDS_SORARE_TILE_V1_END */
+
+  
+/* XS_CARDS_2COL_WIDTH_V1_BEGIN */
+/* XS_MYCARDS_WIDEN_GRID_REAL_V1 — constants (module scope) */
+const XS_MYCARDS_PAD = 8;
+const XS_MYCARDS_GAP = 8;
+/* XS_MYCARDS_WIDEN_GRID_REAL_V1 — width math */
+function xsTileWidth2col(screenW: number): number {
+  // 2 colonnes + padding + gap => chaque tuile prend (presque) toute la largeur dispo
+  return Math.floor((screenW - (XS_MYCARDS_PAD * 2) - XS_MYCARDS_GAP) / 2);
+}
+/* XS_CARDS_2COL_WIDTH_V1_END */
+export default function CardsScreen() {
+/* XS_MY_CARDS_UI_V1_BEGIN */
+const [deviceId, setDeviceId] = useState("");
+const [items, setItems] = useState<MyCardItemLocal[]>([]);
+const [pageInfo, setPageInfo] = useState<PageInfo | undefined>();
+const [loading, setLoading] = useState(true);
+const [loadingMore, setLoadingMore] = useState(false);
+const [syncing, setSyncing] = useState(false);
+const [error, setError] = useState("");
+  /* XS_UI_LAST_SYNC_LABEL_V1 */
+const [lastSync, setLastSync] = useState<string>("");
+const loadingMoreRef = useRef(false);
+const ensureDeviceId = useCallback(async () => {
+  // XS_PREFER_OAUTH_DEVICEID_V2 — prefer OAuth deviceId (xs_device_id) when available
+const oauthId = (await AsyncStorage.getItem(OAUTH_DEVICE_ID_KEY)) || "";
+  if (oauthId.trim()) {
+    try { await AsyncStorage.setItem(DEVICE_ID_KEY, oauthId.trim()); } catch {}
+    return oauthId.trim();
+  }
+
+  // XS_PREFER_JWT_DEVICEID_V2 — then prefer the JWT-linked deviceId set in Settings
+const jwtId = (await AsyncStorage.getItem(JWT_DEVICE_ID_KEY)) || "";
+  if (jwtId.trim()) return jwtId.trim();
+const existing = (await AsyncStorage.getItem(DEVICE_ID_KEY)) || "";
+  if (existing.trim()) return existing.trim();
+const generated = `xs-device-${Date.now()}`;
+  await AsyncStorage.setItem(DEVICE_ID_KEY, generated);
+  return generated;
+}, []);
+const loadInitial = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+const id = await ensureDeviceId();
+      setDeviceId(id);
+const res = await myCardsList(id, 50);
+      
+      try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
+      setItems(res.cards || []);
+      setPageInfo(res.pageInfo);
+    } catch (e: any) {
+      setError(e?.message || "Erreur chargement");
+    } finally {
+      setLoading(false);
+    }
+  }, [ensureDeviceId]);
+const loadMore = useCallback(async () => {
+    if (!pageInfo?.hasNextPage || !pageInfo?.endCursor || loadingMoreRef.current || !deviceId) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+const res = await myCardsList(deviceId, 50, pageInfo.endCursor || undefined);
+      
+      try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
+      setItems((prev) => [...prev, ...(res.cards || [])]);
+      setPageInfo(res.pageInfo);
+    } catch (e: any) {
+      setError(e?.message || "Erreur pagination");
+    } finally {
+      setLoadingMore(false);
+      loadingMoreRef.current = false;
+    }
+  }, [deviceId, pageInfo?.endCursor, pageInfo?.hasNextPage]);
+const onSync = useCallback(async () => {
+    if (!deviceId) return;
+    setSyncing(true);
+    setError("");
+    try {
+      await myCardsSync(deviceId, { first: 50, maxPages: 80, maxCards: 20000, sleepMs: 250 });
+      await loadInitial();
+    } catch (e: any) {
+      setError(e?.message || "Erreur synchronisation");
+    } finally {
+      setSyncing(false);
+    }
+  }, [deviceId, loadInitial]);
+
+  useEffect(() => {
+    loadInitial();
+  }, [loadInitial]);
+const { width } = useWindowDimensions();
+const layout = useMemo(() => {
+const H_PADDING = 16;
+const GAP = 12;
+const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
+    return { H_PADDING, GAP, itemWidth };
+  }, [width]);
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
+
       <View style={{ padding: 16, gap: 10 }}>
-        
+        <Text style={{ color: theme.text, fontSize: 22, fontWeight: "900" }}>Mes cartes</Text>
 
         <Pressable
           onPress={onSync}
@@ -310,7 +502,6 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
-
 
 
 
