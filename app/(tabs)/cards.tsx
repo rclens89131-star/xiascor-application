@@ -19,6 +19,12 @@ const XS_GRID_PADDING = 16;
 const XS_GRID_GAP = 12;
 const XS_TILE_WIDTH = Math.floor((Dimensions.get("window").width - (XS_GRID_PADDING * 2) - XS_GRID_GAP) / 2);
 
+  // XS_NAV_CARDID_FALLBACK_V1
+  function xsGetCardNavParams(card: any){
+    const playerSlug = String(card?.anyPlayer?.slug ?? card?.player?.slug ?? card?.playerSlug ?? "").trim();
+    const id = String(card?.id ?? card?.cardId ?? card?.slug ?? playerSlug ?? "").trim();
+    return { id, playerSlug };
+  }
 function xsNum(v: any): number | null {
 const n = Number(v);
   return Number.isFinite(n) ? n : null;
@@ -55,6 +61,12 @@ function cardKey(card: MyCardItemLocal) {
     card?.slug ||
       `${card?.anyPlayer?.displayName || card?.player?.displayName || "unknown"}
 
+  // XS_NAV_CARDID_FALLBACK_V1
+  function xsGetCardNavParams(card: any){
+    const playerSlug = String(card?.anyPlayer?.slug ?? card?.player?.slug ?? card?.playerSlug ?? "").trim();
+    const id = String(card?.id ?? card?.cardId ?? card?.slug ?? playerSlug ?? "").trim();
+    return { id, playerSlug };
+  }
 /* XS_CARDS_L15_LAST_V1 — helpers safe (L15 + last score) */
 function getL15Value(card: any): number | null {
 const v =
@@ -528,6 +540,7 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
