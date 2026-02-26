@@ -61,12 +61,6 @@ function cardKey(card: MyCardItemLocal) {
     card?.slug ||
       `${card?.anyPlayer?.displayName || card?.player?.displayName || "unknown"}
 
-  // XS_NAV_CARDID_FALLBACK_V1
-  function xsGetCardNavParams(card: any){
-    const playerSlug = String(card?.anyPlayer?.slug ?? card?.player?.slug ?? card?.playerSlug ?? "").trim();
-    const id = String(card?.id ?? card?.cardId ?? card?.slug ?? playerSlug ?? "").trim();
-    return { id, playerSlug };
-  }
 /* XS_CARDS_L15_LAST_V1 — helpers safe (L15 + last score) */
 function getL15Value(card: any): number | null {
 const v =

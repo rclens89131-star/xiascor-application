@@ -264,11 +264,13 @@ setL5State("ok");} catch (e) {
           Cache navigation manquant (xsCardNavGet). On affiche quand même L5 + debug via playerSlug.
         </Text>
 
+        {XS_SHOW_DEBUG ? (
         <View style={{ marginTop: 14, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 14, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke }}>
           <Text style={{ color: theme.text, fontWeight: "900" }}>XS_CARD_DETAIL_PROBE_V5 (hidden) ✅</Text>
           <Text style={{ color: theme.muted, marginTop: 6 }}>id: {id || "—"}</Text>
           <Text style={{ color: theme.muted, marginTop: 2 }}>playerSlug: {playerSlug || "—"}</Text>
         </View>
+        ) : null}
 
         {/* XS_SHOW_DEBUG_WHEN_CARD_NULL_V1 */}
         <View style={{ marginTop: 12, borderRadius: 14, borderWidth: 1, borderColor: theme.stroke, backgroundColor: theme.panel, padding: 12 }}>
@@ -328,11 +330,13 @@ setL5State("ok");} catch (e) {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16, gap: 12 }}>
       {/* PROBE routing (toujours visible) */}
+      {XS_SHOW_DEBUG ? (
       <View style={{ borderRadius: 14, borderWidth: 1, borderColor: theme.stroke, backgroundColor: theme.panel, padding: 12 }}>
-        <Text style={{ color: theme.text, fontWeight: "900" }}>XS_CARD_DETAIL_PROBE_V5 (hidden) ✅</Text>
+        <Text style={{ color: theme.text, fontWeight: "900" }}>XS_CARD_DETAIL_PROBE_V5 ✅</Text>
         <Text style={{ color: theme.muted, marginTop: 6 }}>id: {id || "—"}</Text>
         <Text style={{ color: theme.muted, marginTop: 2 }}>playerSlug: {playerSlug || "—"}</Text>
       </View>
+      ) : null}
 
       
 
