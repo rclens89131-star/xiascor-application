@@ -1,87 +1,84 @@
 ﻿import React from "react";
-import { View, Text, ScrollView } from "react-native";
-
-type PerfPoint = { score: number | null; label?: string };
+import { View, Text, Image } from "react-native";
 
 type Props = {
-  recentScores?: any[];
-  l5?: number | null;
-  l15?: number | null;
+  // Scores (0..100). On affiche typiquement les 5 derniers.
+  recentScores: number[];
+  // Optionnel: logos adverses alignés sur recentScores (même longueur). Si absent => placeholder texte.
+  opponentLogoUrls?: (string | null | undefined)[];
+  opponentShort?: (string | null | undefined)[];
+  title?: string; // ex: "Forme"
 };
 
-const clamp = (n: number, min: number, max: number) =>
-  Math.max(min, Math.min(max, n));
+function xsClamp(n: number, a: number, b: number){
+  return Math.max(a, Math.min(b, n));
+}
 
-const colorFor = (score: number) => {
-  if (score < 40) return "#E67E22";
-  if (score < 60) return "#F1C40F";
-  if (score < 80) return "#2ECC71";
-  return "#1ABC9C";
-};
+// Palette proche de ce que tu as décrit (rouge -> orange -> jaune -> verts -> bleu clair)
+function xsScoreColor(score: number){
+  const s = xsClamp(score, 0, 100);
+  if(s < 25) return "#ff3b30";      // rouge
+  if(s < 35) return "#ff9500";      // orange
+  if(s < 55) return "#ffd60a";      // jaune
+  if(s < 65) return "#a3e635";      // vert pomme
+  if(s < 75) return "#16a34a";      // vert foncé
+  return "#5ac8fa";                 // bleu clair
+}
 
-export default function SorarePerformanceChart({ recentScores, l5, l15 }: Props) {
-
-  const raw = Array.isArray(recentScores) ? recentScores : [];
-
-  const points: PerfPoint[] = raw.map((it: any) => {
-    if (typeof it === "number") return { score: it };
-    if (it && typeof it === "object") {
-      return {
-        score: typeof it.score === "number" ? it.score : null,
-        label: it.gw ? "GW " + it.gw : undefined
-      };
-    }
-    return { score: null };
-  }).slice(-40);
+export default function SorarePerformanceChart({
+  recentScores,
+  opponentLogoUrls,
+  opponentShort,
+  title = "Performance",
+}: Props) {
+  const values = Array.isArray(recentScores) ? recentScores.slice(0, 5) : [];
+  const max = 100;
 
   return (
-    <View style={{ marginTop: 12, padding: 14, borderRadius: 16, backgroundColor: "#0f0f0f" }}>
+    <View style={{ marginTop: 10 }}>
+      <Text style={{ color: "white", fontWeight: "900", marginBottom: 10 }}>{title}</Text>
 
-      <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 12 }}>
-        <Text style={{ color: "white", fontSize: 18, fontWeight: "800" }}>
-          Performance
-        </Text>
+      <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 10 }}>
+        {values.map((raw, idx) => {
+          const v = xsClamp(Number(raw || 0), 0, 100);
+          const h = 14 + Math.round((v / max) * 86); // 14..100 approx
+          const bg = xsScoreColor(v);
 
-        <View style={{ flexDirection: "row", gap: 10 }}>
-          <Text style={{ color: "white", fontWeight: "800" }}>
-            L5 {l5 ?? "—"}
-          </Text>
-          <Text style={{ color: "white", fontWeight: "800" }}>
-            L15 {l15 ?? "—"}
-          </Text>
-        </View>
-      </View>
+          const logo = opponentLogoUrls?.[idx] ?? null;
+          const short = (opponentShort?.[idx] ?? "").toString().trim();
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View style={{ height: 200, flexDirection: "row", alignItems: "flex-end" }}>
-          {points.map((pt, idx) => {
-            const sc = pt.score;
-            const isDnp = sc === null;
-            const value = isDnp ? 0 : clamp(sc!, 0, 100);
-            const height = isDnp ? 30 : 180 * (value / 100);
-            const bg = isDnp ? "#555" : colorFor(value);
-
-            return (
-              <View key={idx} style={{ width: 26, marginRight: 10, alignItems: "center" }}>
-                <View style={{ width: 26, height, backgroundColor: bg, borderRadius: 6, alignItems: "center" }}>
-                  {!isDnp && (
-                    <Text style={{ fontSize: 11, fontWeight: "900", marginTop: 4 }}>
-                      {Math.round(value)}
-                    </Text>
-                  )}
+          return (
+            <View key={idx} style={{ width: 40, alignItems: "center" }}>
+              {/* Bar */}
+              <View style={{ height: 110, justifyContent: "flex-end", width: "100%" }}>
+                <View style={{ height: h, borderRadius: 10, backgroundColor: bg, width: "100%", justifyContent: "center" }}>
+                  <Text style={{ color: "#0b0b0b", fontWeight: "900", textAlign: "center" }}>{Math.round(v)}</Text>
                 </View>
-                {isDnp ? (
-                  <Text style={{ fontSize: 10, color: "#aaa", marginTop: 4 }}>DNP</Text>
+              </View>
+
+              {/* Opponent logo (or placeholder) */}
+              <View style={{ height: 26, marginTop: 6, alignItems: "center", justifyContent: "center" }}>
+                {logo ? (
+                  <Image
+                    source={{ uri: logo }}
+                    style={{ width: 22, height: 22, borderRadius: 11 }}
+                    resizeMode="contain"
+                  />
                 ) : (
-                  <Text style={{ fontSize: 10, color: "#aaa", marginTop: 4 }}>
-                    {pt.label ?? ""}
+                  <Text style={{ color: "#9ca3af", fontSize: 11, fontWeight: "800" }}>
+                    {short ? short.slice(0, 4).toUpperCase() : "—"}
                   </Text>
                 )}
               </View>
-            );
-          })}
-        </View>
-      </ScrollView>
+            </View>
+          );
+        })}
+      </View>
+
+      <Text style={{ color: "#9ca3af", fontSize: 12, marginTop: 8 }}>
+        {/* XS_SORARE_CHART_STYLE_V1 */}
+        Scores sur 5 matchs (barres verticales, couleur selon seuils).
+      </Text>
     </View>
   );
 }

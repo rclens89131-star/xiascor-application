@@ -4,6 +4,7 @@ import { useLocalSearchParams } from "expo-router";
 import { theme } from "../../src/theme";
 import { xsCardNavGet } from "../_lib/cardNavCache";
 import { publicPlayerPerformance } from "../../src/scoutApi";
+import SorarePerformanceChart from "../../src/components/SorarePerformanceChart";
 
 /**
  * XS_CARD_DETAIL_CLEAN_V1
@@ -216,7 +217,12 @@ export default function CardDetailScreen() {
         </Text>
 
         {Array.isArray(scores) && scores.length > 0 ? (
-          xsBars(scores as any, opp5 as any)
+          <SorarePerformanceChart
+  recentScores={scores as any}
+  opponentLogoUrls={(Array.isArray(opp5) ? opp5 : []).map((o: any) => (o?.logoUrl ? String(o.logoUrl) : null))}
+  opponentShort={(Array.isArray(opp5) ? opp5 : []).map((o: any) => (o?.name ? String(o.name) : null))}
+  title="Forme"
+/>
         ) : (
           <Text style={{ color: theme.muted, marginTop: 10 }}>
             {playerSlug ? "Aucun score disponible." : "playerSlug manquant."}
@@ -260,3 +266,4 @@ export default function CardDetailScreen() {
     </ScrollView>
   );
 }
+
