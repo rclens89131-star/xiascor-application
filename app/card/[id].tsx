@@ -151,10 +151,16 @@ export default function CardDetailScreen() {
         try { setXsPerfDebug(resp); } catch (e) {}
         try { setXsPerfErr(""); } catch (e) {}
         if (cancelled) return;
-        const extracted = xsExtractL5(resp, card);
-        setL5(extracted);
-        setL5State("ok");
-      } catch (e) {
+                const extracted = xsExtractL5(resp, card);
+
+        // XS_FIX_L5_EXTRACTION_V3: prefer raw recentScores (shape from backend)
+        const scores =
+          Array.isArray((resp as any)?.recentScores)
+            ? (resp as any).recentScores.slice(0, 5)
+            : (typeof (resp as any)?.l5 === "number" ? [(resp as any).l5] : []);
+
+        setL5(scores && scores.length ? scores : extracted);
+        setL5State("ok");} catch (e) {
         if (cancelled) return;
         setL5(null);
         setL5State("err");
@@ -327,6 +333,7 @@ export default function CardDetailScreen() {
     </ScrollView>
   );
 }
+
 
 
 
