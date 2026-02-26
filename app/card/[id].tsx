@@ -13,6 +13,53 @@ import SorarePerformanceChart from "../../src/components/SorarePerformanceChart"
  * - Affiche un chart "Forme" L5/L15/L40 basé sur /public-player-performance
  */
 
+
+type XsOppAny = any;
+
+// XS_OPPONENT_EXTRACT_V1: robust extraction for opponent logos/names from various API shapes
+function xsPickString(...vals: any[]): string | null {
+  for (const v of vals) {
+    if (typeof v === "string" && v.trim().length > 0) return v;
+  }
+  return null;
+}
+
+function xsOppLogoUrlFromAny(o: XsOppAny): string | null {
+  if(!o) return null;
+  const a = o?.logoUrl;
+  const b = o?.club?.pictureUrl || o?.club?.logoUrl || o?.club?.avatarUrl;
+  const c = o?.opponentClub?.pictureUrl || o?.opponentClub?.logoUrl || o?.opponentClub?.avatarUrl;
+  const d = o?.opponent?.club?.pictureUrl || o?.opponent?.club?.logoUrl || o?.opponent?.club?.avatarUrl;
+  const e = o?.opponentTeam?.pictureUrl || o?.opponentTeam?.logoUrl || o?.opponentTeam?.avatarUrl;
+  const f = o?.opponent?.pictureUrl || o?.opponent?.logoUrl || o?.opponent?.avatarUrl;
+  const g = o?.team?.pictureUrl || o?.team?.logoUrl || o?.team?.avatarUrl;
+  const h = o?.match?.opponentClub?.pictureUrl || o?.match?.opponentClub?.logoUrl || o?.match?.opponentClub?.avatarUrl;
+  return xsPickString(a,b,c,d,e,f,g,h);
+}
+
+function xsOppShortFromAny(o: XsOppAny): string | null {
+  if(!o) return null;
+  const a = o?.name;
+  const b = o?.club?.name || o?.club?.shortName || o?.club?.slug;
+  const c = o?.opponentClub?.name || o?.opponentClub?.shortName || o?.opponentClub?.slug;
+  const d = o?.opponent?.club?.name || o?.opponent?.club?.shortName || o?.opponent?.club?.slug;
+  const e = o?.opponentTeam?.name || o?.opponentTeam?.shortName || o?.opponentTeam?.slug;
+  const f = o?.opponent?.name || o?.opponent?.shortName || o?.opponent?.slug;
+  const g = o?.team?.name || o?.team?.shortName || o?.team?.slug;
+  const h = o?.match?.opponentClub?.name || o?.match?.opponentClub?.shortName || o?.match?.opponentClub?.slug;
+  return xsPickString(a,b,c,d,e,f,g,h);
+}
+
+function xsOpponentLogoUrls(list: any): (string | null)[] {
+  const arr = Array.isArray(list) ? list : [];
+  return arr.map((o) => xsOppLogoUrlFromAny(o));
+}
+
+function xsOpponentShort(list: any): (string | null)[] {
+  const arr = Array.isArray(list) ? list : [];
+  return arr.map((o) => xsOppShortFromAny(o));
+}
+
 function clamp(n: number, a: number, b: number): number {
   return Math.max(a, Math.min(b, n));
 }
@@ -219,8 +266,8 @@ export default function CardDetailScreen() {
         {Array.isArray(scores) && scores.length > 0 ? (
           <SorarePerformanceChart
   recentScores={scores as any}
-  opponentLogoUrls={(Array.isArray(opp5) ? opp5 : []).map((o: any) => (o?.logoUrl ? String(o.logoUrl) : null))}
-  opponentShort={(Array.isArray(opp5) ? opp5 : []).map((o: any) => (o?.name ? String(o.name) : null))}
+  opponentLogoUrls={xsOpponentLogoUrls(opp5)}
+  opponentShort={xsOpponentShort(opp5)}
   title="Forme"
 />
         ) : (
@@ -266,4 +313,5 @@ export default function CardDetailScreen() {
     </ScrollView>
   );
 }
+
 
