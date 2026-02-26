@@ -247,10 +247,6 @@ const xsL5Mini = xsL5BarsFromCard(card as any); /* XS_L5_MINICHART_TILE_RENDER_V
         <Pressable
       onPress={() => {
         /* XS_FIX_CARD_CLICK_NAV_V1_BEGIN */
-// XS_PRESSIN_PROBE_V1B: si tu vois cet alert => le code onPress s'exécute (donc tap arrive au Pressable)
-try { Alert.alert("XS_PRESSIN_PROBE_V1B", "onPress code lancé"); } catch (e) { console.log("XS_PRESSIN_PROBE_V1B", e); }
-// XS_TAP_PROBE_ALERT_V1B: si tu ne vois PAS cet alert sur iPhone => le Pressable ne reçoit pas le touch (overlay/layout)
-try { Alert.alert("XS_TAP_PROBE_ALERT_V1B", "tap reçu"); } catch (e) { console.log("XS_TAP_PROBE_ALERT_V1B alert error", e); }
           const id =
             (card as any)?.id ??
             (card as any)?.cardId ??
@@ -502,6 +498,7 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
