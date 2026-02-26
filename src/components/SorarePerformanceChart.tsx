@@ -29,30 +29,33 @@ export default function SorarePerformanceChart({
   recentScores,
   opponentLogoUrls,
   opponentShort,
-  title = "Performance",
+  title = "",
 }: Props) {
   const values = Array.isArray(recentScores) ? recentScores.slice(0, 5) : [];
   const max = 100;
 
   return (
     <View style={{ marginTop: 10 }}>
-      <Text style={{ color: "white", fontWeight: "900", marginBottom: 10 }}>{title}</Text>
+      {/* XS_TITLE_OPTIONAL_V1 */}
+{title && title.trim().length > 0 ? (
+  <Text style={{ color: "white", fontWeight: "900", marginBottom: 10 }}>{title}</Text>
+) : null}
 
       <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 10 }}>
         {values.map((raw, idx) => {
           const v = xsClamp(Number(raw || 0), 0, 100);
-          const h = 14 + Math.round((v / max) * 86); // 14..100 approx
+          const h = 24 + Math.round((v / max) * 136); // 14..100 approx
           const bg = xsScoreColor(v);
 
           const logo = opponentLogoUrls?.[idx] ?? null;
           const short = (opponentShort?.[idx] ?? "").toString().trim();
 
           return (
-            <View key={idx} style={{ width: 40, alignItems: "center" }}>
+            <View key={idx} style={{ width: 28, alignItems: "center" }}>
               {/* Bar */}
-              <View style={{ height: 110, justifyContent: "flex-end", width: "100%" }}>
-                <View style={{ height: h, borderRadius: 10, backgroundColor: bg, width: "100%", justifyContent: "center" }}>
-                  <Text style={{ color: "#0b0b0b", fontWeight: "900", textAlign: "center" }}>{Math.round(v)}</Text>
+              <View style={{ height: 160, justifyContent: "flex-end", width: "100%" }}>
+                <View style={{ height: h, borderRadius: 8, backgroundColor: bg, width: "100%", justifyContent: "center" }}>
+                  <Text style={{ color: "#0b0b0b", fontWeight: "900", textAlign: "center", fontSize: 12 }}>{Math.round(v)}</Text>
                 </View>
               </View>
 
@@ -82,3 +85,4 @@ export default function SorarePerformanceChart({
     </View>
   );
 }
+
