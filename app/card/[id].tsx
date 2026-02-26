@@ -172,7 +172,7 @@ export default function CardDetailScreen() {
     return () => { cancelled = true; };
   }, [playerSlug, card]);
 
-  if (!card) {
+  if (false && !card) { /* XS_REMOVE_CARTE_INTROUVABLE_V2 */
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg, padding: 16, justifyContent: "center" }}>
         <Text style={{ color: theme.text, fontWeight: "900", fontSize: 18 }}>Carte introuvable</Text>
@@ -333,6 +333,7 @@ export default function CardDetailScreen() {
     </ScrollView>
   );
 }
+
 
 
 
