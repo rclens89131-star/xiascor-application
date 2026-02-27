@@ -212,7 +212,6 @@ export default function CardDetailScreen() {
 
   const series = xsPickSeries(perf || {});
   const opp5 = Array.isArray(series?.opp) ? series.opp.slice(0, 5) : [];
-
   const scores =
     activeSeries === "L15" ? (Array.isArray(series?.l15) ? series.l15.slice(0, 5) : []) :
     activeSeries === "L40" ? (Array.isArray(series?.l40) ? series.l40.slice(0, 5) : []) :
@@ -313,5 +312,7 @@ export default function CardDetailScreen() {
     </ScrollView>
   );
 }
+
+
 
 
