@@ -6,6 +6,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import PerfL5Widget from "../../src/components/PerfL5Widget";
 import { ActivityIndicator, FlatList, Image, Pressable, SafeAreaView, Text, View, useWindowDimensions, Dimensions, Alert } from "react-native";
 import { theme } from "../../src/theme";
 import { myCardsList, myCardsSync, type PageInfo } from "../../src/scoutApi";
@@ -498,6 +499,7 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
