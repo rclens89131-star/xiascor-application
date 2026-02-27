@@ -206,12 +206,10 @@ function xsL5BarsFromCard(card: any): number[] {
 }
 /* XS_L5_MINICHART_TILE_V1_END */
 /* XS_L5_MINICHART_TILE_RENDER_V1_BEGIN */
-function XSL5MiniBars({ values }: { values: number[] }) {
-  const xsArg0: any = arguments[0];
-  const xsArg1: any = arguments[1];
-
-  const scores = Array.isArray(xsArg0) ? xsArg0 : [];
-  const opponents = Array.isArray(xsArg1) ? xsArg1 : [];
+function XSL5MiniBars(props: { values: number[]; opponents?: any[] }) {
+  const scores = Array.isArray(props?.values) ? props.values.slice(-5) : [];
+  const opponents = Array.isArray((props as any)?.opponents) ? (props as any).opponents.slice(-5) : [];
+  if (scores.length === 0) return null;
 
   return (
     <PerfL5Widget
@@ -487,6 +485,7 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
