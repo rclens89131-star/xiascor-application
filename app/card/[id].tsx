@@ -270,11 +270,16 @@ export default function CardDetailScreen() {
   const seasonYear = pickStr((card as any)?.seasonYear);
 
   const series = xsPickSeries(perf || {});
-  const opp5 = Array.isArray(series?.opp) ? series.opp.slice(0, 5) : [];
-  const scores =
-    activeSeries === "L15" ? (Array.isArray(series?.l15) ? series.l15.slice(0, 5) : []) :
-    activeSeries === "L40" ? (Array.isArray(series?.l40) ? series.l40.slice(0, 5) : []) :
-    (Array.isArray(series?.l5) ? series.l5.slice(0, 5) : []);
+
+/* XS_CARD_CHART_VISUAL_ORDER_V1
+   On inverse l'ordre visuel pour afficher les 5 matchs de gauche -> droite
+   dans l'ordre attendu à l'écran. On inverse scores + adversaires ensemble
+   pour conserver l'alignement exact barres / logos / noms. */
+const opp5 = Array.isArray(series?.opp) ? [...series.opp].slice(0, 5).reverse() : [];
+const scores =
+  activeSeries === "L15" ? (Array.isArray(series?.l15) ? [...series.l15].slice(0, 5).reverse() : []) :
+  activeSeries === "L40" ? (Array.isArray(series?.l40) ? [...series.l40].slice(0, 5).reverse() : []) :
+  (Array.isArray(series?.l5) ? [...series.l5].slice(0, 5).reverse() : []);
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16, gap: 12 }}>
@@ -371,6 +376,7 @@ export default function CardDetailScreen() {
     </ScrollView>
   );
 }
+
 
 
 
