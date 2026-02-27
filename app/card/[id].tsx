@@ -27,6 +27,14 @@ const XS_CARD_DEVICE_ID_KEYS = [
   "deviceId",
 ];
 
+/* XS_CARD_FORCE_OAUTH_DEVICE_PROBE_V1
+   Preuve temporaire:
+   - force le deviceId OAuth backend connu pour vérifier que les adversaires
+     remontent bien dans l'écran carte.
+   - Si ce probe marche, le problème réel = AsyncStorage / mauvais deviceId lu sur iPhone.
+*/
+const XS_CARD_FORCE_DEVICE_ID = "dev_authperf_1772197967309_hgcxmldw";
+
 async function xsLoadPreferredDeviceId(): Promise<string> {
   for (const k of XS_CARD_DEVICE_ID_KEYS) {
     try {
@@ -201,7 +209,7 @@ export default function CardDetailScreen() {
 
     async function boot() {
       try {
-        const id = await xsLoadPreferredDeviceId();
+        const id = String(XS_CARD_FORCE_DEVICE_ID || "").trim() || await xsLoadPreferredDeviceId();
         if (!cancelled) setDeviceId(String(id || "").trim());
       } catch {
         if (!cancelled) setDeviceId("");
@@ -361,6 +369,7 @@ export default function CardDetailScreen() {
     </ScrollView>
   );
 }
+
 
 
 
