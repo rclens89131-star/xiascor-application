@@ -199,6 +199,24 @@ export default function CardDetailScreen() {
   useEffect(() => {
     let cancelled = false;
 
+    async function boot() {
+      try {
+        const id = await xsLoadPreferredDeviceId();
+        if (!cancelled) setDeviceId(String(id || "").trim());
+      } catch {
+        if (!cancelled) setDeviceId("");
+      } finally {
+        if (!cancelled) setDeviceReady(true);
+      }
+    }
+
+    boot();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
     async function run() {
       if (!playerSlug) {
         setPerf(null);
@@ -206,9 +224,16 @@ export default function CardDetailScreen() {
         return;
       }
 
+      if (!deviceReady) {
+        setState("loading");
+        return;
+      }
+
       setState("loading");
       try {
-        const resp = await publicPlayerPerformance(playerSlug as any);
+        const resp = await publicPlayerPerformance(playerSlug as any, {
+          deviceId: deviceId || undefined,
+        });
         if (cancelled) return;
         setPerf(resp || {});
         setState("ok");
@@ -221,7 +246,7 @@ export default function CardDetailScreen() {
 
     run();
     return () => { cancelled = true; };
-  }, [playerSlug]);
+  }, [playerSlug, deviceId, deviceReady]);
 
   const price = (card as any)?.price || {};
   const avg7d = asNum(price?.avg7dEur);
@@ -336,6 +361,7 @@ export default function CardDetailScreen() {
     </ScrollView>
   );
 }
+
 
 
 
