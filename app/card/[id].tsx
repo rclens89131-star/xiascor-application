@@ -1,4 +1,5 @@
 ﻿import React, { useEffect, useMemo, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ScrollView, Text, View, Image } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { theme } from "../../src/theme";
@@ -15,6 +16,27 @@ import SorarePerformanceChart from "../../src/components/SorarePerformanceChart"
 
 
 type XsOppAny = any;
+
+/* XS_CARD_DETAIL_DEVICEID_V1 */
+const XS_CARD_DEVICE_ID_KEYS = [
+  "xs_device_id",
+  "xs_device_id_v1",
+  "xs_jwt_device_id_v1",
+  "xs_jwt_device_id",
+  "jwt_device_id",
+  "deviceId",
+];
+
+async function xsLoadPreferredDeviceId(): Promise<string> {
+  for (const k of XS_CARD_DEVICE_ID_KEYS) {
+    try {
+      const v = await AsyncStorage.getItem(k);
+      const s = String(v || "").trim();
+      if (s) return s;
+    } catch {}
+  }
+  return "";
+}
 
 // XS_OPPONENT_EXTRACT_V1: robust extraction for opponent logos/names from various API shapes
 function xsPickString(...vals: any[]): string | null {
@@ -171,6 +193,8 @@ export default function CardDetailScreen() {
   const [perf, setPerf] = useState<any>(null);
   const [state, setState] = useState<"idle" | "loading" | "ok" | "err">("idle");
   const [activeSeries, setActiveSeries] = useState<"L5" | "L15" | "L40">("L5");
+  const [deviceId, setDeviceId] = useState("");
+  const [deviceReady, setDeviceReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -312,6 +336,7 @@ export default function CardDetailScreen() {
     </ScrollView>
   );
 }
+
 
 
 

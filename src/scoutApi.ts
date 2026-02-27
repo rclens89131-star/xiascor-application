@@ -398,10 +398,20 @@ export type PublicPlayerPerformance = {
   meta?: any;
 };
 
-export async function publicPlayerPerformance(slug: string): Promise<PublicPlayerPerformance> {
+export async function publicPlayerPerformance(
+  slug: string,
+  opts?: { deviceId?: string | null }
+): Promise<PublicPlayerPerformance> {
   const s = String(slug || "").trim();
   if (!s) throw new Error("player slug missing");
-  const r = await fetch(BASE_URL + "/public-player-performance?slug=" + encodeURIComponent(s), {
+
+  const qs = new URLSearchParams();
+  qs.set("slug", s);
+
+  const deviceId = String(opts?.deviceId || "").trim();
+  if (deviceId) qs.set("deviceId", deviceId);
+
+  const r = await fetch(BASE_URL + "/public-player-performance?" + qs.toString(), {
     headers: { accept: "application/json" },
   });
   const txt = await r.text();
@@ -414,4 +424,5 @@ export async function publicPlayerPerformance(slug: string): Promise<PublicPlaye
   return (json || {}) as PublicPlayerPerformance;
 }
 /* XS_PUBLIC_PLAYER_PERF_CLIENT_V1_END */
+
 
