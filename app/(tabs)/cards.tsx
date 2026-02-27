@@ -207,30 +207,18 @@ function xsL5BarsFromCard(card: any): number[] {
 /* XS_L5_MINICHART_TILE_V1_END */
 /* XS_L5_MINICHART_TILE_RENDER_V1_BEGIN */
 function XSL5MiniBars({ values }: { values: number[] }) {
-  const arr = Array.isArray(values) ? values.slice(-5) : [];
-  if(arr.length === 0) return null;
+  const xsArg0: any = arguments[0];
+  const xsArg1: any = arguments[1];
 
-  // map score(0..100) -> bar height(6..22)
+  const scores = Array.isArray(xsArg0) ? xsArg0 : [];
+  const opponents = Array.isArray(xsArg1) ? xsArg1 : [];
+
   return (
-    <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 3 }}>
-      {arr.map((s, i) => {
-        const n = (typeof s === "number" && Number.isFinite(s)) ? Math.max(0, Math.min(100, s)) : 0;
-        const h = Math.round(6 + (n / 100) * 16);
-        const strong = n >= 60;
-        return (
-          <View
-            key={i}
-            style={{
-              width: 4,
-              height: h,
-              borderRadius: 4,
-              backgroundColor: strong ? "#22c55e" : "#3b82f6",
-              opacity: 0.95,
-            }}
-          />
-        );
-      })}
-    </View>
+    <PerfL5Widget
+      scores={scores}
+      opponents={opponents}
+      height={58}
+    />
   );
 }
 /* XS_L5_MINICHART_TILE_RENDER_V1_END */
@@ -499,6 +487,7 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
