@@ -42,6 +42,7 @@ const p = xsNum(power);
 }
 /* XS_MYCARDS_UI_META_V1_END */
 import { SorareCardTile } from "../../src/components/SorareCardTile"; // XS_SORARE_TILE_IMPORT_V1
+import { publicPlayerPerformance } from "../../src/scoutApi";
 const DEVICE_ID_KEY = "XS_DEVICE_ID_V1";
 const JWT_DEVICE_ID_KEY = "XS_JWT_DEVICE_ID_V1";
 const OAUTH_DEVICE_ID_KEY = "xs_device_id"; // XS_PREFER_OAUTH_DEVICEID_V2
@@ -249,7 +250,7 @@ function XSL5MiniBars(props: { values: number[]; opponents?: any[] }) {
   );
 }
 /* XS_L5_MINICHART_TILE_RENDER_V1_END */
-function CardTile({ card, width }: { card: MyCardItemLocal; width: number }) {
+function CardTile({ card, width, l5Cache = {} }: { card: MyCardItemLocal; width: number; l5Cache?: Record<string, number[]> }) { /* XS_L5CACHE_OPTIONAL_V2 */
   const router = useRouter(); /* XS_CARD_TILE_NAV_V1 */
 const playerName = xsSafeStr(card?.anyPlayer?.displayName || card?.player?.displayName || "Unknown");
 const clubName   = xsSafeStr(card?.anyTeam?.name || card?.player?.activeClub?.name || "—");
@@ -257,7 +258,12 @@ const rarity     = xsSafeStr((card?.rarityTyped || card?.rarity || "limited")).t
 const season     = (card?.seasonYear != null) ? String(card.seasonYear) : "—";
 const serial     = (card?.serialNumber != null) ? "#" + String(card.serialNumber) : "#—";
 const bonusPct = xsBonusPctFromPower((card as any)?.power ?? (card as any)?.cardPower ?? (card as any)?.playerPower ?? null);
-const xsL5Mini = xsL5BarsFromCard(card as any); /* XS_L5_MINICHART_TILE_RENDER_V1_PASS */
+const xsL5Mini0 = xsL5BarsFromCard(card as any); /* XS_L5_MINICHART_TILE_RENDER_V1_PASS */
+const playerSlugKey = String((card as any)?.anyPlayer?.slug || (card as any)?.playerSlug || (card as any)?.player?.slug || "").trim();
+const xsL5Mini =
+  (xsL5Mini0 && xsL5Mini0.length)
+    ? xsL5Mini0
+    : (playerSlugKey && Array.isArray((l5Cache as any)[playerSlugKey]) ? (l5Cache as any)[playerSlugKey] : []);
 
   return (
         <Pressable
@@ -330,6 +336,50 @@ export default function CardsScreen() {
 /* XS_MY_CARDS_UI_V1_BEGIN */
 const [deviceId, setDeviceId] = useState("");
 const [items, setItems] = useState<MyCardItemLocal[]>([]);
+/* XS_L5_PREFETCH_CACHE_V1_BEGIN */
+  const [xsL5Cache, setXsL5Cache] = useState<Record<string, number[]>>({});
+  const xsL5LoadingRef = useRef<Record<string, boolean>>({});
+
+  useEffect(() => {
+    // Prefetch léger: complète l'historique L5 par joueur (slug) si la carte n'a pas de scores.
+    const slugs = Array.from(new Set(
+      (items || [])
+        .map((c: any) => String(c?.anyPlayer?.slug || c?.playerSlug || c?.player?.slug || "").trim())
+        .filter((s: string) => !!s)
+    ));
+
+    const missing = slugs.filter((s) =>
+      !Array.isArray((xsL5Cache as any)[s]) && !xsL5LoadingRef.current[s]
+    );
+
+    if (missing.length === 0) return;
+
+    (async () => {
+      const batch = missing.slice(0, 20);
+      for (const slug of batch) {
+        try {
+          xsL5LoadingRef.current[slug] = true;
+
+          const resp: any = await publicPlayerPerformance(slug);
+          const arr = Array.isArray(resp?.recentScores) ? resp.recentScores.slice(0, 5) : [];
+          const scores = arr
+            .map((x: any) => (typeof x === "number" ? x : Number(x)))
+            .filter((n: any) => typeof n === "number" && Number.isFinite(n))
+            .map((n: number) => xsClamp(n, 0, 100));
+
+          if (scores.length > 0) {
+            setXsL5Cache((prev) => ({ ...(prev || {}), [slug]: scores }));
+          }
+        } catch (e) {
+          // silencieux: ne jamais casser Mes cartes si une requête rate
+        } finally {
+          xsL5LoadingRef.current[slug] = false;
+        }
+      }
+    })();
+  }, [items, xsL5Cache]);
+/* XS_L5_PREFETCH_CACHE_V1_END */
+
 const [pageInfo, setPageInfo] = useState<PageInfo | undefined>();
 const [loading, setLoading] = useState(true);
 const [loadingMore, setLoadingMore] = useState(false);
@@ -469,7 +519,7 @@ const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
                   marginBottom: XS_MYCARDS_GAP,
                 }}
               >
-                <CardTile card={item} width={width} />{/* XS_MYCARDS_TILEWIDTH_CALL_FIX_V1 */}
+                <CardTile card={item} width={width}  l5Cache={xsL5Cache} />{/* XS_MYCARDS_TILEWIDTH_CALL_FIX_V1 */}
                 {/* XS_MYCARDS_UI_META_ITEM_V1 */}
                 {(() => {
 const player =
@@ -514,6 +564,7 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
