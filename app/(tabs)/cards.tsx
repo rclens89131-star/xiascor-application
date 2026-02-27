@@ -178,30 +178,59 @@ function xsScoreToBarLevel(score: number): 0|1|2|3|4 {
   return 0;
 }
 function xsL5BarsFromCard(card: any): number[] {
-  // Priorité: utiliser un historique réel si présent
-  const arr =
-    card?.recentScores ??
-    card?.scores ??
-    card?.lastScores ??
-    card?.player?.recentScores ??
-    card?.anyPlayer?.recentScores ??
+  const sources = [
+    card?.recentScores,
+    card?.scores,
+    card?.lastScores,
+    card?.lastFiveScores,
+    card?.l5Scores,
+    card?.stats?.lastFive,
+    card?.gameScores,
+    card?.scoreHistory,
+    card?.games,
+    card?.player?.recentScores,
+    card?.player?.lastFiveScores,
+    card?.player?.l5Scores,
+    card?.anyPlayer?.recentScores,
+    card?.anyPlayer?.lastFiveScores,
+    card?.anyPlayer?.l5Scores,
+  ];
+
+  const toNum = (x: any): number => {
+    const v =
+      (typeof x === "number") ? x :
+      (typeof x === "string") ? Number(x) :
+      (x?.score ?? x?.total ?? x?.value ?? x?.allAroundScore ?? x?.decisiveScore ?? NaN);
+
+    const n = (typeof v === "number") ? v : Number(v);
+    return Number.isFinite(n) ? xsClamp(n, 0, 100) : NaN;
+  };
+
+  for (const src of sources) {
+    if (Array.isArray(src) && src.length > 0) {
+      const last5 = src
+        .slice(-5)
+        .map((x: any) => toNum(x))
+        .filter((n: any) => Number.isFinite(n));
+
+      if (last5.length > 0) return last5;
+    }
+  }
+
+  // Fallback honnête: si on n'a qu'un dernier score réel, on l'affiche seul.
+  const one =
+    card?.lastGameScore ??
+    card?.lastScore ??
+    card?.gameScore ??
+    card?.latestScore ??
+    card?.player?.lastGameScore ??
+    card?.anyPlayer?.lastGameScore ??
     null;
 
-  if(Array.isArray(arr) && arr.length > 0){
-    const last5 = arr.slice(-5).map((x: any) => {
-      const v = (typeof x === "number") ? x : (typeof x === "string" ? Number(x) : (x?.score ?? x?.total ?? x?.value));
-      const n = (typeof v === "number") ? v : (typeof v === "string" ? Number(v) : NaN);
-      return Number.isFinite(n) ? xsClamp(n, 0, 100) : NaN;
-    }).filter((n: any) => Number.isFinite(n));
-    return last5;
-  }
+  const oneNum = toNum(one);
+  if (Number.isFinite(oneNum)) return [oneNum];
 
-  // Fallback: pas d’historique -> simuler 5 barres sur la base du L5 moyen
-  const l5 = (typeof card?.l5 === "number") ? card.l5 : null;
-  if(typeof l5 === "number"){
-    const v = xsClamp(l5, 0, 100);
-    return [v, v, v, v, v];
-  }
+  // Très important: on ne duplique plus artificiellement le L5 moyen.
   return [];
 }
 /* XS_L5_MINICHART_TILE_V1_END */
@@ -485,6 +514,7 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
