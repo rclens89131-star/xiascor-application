@@ -1,6 +1,7 @@
 ﻿import React from "react";
 import { View, Text, Image, TouchableOpacity} from "react-native";
 import { theme } from "../theme";
+import PerfL5Widget from "./PerfL5Widget";
 
 /**
  * XS_TILE_RETRO_COMPAT_THEME_FIX_V1
@@ -17,49 +18,15 @@ function xsClamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n));
 }
 
-function XSL5MiniBars({ values }: { values?: number[] }) {
-  const arr = Array.isArray(values) ? values.slice(-5) : [];
-  if (!arr.length) return null;
-
-  const H = 14;
-  const W = 4;
-  const GAP = 3;
+function XSL5MiniBars({ values }: { values: number[] }) {
+  const scores = Array.isArray(values) ? values.slice(-5) : [];
+  if (scores.length === 0) return null;
 
   return (
-    <View pointerEvents="auto" /* XS_POINTER_EVENTS_TEST_V1 */ /* XS_TILE_POINTER_EVENTS_NONE_PROBE_V2 */ style={{ flexDirection: "row", alignItems: "flex-end" }}>
-      {arr.map((raw, idx) => {
-        const v = xsNum(raw);
-        const val = v === null ? 0 : xsClamp(v, 0, 100);
-        const h = Math.max(3, Math.round((H * val) / 100));
-
-        return (
-          <View
-            key={"xs-l5-" + idx}
-            style={{
-              width: W,
-              height: H,
-              marginRight: idx === arr.length - 1 ? 0 : GAP,
-              borderRadius: 2,
-              overflow: "hidden",
-              backgroundColor: theme.stroke,
-              opacity: 0.95,
-            }}
-          >
-            <View
-              style={{
-                position: "absolute",
-                bottom: 0,
-                left: 0,
-                right: 0,
-                height: h,
-                backgroundColor: "#2D7CFF",
-                borderRadius: 2,
-              }}
-            />
-          </View>
-        );
-      })}
-    </View>
+    <PerfL5Widget
+      scores={scores}
+      height={58}
+    />
   );
 }
 
@@ -156,7 +123,7 @@ const xsContentV5 = (
 
             <View style={{ flex: 1 }} />
 
-            <XSL5MiniBars values={l5Bars} />
+            <PerfL5Widget scores={l5Bars} height={58} />
           </View>
 
           {level !== null && (
@@ -213,6 +180,7 @@ return (
     {xsContentV5}
   </TouchableOpacity>
 );}
+
 
 
 
