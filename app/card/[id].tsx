@@ -21,7 +21,9 @@ type XsOppAny = any;
 const XS_CARD_DEVICE_ID_KEYS = [
   "xs_device_id",
   "xs_device_id_v1",
+  "XS_DEVICE_ID_V1",
   "xs_jwt_device_id_v1",
+  "XS_JWT_DEVICE_ID_V1",
   "xs_jwt_device_id",
   "jwt_device_id",
   "deviceId",
@@ -369,6 +371,7 @@ export default function CardDetailScreen() {
     </ScrollView>
   );
 }
+
 
 
 
