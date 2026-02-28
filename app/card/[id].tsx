@@ -359,7 +359,11 @@ const scores =
         <Text style={{ color: theme.text, fontWeight: "900" }}>L15</Text>
         <Text style={{ color: theme.muted, marginTop: 6, fontSize: 16 }}>
           {(() => {
-            const v = asNum((card as any)?.l15 ?? perf?.l15);
+                        // XS_UI_L15_INLINE_AVG_V1
+            const arr15 = (Array.isArray((series as any)?.l15) ? (series as any).l15 : (Array.isArray(perf?.recentScores15) ? perf?.recentScores15 : (Array.isArray(perf?.recentScores) ? perf?.recentScores.slice(0,15) : [])));
+            const nums15 = (Array.isArray(arr15) ? arr15 : []).map((x:any)=> (typeof x === 'number' ? x : Number(x))).filter((n:any)=> Number.isFinite(n));
+            const avg15 = nums15.length ? Number((nums15.reduce((a:any,b:any)=>a+b,0) / nums15.length).toFixed(1)) : 0;
+            const v = asNum(avg15 || (card as any)?.l15 || perf?.l15);
             return v === null ? "—" : v.toFixed(1);
           })()}
         </Text>
@@ -404,6 +408,7 @@ const scores =
     </ScrollView>
   );
 }
+
 
 
 
