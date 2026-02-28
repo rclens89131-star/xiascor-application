@@ -131,7 +131,21 @@ function xsPickSeries(resp: any) {
   const l15 = Array.isArray(resp?.recentScores15) ? resp.recentScores15.slice(0, 15) : (Array.isArray(resp?.recentScores) ? resp.recentScores.slice(0, 15) : []);
   const l40 = Array.isArray(resp?.recentScores40) ? resp.recentScores40.slice(0, 40) : (Array.isArray(resp?.recentScores) ? resp.recentScores.slice(0, 40) : []);
 
-  const rawOpp =
+  
+    // XS_AVG_HELPER_NEAR_BLOCK_V1
+  function xsAvg(arr: any[]): number {
+    if (!Array.isArray(arr) || arr.length === 0) return 0;
+    const nums = arr.map((x) => (typeof x === "number" ? x : Number(x))).filter((n) => Number.isFinite(n));
+    if (nums.length === 0) return 0;
+    const sum = nums.reduce((a, b) => a + b, 0);
+    return Number((sum / nums.length).toFixed(1));
+  }
+
+  // XS_AVG_L5L15L40_V1
+  const avg5 = xsAvg(l5);
+  const avg15 = xsAvg(l15);
+  const avg40 = xsAvg(l40);
+const rawOpp =
     Array.isArray(resp?.recentOpponents) ? resp.recentOpponents :
     Array.isArray(resp?.opponents) ? resp.opponents :
     [];
@@ -345,13 +359,25 @@ const scores =
         <Text style={{ color: theme.text, fontWeight: "900" }}>L15</Text>
         <Text style={{ color: theme.muted, marginTop: 6, fontSize: 16 }}>
           {(() => {
-            const v = asNum((card as any)?.l15 ?? perf?.l15);
+                        // XS_UI_USE_AVG15_V1
+            const v = asNum(avg15 || (card as any)?.l15 || perf?.l15);
             return v === null ? "—" : v.toFixed(1);
           })()}
         </Text>
       </View>
 
-      {/* Prix */}
+      
+      {/* XS_UI_ADD_L40_SIMPLE_V1 */}
+      <View style={{ marginTop: 10, padding: 12, borderRadius: 14, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border }}>
+        <Text style={{ color: theme.text, fontWeight: "900" }}>L40</Text>
+        <Text style={{ color: theme.muted, marginTop: 6 }}>
+          {(() => {
+            const v = asNum(avg40 || (card as any)?.l40 || perf?.l40);
+            return Number.isFinite(v) && v > 0 ? v.toFixed(1) : "—";
+          })()}
+        </Text>
+      </View>
+{/* Prix */}
       <View style={{ borderRadius: 14, borderWidth: 1, borderColor: theme.stroke, backgroundColor: theme.panel, padding: 12, gap: 4 }}>
         <Text style={{ color: theme.text, fontWeight: "900" }}>Prix</Text>
         <Text style={{ color: theme.muted }}>Dernière vente: {formatEur(price?.lastSaleEur)}</Text>
@@ -376,6 +402,9 @@ const scores =
     </ScrollView>
   );
 }
+
+
+
 
 
 
