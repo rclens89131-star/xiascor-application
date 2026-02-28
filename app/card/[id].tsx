@@ -359,9 +359,7 @@ const scores =
         <Text style={{ color: theme.text, fontWeight: "900" }}>L15</Text>
         <Text style={{ color: theme.muted, marginTop: 6, fontSize: 16 }}>
           {(() => {
-                                    // XS_UI_USE_AVG15_V2 (scope-safe)
-            const arr15 = (Array.isArray((series as any)?.l15) ? (series as any).l15 : (Array.isArray(perf?.recentScores15) ? perf?.recentScores15 : (Array.isArray(perf?.recentScores) ? perf?.recentScores.slice(0,15) : [])));
-            const v = asNum(xsAvg(arr15) || (card as any)?.l15 || perf?.l15);?.l15 || perf?.l15);
+            const v = asNum((card as any)?.l15 ?? perf?.l15);
             return v === null ? "—" : v.toFixed(1);
           })()}
         </Text>
@@ -404,8 +402,6 @@ const scores =
     </ScrollView>
   );
 }
-
-
 
 
 
