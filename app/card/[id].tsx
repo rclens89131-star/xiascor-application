@@ -372,7 +372,9 @@ const scores =
         <Text style={{ color: theme.muted, marginTop: 6 }}>
           {(() => {
             const arr40 = (Array.isArray((series as any)?.l40) ? (series as any).l40 : (Array.isArray(perf?.recentScores40) ? perf?.recentScores40 : (Array.isArray(perf?.recentScores) ? perf?.recentScores.slice(0,40) : [])));
-            const v = asNum(xsAvg(arr40) || (card as any)?.l40 || perf?.l40);
+            const nums = (Array.isArray(arr40) ? arr40 : []).map((x:any)=> (typeof x === 'number' ? x : Number(x))).filter((n:any)=> Number.isFinite(n));
+            const avg = nums.length ? Number((nums.reduce((a:any,b:any)=>a+b,0) / nums.length).toFixed(1)) : 0;
+            const v = asNum(avg || (card as any)?.l40 || perf?.l40);
             return Number.isFinite(v) && v > 0 ? v.toFixed(1) : "—";
           })()}
         </Text>
@@ -402,6 +404,7 @@ const scores =
     </ScrollView>
   );
 }
+
 
 
 
