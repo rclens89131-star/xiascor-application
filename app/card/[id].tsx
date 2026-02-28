@@ -359,8 +359,9 @@ const scores =
         <Text style={{ color: theme.text, fontWeight: "900" }}>L15</Text>
         <Text style={{ color: theme.muted, marginTop: 6, fontSize: 16 }}>
           {(() => {
-                        // XS_UI_USE_AVG15_V1
-            const v = asNum(avg15 || (card as any)?.l15 || perf?.l15);
+                                    // XS_UI_USE_AVG15_V2 (scope-safe)
+            const arr15 = (Array.isArray((series as any)?.l15) ? (series as any).l15 : (Array.isArray(perf?.recentScores15) ? perf?.recentScores15 : (Array.isArray(perf?.recentScores) ? perf?.recentScores.slice(0,15) : [])));
+            const v = asNum(xsAvg(arr15) || (card as any)?.l15 || perf?.l15);?.l15 || perf?.l15);
             return v === null ? "—" : v.toFixed(1);
           })()}
         </Text>
@@ -368,11 +369,12 @@ const scores =
 
       
       {/* XS_UI_ADD_L40_SIMPLE_V1 */}
-      <View style={{ marginTop: 10, padding: 12, borderRadius: 14, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border }}>
+      <View style={{ marginTop: 10, padding: 12, borderRadius: 14, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke }}>
         <Text style={{ color: theme.text, fontWeight: "900" }}>L40</Text>
         <Text style={{ color: theme.muted, marginTop: 6 }}>
           {(() => {
-            const v = asNum(avg40 || (card as any)?.l40 || perf?.l40);
+            const arr40 = (Array.isArray((series as any)?.l40) ? (series as any).l40 : (Array.isArray(perf?.recentScores40) ? perf?.recentScores40 : (Array.isArray(perf?.recentScores) ? perf?.recentScores.slice(0,40) : [])));
+            const v = asNum(xsAvg(arr40) || (card as any)?.l40 || perf?.l40);
             return Number.isFinite(v) && v > 0 ? v.toFixed(1) : "—";
           })()}
         </Text>
@@ -402,6 +404,8 @@ const scores =
     </ScrollView>
   );
 }
+
+
 
 
 
