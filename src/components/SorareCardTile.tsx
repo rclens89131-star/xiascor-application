@@ -18,15 +18,13 @@ function xsClamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n));
 }
 
-function XSL5MiniBars({ values, opps }: { values: number[]; opps?: any[] }) {
+function XSL5MiniBars({ values }: { values: number[] }) {
   const scores = Array.isArray(values) ? values.slice(-5) : [];
-  const logos = Array.isArray(opps) ? opps.slice(-5) : [];
   if (scores.length === 0) return null;
 
   return (
     <PerfL5Widget
       scores={scores}
-      opponents={logos}
       height={58}
     />
   );
@@ -80,10 +78,6 @@ export function SorareCardTile(props: any) {
     Array.isArray(c.recentScores) ? c.recentScores :
     undefined;
 
-  const l5Opps =
-    Array.isArray(c.l5Opps) ? c.l5Opps :
-    [];
-
   /* XS_TILE_CONDITIONAL_TOUCHABLE_V5 */
 const xsContentV5 = (
   <>
@@ -129,7 +123,7 @@ const xsContentV5 = (
 
             <View style={{ flex: 1 }} />
 
-            <PerfL5Widget scores={l5Bars} opponents={l5Opps} height={58} />
+            <PerfL5Widget scores={l5Bars} height={58} />
           </View>
 
           {level !== null && (
@@ -186,8 +180,6 @@ return (
     {xsContentV5}
   </TouchableOpacity>
 );}
-
-
 
 
 
