@@ -255,9 +255,8 @@ export default function CardDetailScreen() {
 
       setState("loading");
       try {
-        const resp = await publicPlayerPerformance(playerSlug as any, {
-          deviceId: deviceId || undefined,
-        });
+        /* XS_CARD_FORCE_PUBLIC_PERF_V1 */
+        const resp = await publicPlayerPerformance(playerSlug as any, { deviceId });
         if (cancelled) return;
         setPerf(resp || {});
         setState("ok");
@@ -289,11 +288,24 @@ export default function CardDetailScreen() {
    On inverse l'ordre visuel pour afficher les 5 matchs de gauche -> droite
    dans l'ordre attendu à l'écran. On inverse scores + adversaires ensemble
    pour conserver l'alignement exact barres / logos / noms. */
-const opp5 = Array.isArray(series?.opp) ? [...series.opp].slice(0, 5).reverse() : [];
+/* XS_CARD_DETAIL_SERIES_FALLBACK_V1_BEGIN */
+const uiL5 = asNum((card as any)?.l5 ?? (card as any)?.anyPlayer?.l5 ?? perf?.l5);
+const uiL15 = asNum((card as any)?.l15 ?? (card as any)?.anyPlayer?.l15 ?? perf?.l15);
+const uiL40 = asNum((card as any)?.l40 ?? perf?.l40);
+
+const seriesL5 = Array.isArray(series?.l5) && series.l5.length ? [...series.l5] : (uiL5 !== null ? [uiL5] : []);
+const seriesL15 = Array.isArray(series?.l15) && series.l15.length ? [...series.l15] : (uiL15 !== null ? [uiL15] : []);
+const seriesL40 = Array.isArray(series?.l40) && series.l40.length ? [...series.l40] : (uiL40 !== null ? [uiL40] : []);
+
+const chartOpp = 
+  activeSeries === "L40" ? (Array.isArray(series?.opp) ? [...series.opp].slice(0, 40).reverse() : []) :
+  activeSeries === "L15" ? (Array.isArray(series?.opp) ? [...series.opp].slice(0, 15).reverse() : []) :
+  (Array.isArray(series?.opp) ? [...series.opp].slice(0, 5).reverse() : []);
 const scores =
-  activeSeries === "L15" ? (Array.isArray(series?.l15) ? [...series.l15].slice(0, 5).reverse() : []) :
-  activeSeries === "L40" ? (Array.isArray(series?.l40) ? [...series.l40].slice(0, 5).reverse() : []) :
-  (Array.isArray(series?.l5) ? [...series.l5].slice(0, 5).reverse() : []);
+  activeSeries === "L15" ? [...seriesL15].slice(0, 15).reverse() :
+  activeSeries === "L40" ? [...seriesL40].slice(0, 40).reverse() :
+  [...seriesL5].slice(0, 5).reverse();
+/* XS_CARD_DETAIL_SERIES_FALLBACK_V1_END */
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16, gap: 12 }}>
@@ -343,8 +355,8 @@ const scores =
         {Array.isArray(scores) && scores.length > 0 ? (
           <SorarePerformanceChart
   recentScores={scores as any}
-  opponentLogoUrls={xsOpponentLogoUrls(opp5)}
-  opponentShort={xsOpponentShort(opp5)}
+  opponentLogoUrls={xsOpponentLogoUrls(chartOpp)}
+  opponentShort={xsOpponentShort(chartOpp)}
   title="Forme"
 />
         ) : (
@@ -354,32 +366,43 @@ const scores =
         )}
       </View>
 
-      {/* L15 (simple) */}
-      <View style={{ borderRadius: 14, borderWidth: 1, borderColor: theme.stroke, backgroundColor: theme.panel, padding: 12 }}>
-        <Text style={{ color: theme.text, fontWeight: "900" }}>L15</Text>
+      {/* XS_CARD_DETAIL_L5_FALLBACK_V1 */}
+      <View style={{ borderRadius: 14, borderWidth: 1, borderColor: theme.stroke, backgroundColor: theme.panel, padding: 12, marginTop: 10 }}>
+        <Text style={{ color: theme.text, fontWeight: "900" }}>L5</Text>
         <Text style={{ color: theme.muted, marginTop: 6, fontSize: 16 }}>
           {(() => {
-                        // XS_UI_L15_INLINE_AVG_V1
-            const arr15 = (Array.isArray((series as any)?.l15) ? (series as any).l15 : (Array.isArray(perf?.recentScores15) ? perf?.recentScores15 : (Array.isArray(perf?.recentScores) ? perf?.recentScores.slice(0,15) : [])));
-            const nums15 = (Array.isArray(arr15) ? arr15 : []).map((x:any)=> (typeof x === 'number' ? x : Number(x))).filter((n:any)=> Number.isFinite(n));
-            const avg15 = nums15.length ? Number((nums15.reduce((a:any,b:any)=>a+b,0) / nums15.length).toFixed(1)) : 0;
-            const v = asNum(avg15 || (card as any)?.l15 || perf?.l15);
+            const arr5 = (Array.isArray((series as any)?.l5) ? (series as any).l5 : (Array.isArray(perf?.recentScores) ? perf?.recentScores.slice(0,5) : []));
+            const nums5 = (Array.isArray(arr5) ? arr5 : []).map((x:any)=> (typeof x === 'number' ? x : Number(x))).filter((n:any)=> Number.isFinite(n));
+            const avg5 = nums5.length ? Number((nums5.reduce((a:any,b:any)=>a+b,0) / nums5.length).toFixed(1)) : 0;
+            const v = asNum(avg5 || (card as any)?.l5 || (card as any)?.anyPlayer?.l5 || perf?.l5);
             return v === null ? "—" : v.toFixed(1);
           })()}
         </Text>
       </View>
 
-      
-      {/* XS_UI_ADD_L40_SIMPLE_V1 */}
+      {/* L15 (simple) */}
+      <View style={{ borderRadius: 14, borderWidth: 1, borderColor: theme.stroke, backgroundColor: theme.panel, padding: 12 }}>
+        <Text style={{ color: theme.text, fontWeight: "900" }}>L15</Text>
+        <Text style={{ color: theme.muted, marginTop: 6, fontSize: 16 }}>
+          {(() => {
+            const nums = (Array.isArray(seriesL15) ? seriesL15 : [])
+              .map((x:any) => (typeof x === "number" ? x : Number(x)))
+              .filter((n:any) => Number.isFinite(n));
+            if (!nums.length) return "—";
+            return (nums.reduce((a:any,b:any) => a + b, 0) / nums.length).toFixed(1);
+          })()}
+        </Text>
+      </View>
+{/* XS_UI_ADD_L40_SIMPLE_V1 */}
       <View style={{ marginTop: 10, padding: 12, borderRadius: 14, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke }}>
         <Text style={{ color: theme.text, fontWeight: "900" }}>L40</Text>
         <Text style={{ color: theme.muted, marginTop: 6 }}>
           {(() => {
-            const arr40 = (Array.isArray((series as any)?.l40) ? (series as any).l40 : (Array.isArray(perf?.recentScores40) ? perf?.recentScores40 : (Array.isArray(perf?.recentScores) ? perf?.recentScores.slice(0,40) : [])));
-            const nums = (Array.isArray(arr40) ? arr40 : []).map((x:any)=> (typeof x === 'number' ? x : Number(x))).filter((n:any)=> Number.isFinite(n));
-            const avg = nums.length ? Number((nums.reduce((a:any,b:any)=>a+b,0) / nums.length).toFixed(1)) : 0;
-            const v = asNum(avg || (card as any)?.l40 || perf?.l40);
-            return Number.isFinite(v) && v > 0 ? v.toFixed(1) : "—";
+            const nums = (Array.isArray(seriesL40) ? seriesL40 : [])
+              .map((x:any) => (typeof x === "number" ? x : Number(x)))
+              .filter((n:any) => Number.isFinite(n));
+            if (!nums.length) return "—";
+            return (nums.reduce((a:any,b:any) => a + b, 0) / nums.length).toFixed(1);
           })()}
         </Text>
       </View>
@@ -408,6 +431,18 @@ const scores =
     </ScrollView>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

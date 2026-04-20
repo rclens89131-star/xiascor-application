@@ -1,5 +1,5 @@
 ﻿import React from "react";
-import { View, Text, Image } from "react-native";
+import { View, Text, Image, ScrollView } from "react-native";
 
 type Props = {
   // Scores (0..100). On affiche typiquement les 5 derniers.
@@ -31,7 +31,7 @@ export default function SorarePerformanceChart({
   opponentShort,
   title = "",
 }: Props) {
-  const values = Array.isArray(recentScores) ? recentScores.slice(0, 5) : [];
+  const values = Array.isArray(recentScores) ? recentScores : [];
   const max = 100;
 
   return (
@@ -41,7 +41,11 @@ export default function SorarePerformanceChart({
   <Text style={{ color: "white", fontWeight: "900", marginBottom: 10 }}>{title}</Text>
 ) : null}
 
-      <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 10 }}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ flexDirection: "row", alignItems: "flex-end", gap: 10, paddingRight: 8 }}
+      >
         {values.map((raw, idx) => {
           const v = xsClamp(Number(raw || 0), 0, 100);
           const h = 24 + Math.round((v / max) * 136); // 14..100 approx
@@ -76,7 +80,7 @@ export default function SorarePerformanceChart({
             </View>
           );
         })}
-      </View>
+      </ScrollView>
 
       <Text style={{ color: "#9ca3af", fontSize: 12, marginTop: 8 }}>
         {/* XS_SORARE_CHART_STYLE_V1 */}
@@ -85,4 +89,6 @@ export default function SorarePerformanceChart({
     </View>
   );
 }
+
+
 

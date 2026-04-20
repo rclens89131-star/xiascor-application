@@ -25,7 +25,8 @@ type AuthStatusResponse = {
 };
 
 export default function SorareLoginScreen() {
-  const BASE_URL = String(process.env.EXPO_PUBLIC_BASE_URL || "http://127.0.0.1:3000").trim();
+  const BASE_URL = String(process.env.EXPO_PUBLIC_BASE_URL || "https://xiascor-backend-tssdy62zqa-ez.a.run.app").trim();
+const AUTH_BASE_URL = String(process.env.EXPO_PUBLIC_AUTH_BASE_URL || "https://xiascor-backend-tssdy62zqa-ez.a.run.app").trim(); // XS_OAUTH_AUTH_BASE_V1
 
   const [deviceId, setDeviceId] = useState("");
   const [loading, setLoading] = useState(false);
@@ -34,8 +35,8 @@ export default function SorareLoginScreen() {
   const [debug, setDebug] = useState("");
 
   const loginUrl = useMemo(() => {
-    return BASE_URL.replace(/\/+$/, "") + "/auth/sorare";
-  }, [BASE_URL]);
+    return AUTH_BASE_URL.replace(/\/+$/, "") + "/auth/sorare"; // XS_OAUTH_CLOUDRUN_LOGIN_V2
+  }, [AUTH_BASE_URL]);
 
   useEffect(() => {
     let alive = true;
@@ -63,7 +64,7 @@ export default function SorareLoginScreen() {
   }, []);
 
   async function refreshMeAndSync(id: string) {
-    const safeBase = BASE_URL.replace(/\/+$/, "");
+    const safeBase = AUTH_BASE_URL.replace(/\/+$/, ""); // XS_OAUTH_STATUS_BASE_V1
     setBusySync(true);
     try {
       const meRes = await fetch(safeBase + "/me?deviceId=" + encodeURIComponent(id), {
@@ -105,7 +106,7 @@ export default function SorareLoginScreen() {
     async function poll() {
       if (!deviceId) return;
       try {
-        const safeBase = BASE_URL.replace(/\/+$/, "");
+        const safeBase = AUTH_BASE_URL.replace(/\/+$/, ""); // XS_OAUTH_STATUS_BASE_V1
         const res = await fetch(safeBase + "/auth/sorare/status", {
           headers: { accept: "application/json" },
         });
@@ -137,7 +138,7 @@ export default function SorareLoginScreen() {
       alive = false;
       if (timer) clearInterval(timer);
     };
-  }, [BASE_URL, deviceId, busySync]);
+  }, [AUTH_BASE_URL, deviceId, busySync]);
 
   async function onLogin() {
     if (!loginUrl) return;
@@ -207,3 +208,5 @@ export default function SorareLoginScreen() {
     </View>
   );
 }
+
+

@@ -1,8 +1,12 @@
 ﻿import { apiFetch } from "./api";
 /* XS_SCOUT_BASE_URL_V1 */
+const AUTH_BASE_URL =
+process.env.EXPO_PUBLIC_AUTH_BASE_URL ??
+process.env.EXPO_PUBLIC_BASE_URL ??
+"https://xiascor-backend-tssdy62zqa-ez.a.run.app"; // XS_MYCARDS_AUTH_BASE_V2
 const BASE_URL =
   process.env.EXPO_PUBLIC_BASE_URL ??
-  "http://127.0.0.1:3000";
+  "https://xiascor-backend-tssdy62zqa-ez.a.run.app";
 
 
 export type ScoutOffer = {
@@ -159,7 +163,7 @@ export async function scoutPlayer2(
 export async function jwtLogin(baseUrl: string, deviceId: string, email: string, password: string, aud?: string){
   const url = `${baseUrl}/auth/jwt/login`;
   // XS_MYCARDS_SYNC_PROBE_V1: log URL réelle appelée (debug iPhone)
-  try { console.log("[myCardsSync] BASE_URL=", BASE_URL); } catch {}
+  try { console.log("[myCardsSync] AUTH_BASE_URL=", AUTH_BASE_URL); } catch {} // XS_MYCARDS_AUTH_BASE_V2
   try { console.log("[myCardsSync] url=", url); } catch {}
   const r = await fetch(url, {
     method: "POST",
@@ -218,7 +222,7 @@ export type MyCardItem = {
 export async function myCardsGet(deviceId: string){
   const id = String(deviceId || "").trim();
   if(!id) throw new Error("missing deviceId");
-  const url = `${BASE_URL}/my-cards?deviceId=${encodeURIComponent(id)}`;
+  const url = `${AUTH_BASE_URL}/my-cards?deviceId=${encodeURIComponent(id)}`; // XS_MYCARDS_AUTH_BASE_V2
   const r = await fetch(url);
   const j = await r.json().catch(()=>null);
   if(!r.ok) throw new Error((j && (j.error || j.message)) ? String(j.error || j.message) : `HTTP ${r.status}`);
@@ -240,7 +244,11 @@ export async function myCardsList(deviceId: string, first = 50, after?: string) 
   qs.set("deviceId", deviceId);
   qs.set("first", String(first));
   if (after) qs.set("after", after);
-  return apiFetch<{ ok?: boolean; cached?: boolean; meta?: any; cards: any[]; pageInfo?: PageInfo }>(`/my-cards?${qs.toString()}`);
+  const url = `${AUTH_BASE_URL}/my-cards?${qs.toString()}`; // XS_MYCARDS_REMAINING_AUTH_V5
+  const r = await fetch(url);
+  const j = await r.json().catch(() => null);
+  if (!r.ok) throw new Error((j && (j.error || j.message)) ? String(j.error || j.message) : `HTTP ${r.status}`);
+  return j as { ok?: boolean; cached?: boolean; meta?: any; cards: any[]; pageInfo?: PageInfo };
 }
 /* XS_MY_CARDS_LIST_V1_END */
 export async function myCardsSync(deviceId: string, opts?: MyCardsSyncOpts){
@@ -262,13 +270,13 @@ export async function myCardsSync(deviceId: string, opts?: MyCardsSyncOpts){
     maxCards: String(maxCards),
     sleepMs: String(sleepMs),
   });
-  const url = `${BASE_URL}/my-cards/sync?${qs.toString()}`;
+  const url = `${AUTH_BASE_URL}/my-cards/sync?${qs.toString()}`; // XS_MYCARDS_AUTH_BASE_V2
 
   // On garde aussi le body pour compat (si backend évolue) — mais la source de vérité = query string.
   const body = { deviceId: id, jwtAud: aud, first, maxPages, maxCards, sleepMs };
 
   // XS_MYCARDS_SYNC_PROBE_V1: log URL réelle appelée (debug iPhone)
-  try { console.log("[myCardsSync] BASE_URL=", BASE_URL); } catch {}
+  try { console.log("[myCardsSync] AUTH_BASE_URL=", AUTH_BASE_URL); } catch {} // XS_MYCARDS_AUTH_BASE_V2
   try { console.log("[myCardsSync] url=", url); } catch {}
   const r = await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) });
   const j = await r.json().catch(()=>null);
@@ -297,9 +305,9 @@ export async function myCardsGetPage(
   const base =
     (typeof BASE_URL !== "undefined" && String((BASE_URL as any) || "").trim())
       ? String((BASE_URL as any)).trim()
-      : ((process.env.EXPO_PUBLIC_BASE_URL || "").trim() || "http://192.168.1.19:3000");
+      : ((process.env.EXPO_PUBLIC_BASE_URL || "").trim() || "https://xiascor-backend-tssdy62zqa-ez.a.run.app");
 
-  const url = `${base}/my-cards?${qs.toString()}`;
+  const url = `${AUTH_BASE_URL}/my-cards?${qs.toString()}`; // XS_MYCARDS_ALL_AUTH_V4
   const r = await fetch(url);
   const j = await r.json().catch(() => null);
   if (!r.ok) throw new Error(j && (j.error || j.message) ? String(j.error || j.message) : `HTTP ${r.status}`);
@@ -332,7 +340,10 @@ export async function myCardsPage(deviceId: string, opts?: { first?: number; aft
   qs.set("first", String(opts?.first ?? 20));
   if (opts?.after) qs.set("after", String(opts.after));
 
-  const data = await apiFetch<MyCardsPageResponse>(`/my-cards?${qs.toString()}`);
+  const url = `${AUTH_BASE_URL}/my-cards?${qs.toString()}`; // XS_MYCARDS_REMAINING_AUTH_V5
+  const r = await fetch(url);
+  const data = await r.json().catch(() => null) as MyCardsPageResponse;
+  if (!r.ok) throw new Error((data && ((data as any).error || (data as any).message)) ? String((data as any).error || (data as any).message) : `HTTP ${r.status}`);
   return {
     ...data,
     ok: Boolean((data as any)?.ok),
@@ -345,7 +356,11 @@ export async function myCardsStatus(deviceId: string): Promise<any> {
   if (!id) return { ok: false, error: "deviceId manquant" };
   const qs = new URLSearchParams();
   qs.set("deviceId", id);
-  return apiFetch<any>(`/my-cards/status?${qs.toString()}`);
+  const url = `${AUTH_BASE_URL}/my-cards/status?${qs.toString()}`; // XS_MYCARDS_REMAINING_AUTH_V5
+  const r = await fetch(url);
+  const j = await r.json().catch(() => null);
+  if (!r.ok) throw new Error((j && (j.error || j.message)) ? String(j.error || j.message) : `HTTP ${r.status}`);
+  return j;
 }
 /* XS_MY_CARDS_API_V3_END */
 
@@ -362,7 +377,7 @@ export const XS_MYCARDS_SYNC_TAG = "XS_MYCARDS_SYNC_QS_V1+LOG_V1";
 export async function deviceStatus(deviceId: string): Promise<{ linked?: boolean; userSlug?: string; nickname?: string; [k: string]: any }> {
   const id = String(deviceId || "").trim();
   if (!id) throw new Error("missing deviceId");
-  const url = `${BASE_URL}/auth/device-status?deviceId=${encodeURIComponent(id)}`;
+  const url = `${AUTH_BASE_URL}/auth/device-status?deviceId=${encodeURIComponent(id)}`; // XS_MYCARDS_AUTH_BASE_V2
   const r = await fetch(url);
   const j = await r.json().catch(() => ({}));
   if (!r.ok) {
@@ -377,7 +392,7 @@ export function sorareDeviceLoginUrl(deviceId: string, opts?: { devLocal?: boole
   const qs = new URLSearchParams();
   qs.set("deviceId", id);
   if (opts?.devLocal) qs.set("devLocal", "1");
-  return `${BASE_URL}/auth/sorare-device/login?${qs.toString()}`;
+  return `${AUTH_BASE_URL}/auth/sorare-device/login?${qs.toString()}`; // XS_MYCARDS_AUTH_BASE_V2
 }
 /* XS_DEVICE_STATUS_API_V1_END */
 
@@ -405,24 +420,155 @@ export async function publicPlayerPerformance(
   const s = String(slug || "").trim();
   if (!s) throw new Error("player slug missing");
 
-  const qs = new URLSearchParams();
-  qs.set("slug", s);
+  const did = String(opts?.deviceId || "").trim();
+  const limit = 40;
 
-  const deviceId = String(opts?.deviceId || "").trim();
-  if (deviceId) qs.set("deviceId", deviceId);
-
-  const r = await fetch(BASE_URL + "/public-player-performance?" + qs.toString(), {
-    headers: { accept: "application/json" },
-  });
-  const txt = await r.text();
-  let json: any = null;
-  try { json = txt ? JSON.parse(txt) : null; } catch {}
-  if (!r.ok) {
-    const msg = (json && (json.error || json.message)) ? (json.error || json.message) : ("HTTP " + r.status);
-    throw new Error("publicPlayerPerformance failed: " + msg);
+  async function fetchPerfOnce(): Promise<any> {
+    const qs = new URLSearchParams();
+    qs.set("slug", s);
+    if (did) qs.set("deviceId", did);
+    const url = `${BASE_URL}/public-player-performance?${qs.toString()}`;
+    const r = await fetch(url, { headers: { accept: "application/json" } });
+    const txt = await r.text();
+    let json: any = null;
+    try { json = txt ? JSON.parse(txt) : null; } catch {}
+    if (!r.ok) {
+      const msg = (json && (json.error || json.message)) ? (json.error || json.message) : ("HTTP " + r.status);
+      throw new Error("public-player-performance failed: " + msg);
+    }
+    return json || {};
   }
-  return (json || {}) as PublicPlayerPerformance;
+
+  async function fetchChartOnce(): Promise<any> {
+    const url = `${BASE_URL}/history/player-chart/${encodeURIComponent(s)}?limit=${limit}`;
+    const r = await fetch(url, { headers: { accept: "application/json" } });
+    const txt = await r.text();
+    let json: any = null;
+    try { json = txt ? JSON.parse(txt) : null; } catch {}
+    if (!r.ok) {
+      const msg = (json && (json.error || json.message)) ? (json.error || json.message) : ("HTTP " + r.status);
+      throw new Error("history/player-chart failed: " + msg);
+    }
+    return json || {};
+  }
+
+  try {
+    const perf: any = await fetchPerfOnce();
+    const perfScores = Array.isArray(perf?.recentScores)
+      ? perf.recentScores.map((x: any) => Number(x)).filter((n: any) => Number.isFinite(n))
+      : [];
+
+    const perfOppsRaw = Array.isArray(perf?.recentOpponents)
+      ? perf.recentOpponents
+      : (Array.isArray(perf?.opponents) ? perf.opponents : []);
+
+    const perfOpps = perfOppsRaw.map((o: any) => ({
+      logoUrl: String(o?.logoUrl || "").trim() || null,
+      shortName: String(o?.shortName || o?.name || o?.slug || "").trim() || null,
+      opponent: String(o?.name || o?.opponent || "").trim() || null,
+      homeAway: String(o?.homeAway || "").trim() || null,
+    }));
+
+    if (perfScores.length > 0) {
+      function avg(arr: number[], take: number): number | null {
+        const slice = arr.slice(0, take).filter((n) => Number.isFinite(n));
+        if (!slice.length) return null;
+        const sum = slice.reduce((a, b) => a + b, 0);
+        return Math.round((sum / slice.length) * 10) / 10;
+      }
+
+      return {
+        playerSlug: String(perf?.playerSlug || s),
+        playerName: perf?.playerName ?? null,
+        position: perf?.position ?? null,
+        activeClub: perf?.activeClub ?? null,
+        lastScore: perfScores.length ? perfScores[0] : null,
+        l5: (typeof perf?.l5 === "number") ? perf.l5 : avg(perfScores, 5),
+        l15: (typeof perf?.l15 === "number") ? perf.l15 : avg(perfScores, 15),
+        recentScores: perfScores,
+        recentScores15: perfScores.slice(0, 15),
+        recentScores40: perfScores.slice(0, 40),
+        meta: {
+          source: "public-player-performance",
+          opponents: perfOpps,
+          raw: perf?.meta ?? null,
+        },
+      } as any;
+    }
+  } catch {}
+
+  let json: any = await fetchChartOnce();
+  let items = Array.isArray(json?.items) ? json.items : [];
+
+  if ((!items || items.length === 0) && did) {
+    const syncQs = new URLSearchParams();
+    syncQs.set("slug", s);
+    syncQs.set("deviceId", did);
+    syncQs.set("last", "10");
+
+    try {
+      await fetch(`${BASE_URL}/history/sync-player-scores?${syncQs.toString()}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ slug: s, deviceId: did, last: 10 }),
+      });
+    } catch {}
+
+    try {
+      json = await fetchChartOnce();
+      items = Array.isArray(json?.items) ? json.items : [];
+    } catch {}
+  }
+
+  const scores = (Array.isArray(items) ? items : [])
+    .map((it: any) => {
+      const n = Number(it?.scoreSorare);
+      return Number.isFinite(n) ? n : null;
+    })
+    .filter((n: any) => n !== null) as number[];
+
+  function avg(arr: number[], take: number): number | null {
+    const slice = arr.slice(0, take).filter((n) => Number.isFinite(n));
+    if (!slice.length) return null;
+    const sum = slice.reduce((a, b) => a + b, 0);
+    return Math.round((sum / slice.length) * 10) / 10;
+  }
+
+  const opponents = (Array.isArray(items) ? items : []).map((it: any) => ({
+    logoUrl: String(it?.opponentLogoUrl || "").trim() || null,
+    shortName: String(it?.opponentShort || it?.opponent || "").trim() || null,
+    opponent: String(it?.opponent || "").trim() || null,
+    homeAway: String(it?.homeAway || "").trim() || null,
+  }));
+
+  return {
+    playerSlug: s,
+    playerName: null,
+    position: null,
+    activeClub: null,
+    lastScore: scores.length ? scores[0] : null,
+    l5: avg(scores, 5),
+    l15: avg(scores, 15),
+    recentScores: scores,
+    recentScores15: scores.slice(0, 15),
+    recentScores40: scores.slice(0, 40),
+    meta: {
+      source: "history/player-chart",
+      count: items.length,
+      items,
+      opponents,
+    },
+  } as any;
 }
 /* XS_PUBLIC_PLAYER_PERF_CLIENT_V1_END */
+
+
+
+
+
+
+
+
+
 
 
