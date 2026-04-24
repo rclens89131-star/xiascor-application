@@ -45,7 +45,87 @@ import { SorareCardTile } from "../../src/components/SorareCardTile"; // XS_SORA
 import { publicPlayerPerformance } from "../../src/scoutApi";
 const DEVICE_ID_KEY = "XS_DEVICE_ID_V1";
 const JWT_DEVICE_ID_KEY = "XS_JWT_DEVICE_ID_V1";
-const OAUTH_DEVICE_ID_KEY = "xs_device_id"; // XS_PREFER_OAUTH_DEVICEID_V2
+const OAUTH_DEVICE_ID_KEY = "xs_device_id";
+
+/* XS_MYCARDS_LOCAL_ASYNC_CACHE_SAFE_V1_BEGIN
+   Cache local téléphone pour éviter écran vide si Cloud Run/cache backend est temporairement indisponible.
+   Principe : si /my-cards renvoie des cartes => on sauvegarde localement.
+   Si /my-cards renvoie vide/erreur plus tard => on réinjecte les cartes locales dans la réponse.
+*/
+const XS_MYCARDS_LOCAL_CACHE_PREFIX_SAFE_V1 = "xs_mycards_local_cache_safe_v1:";
+
+async function xsReadMyCardsLocalCacheSafeV1(deviceId: string): Promise<any | null> {
+  const id = String(deviceId || "").trim();
+  if (!id) return null;
+
+  try {
+    const raw = await AsyncStorage.getItem(XS_MYCARDS_LOCAL_CACHE_PREFIX_SAFE_V1 + id);
+    if (!raw) return null;
+
+    const json = JSON.parse(raw);
+    if (!json || !Array.isArray(json.cards)) return null;
+
+    return json;
+  } catch {
+    return null;
+  }
+}
+
+async function xsWriteMyCardsLocalCacheSafeV1(deviceId: string, payload: any): Promise<void> {
+  const id = String(deviceId || "").trim();
+  if (!id) return;
+
+  try {
+    const cards = Array.isArray(payload?.cards) ? payload.cards : [];
+    if (cards.length <= 0) return;
+
+    const safePayload = {
+      ...(payload || {}),
+      cards,
+      savedAt: new Date().toISOString()
+    };
+
+    await AsyncStorage.setItem(
+      XS_MYCARDS_LOCAL_CACHE_PREFIX_SAFE_V1 + id,
+      JSON.stringify(safePayload)
+    );
+  } catch {}
+}
+
+async function xsApplyMyCardsLocalCacheSafeV1(deviceId: string, response: any): Promise<any> {
+  const id = String(deviceId || "").trim();
+  const res = response || {};
+
+  const backendCards = Array.isArray(res?.cards) ? res.cards : [];
+
+  if (backendCards.length > 0) {
+    await xsWriteMyCardsLocalCacheSafeV1(id, res);
+    return res;
+  }
+
+  const local = await xsReadMyCardsLocalCacheSafeV1(id);
+
+  if (local && Array.isArray(local.cards) && local.cards.length > 0) {
+    return {
+      ...res,
+      ok: true,
+      cached: true,
+      cards: local.cards,
+      pageInfo: res?.pageInfo || local?.pageInfo || null,
+      meta: {
+        ...(res?.meta || {}),
+        ...(local?.meta || {}),
+        localCache: true,
+        localCacheSavedAt: local?.savedAt || null
+      },
+      note: res?.note || "local_cache_phone"
+    };
+  }
+
+  return res;
+}
+/* XS_MYCARDS_LOCAL_ASYNC_CACHE_SAFE_V1_END */
+ // XS_PREFER_OAUTH_DEVICEID_V2
 type MyCardItemLocal = {
   slug?: string;
   pictureUrl?: string | null;
@@ -411,7 +491,8 @@ const loadInitial = useCallback(async () => {
     try {
 const id = await ensureDeviceId();
       setDeviceId(id);
-const res = await myCardsList(id, 50);
+const resRaw = await myCardsList(id, 50);
+const res = await xsApplyMyCardsLocalCacheSafeV1(id, resRaw); /* XS_MYCARDS_LOCAL_ASYNC_CACHE_SAFE_V1_APPLY_LOAD_INITIAL */
       
       try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
       setItems(res.cards || []);
@@ -427,7 +508,8 @@ const loadMore = useCallback(async () => {
     loadingMoreRef.current = true;
     setLoadingMore(true);
     try {
-const res = await myCardsList(deviceId, 50, pageInfo.endCursor || undefined);
+const resRaw = await myCardsList(deviceId, 50, pageInfo.endCursor || undefined);
+const res = await xsApplyMyCardsLocalCacheSafeV1(deviceId, resRaw); /* XS_MYCARDS_LOCAL_ASYNC_CACHE_SAFE_V1_APPLY_LOAD_MORE */
       
       try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
       setItems((prev) => [...prev, ...(res.cards || [])]);
@@ -564,6 +646,7 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
