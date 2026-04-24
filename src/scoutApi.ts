@@ -425,6 +425,42 @@ const PERF_BASE_URL = "https://xiascor-backend-tssdy62zqa-ez.a.run.app"; /* XS_P
   const limit = 40;
 
   async function fetchPerfOnce(): Promise<any> {
+    // XS_FRONT_AUTH_PERF_SAFE_V1 BEGIN
+    // Si deviceId existe, on tente d'abord la route AUTH Sorare.
+    // Si ça échoue, on continue vers public-player-performance puis history/player-chart.
+    if (did) {
+      try {
+        const authQs = new URLSearchParams();
+        authQs.set("slug", s);
+        authQs.set("deviceId", did);
+
+        const authUrl = `${PERF_BASE_URL}/public-player-performance-auth?${authQs.toString()}`;
+        const ar = await fetch(authUrl, {
+          headers: { accept: "application/json", "ngrok-skip-browser-warning": "1" },
+        });
+
+        const atxt = await ar.text();
+        let aj: any = null;
+        try { aj = atxt ? JSON.parse(atxt) : null; } catch {}
+
+        if (ar.ok && aj) {
+          return {
+            ...(aj || {}),
+            meta: {
+              ...((aj && aj.meta) || {}),
+              source: "public-player-performance-auth",
+              xsAuthFirst: true,
+            },
+          };
+        }
+
+        console.warn("[publicPlayerPerformance] auth failed, fallback public/history:", ar.status, String(atxt || "").slice(0, 180));
+      } catch (e: any) {
+        console.warn("[publicPlayerPerformance] auth exception, fallback public/history:", String(e?.message || e));
+      }
+    }
+    // XS_FRONT_AUTH_PERF_SAFE_V1 END
+
     const qs = new URLSearchParams();
     qs.set("slug", s);
     if (did) qs.set("deviceId", did);
@@ -562,6 +598,7 @@ const PERF_BASE_URL = "https://xiascor-backend-tssdy62zqa-ez.a.run.app"; /* XS_P
   } as any;
 }
 /* XS_PUBLIC_PLAYER_PERF_CLIENT_V1_END */
+
 
 
 
