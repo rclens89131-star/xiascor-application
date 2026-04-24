@@ -1,7 +1,7 @@
 ﻿import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Linking, Pressable, ScrollView, Text, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { router } from "expo-router";
+import { router, useRouter } from "expo-router";
 
 const DEVICE_KEY = "xs_device_id";
 const LINKED_KEY = "xs_linked_v1";
@@ -25,6 +25,7 @@ type AuthStatusResponse = {
 };
 
 export default function SorareLoginScreen() {
+  const router = useRouter(); // XS_FIX_LOGIN_AFTER_OAUTH_OK_NAVIGATE_V1
   const BASE_URL = String(process.env.EXPO_PUBLIC_BASE_URL || "https://xiascor-backend-tssdy62zqa-ez.a.run.app").trim();
 const AUTH_BASE_URL = String(process.env.EXPO_PUBLIC_AUTH_BASE_URL || "https://xiascor-backend-tssdy62zqa-ez.a.run.app").trim(); // XS_OAUTH_AUTH_BASE_V1
 
@@ -57,6 +58,28 @@ const AUTH_BASE_URL = String(process.env.EXPO_PUBLIC_AUTH_BASE_URL || "https://x
         }
       }
     })();
+
+// XS_FIX_LOGIN_AFTER_OAUTH_OK_NAVIGATE_V1 BEGIN
+// Si OAuth est OK mais que le polling reste bloqué, on revient dans l'app.
+// Le token est déjà sauvegardé côté Cloud Run : l'utilisateur ne doit pas rester coincé ici.
+useEffect(() => {
+  const s = String(status || "");
+  if (!s.toLowerCase().includes("oauth ok")) return;
+
+  const t = setTimeout(() => {
+    try {
+      router.replace("/(tabs)/cards" as any);
+    } catch {
+      try {
+        router.replace("/cards" as any);
+      } catch {}
+    }
+  }, 1800);
+
+  return () => clearTimeout(t);
+}, [status, router]);
+// XS_FIX_LOGIN_AFTER_OAUTH_OK_NAVIGATE_V1 END
+
 
     return () => {
       alive = false;
@@ -208,5 +231,6 @@ const AUTH_BASE_URL = String(process.env.EXPO_PUBLIC_AUTH_BASE_URL || "https://x
     </View>
   );
 }
+
 
 
