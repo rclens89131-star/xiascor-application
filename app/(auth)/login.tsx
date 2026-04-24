@@ -60,10 +60,11 @@ const AUTH_BASE_URL = String(process.env.EXPO_PUBLIC_AUTH_BASE_URL || "https://x
     })();
 
 // XS_FIX_LOGIN_AFTER_OAUTH_OK_NAVIGATE_V1 BEGIN
+// XS_REPAIR_LOGIN_STATUS_VARIABLE_V1 : status -> statusText
 // Si OAuth est OK mais que le polling reste bloqué, on revient dans l'app.
 // Le token est déjà sauvegardé côté Cloud Run : l'utilisateur ne doit pas rester coincé ici.
 useEffect(() => {
-  const s = String(status || "");
+  const s = String(statusText || "");
   if (!s.toLowerCase().includes("oauth ok")) return;
 
   const t = setTimeout(() => {
@@ -231,6 +232,7 @@ useEffect(() => {
     </View>
   );
 }
+
 
 
 
