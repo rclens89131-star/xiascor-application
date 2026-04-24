@@ -1,4 +1,5 @@
 ﻿import React, { useEffect, useMemo, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { theme } from "../../src/theme";
@@ -76,7 +77,33 @@ export default function CardDetailScreen() {
       }
 
       try {
-        const resp = await publicPlayerPerformance(playerSlug);
+                // XS_CARD_DETAIL_PASS_DEVICEID_TO_PERF_V1 BEGIN
+        let xsPerfDeviceId = "";
+        try {
+          const keys = [
+            "xs_device_id",
+            "xs_device_id_v1",
+            "XS_DEVICE_ID_V1",
+            "xs_jwt_device_id_v1",
+            "XS_JWT_DEVICE_ID_V1",
+            "jwt_device_id",
+            "deviceId"
+          ];
+
+          for (const k of keys) {
+            const v = await AsyncStorage.getItem(k);
+            if (v && String(v).trim()) {
+              xsPerfDeviceId = String(v).trim();
+              break;
+            }
+          }
+        } catch {}
+
+        const resp = await publicPlayerPerformance(
+          playerSlug,
+          xsPerfDeviceId ? { deviceId: xsPerfDeviceId } : undefined
+        );
+        // XS_CARD_DETAIL_PASS_DEVICEID_TO_PERF_V1 END
         if (cancelled) return;
         setPerf(resp || null);
         setState("ok");
@@ -315,5 +342,6 @@ const avg5 = avgOf(series.l5) ?? asNum((card as any)?.l5) ?? asNum((perf as any)
     </ScrollView>
   );
 }
+
 
 
