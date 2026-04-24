@@ -421,14 +421,15 @@ export async function publicPlayerPerformance(
   if (!s) throw new Error("player slug missing");
 
   const did = String(opts?.deviceId || "").trim();
+const PERF_BASE_URL = "https://xiascor-backend-tssdy62zqa-ez.a.run.app"; /* XS_PUBLIC_PLAYER_PERF_FORCE_CLOUDRUN_V1 */
   const limit = 40;
 
   async function fetchPerfOnce(): Promise<any> {
     const qs = new URLSearchParams();
     qs.set("slug", s);
     if (did) qs.set("deviceId", did);
-    const url = `${BASE_URL}/public-player-performance?${qs.toString()}`;
-    const r = await fetch(url, { headers: { accept: "application/json" } });
+    const url = `${PERF_BASE_URL}/public-player-performance?${qs.toString()}`;
+    const r = await fetch(url, { headers: { accept: "application/json", "ngrok-skip-browser-warning": "1" } }); /* XS_NGROK_SKIP_HEADER_V1 */
     const txt = await r.text();
     let json: any = null;
     try { json = txt ? JSON.parse(txt) : null; } catch {}
@@ -440,8 +441,8 @@ export async function publicPlayerPerformance(
   }
 
   async function fetchChartOnce(): Promise<any> {
-    const url = `${BASE_URL}/history/player-chart/${encodeURIComponent(s)}?limit=${limit}`;
-    const r = await fetch(url, { headers: { accept: "application/json" } });
+    const url = `${PERF_BASE_URL}/history/player-chart/${encodeURIComponent(s)}?limit=${limit}`;
+    const r = await fetch(url, { headers: { accept: "application/json", "ngrok-skip-browser-warning": "1" } }); /* XS_NGROK_SKIP_HEADER_V1 */
     const txt = await r.text();
     let json: any = null;
     try { json = txt ? JSON.parse(txt) : null; } catch {}
@@ -507,7 +508,7 @@ export async function publicPlayerPerformance(
     syncQs.set("last", "10");
 
     try {
-      await fetch(`${BASE_URL}/history/sync-player-scores?${syncQs.toString()}`, {
+      await fetch(`${PERF_BASE_URL}/history/sync-player-scores?${syncQs.toString()}`, {
         method: "POST",
         headers: { "content-type": "application/json", accept: "application/json" },
         body: JSON.stringify({ slug: s, deviceId: did, last: 10 }),
@@ -561,6 +562,9 @@ export async function publicPlayerPerformance(
   } as any;
 }
 /* XS_PUBLIC_PLAYER_PERF_CLIENT_V1_END */
+
+
+
 
 
 
