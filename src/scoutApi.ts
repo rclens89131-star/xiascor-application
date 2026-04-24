@@ -425,18 +425,53 @@ const PERF_BASE_URL = "https://xiascor-backend-tssdy62zqa-ez.a.run.app"; /* XS_P
   const limit = 40;
 
   async function fetchPerfOnce(): Promise<any> {
+    // XS_FRONT_USE_AUTH_PERF_BEFORE_PUBLIC_HISTORY_V1 BEGIN
+    // Maintenant que la connexion Sorare fonctionne, on tente d'abord la route AUTH si deviceId existe.
+    // But : récupérer les adversaires/logos depuis Sorare auth avant de tomber sur le fallback Firestore.
+    const headers = { accept: "application/json", "ngrok-skip-browser-warning": "1" } as any;
+
+    if (did) {
+      const authQs = new URLSearchParams();
+      authQs.set("slug", s);
+      authQs.set("deviceId", did);
+
+      const authUrl = `${PERF_BASE_URL}/public-player-performance-auth?${authQs.toString()}`;
+
+      try {
+        const ar = await fetch(authUrl, { headers });
+        const atxt = await ar.text();
+        let aj: any = null;
+        try { aj = atxt ? JSON.parse(atxt) : null; } catch {}
+
+        if (ar.ok && aj) {
+          return {
+            ...(aj || {}),
+            meta: {
+              ...((aj && aj.meta) || {}),
+              xsSource: "public-player-performance-auth",
+              xsAuthFirst: true,
+            },
+          };
+        }
+
+        console.warn("[publicPlayerPerformance] auth route failed, fallback public:", ar.status, String(atxt || "").slice(0, 180));
+      } catch (e: any) {
+        console.warn("[publicPlayerPerformance] auth route exception, fallback public:", String(e?.message || e));
+      }
+    }
+    // XS_FRONT_USE_AUTH_PERF_BEFORE_PUBLIC_HISTORY_V1 END
+
     const qs = new URLSearchParams();
     qs.set("slug", s);
     if (did) qs.set("deviceId", did);
     const url = `${PERF_BASE_URL}/public-player-performance?${qs.toString()}`;
-    const r = await fetch(url, { headers: { accept: "application/json", "ngrok-skip-browser-warning": "1" } }); /* XS_NGROK_SKIP_HEADER_V1 */
+    const r = await fetch(url, { headers });
     const txt = await r.text();
     let json: any = null;
     try { json = txt ? JSON.parse(txt) : null; } catch {}
-    if (!r.ok) {
-      const msg = (json && (json.error || json.message)) ? (json.error || json.message) : ("HTTP " + r.status);
-      throw new Error("public-player-performance failed: " + msg);
-    }
+    if (!r.ok) throw new Error("public-player-performance failed: " + r.status + " " + txt.slice(0, 300));
+    return json;
+  }
     return json || {};
   }
 
@@ -562,6 +597,7 @@ const PERF_BASE_URL = "https://xiascor-backend-tssdy62zqa-ez.a.run.app"; /* XS_P
   } as any;
 }
 /* XS_PUBLIC_PLAYER_PERF_CLIENT_V1_END */
+
 
 
 
