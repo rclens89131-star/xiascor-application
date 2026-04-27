@@ -410,6 +410,10 @@ export type PublicPlayerPerformance = {
   l15?: number | null;
   lastScore?: number | null;
   recentScores?: number[];
+  recentScores15?: number[];
+  recentScores40?: number[];
+  opponentLogoUrls?: (string | null)[];
+  opponentShort?: (string | null)[];
   meta?: any;
 };
 
@@ -504,50 +508,92 @@ export async function publicPlayerPerformance(
             ? json.scores
             : [];
 
-      const nums = rawItems
-        .map((it: any) => {
-          const v =
-            it?.score ??
-            it?.playerScore ??
-            it?.so5Score ??
-            it?.decisiveScore ??
-            it?.value ??
-            it;
+      // XS_FIX_FRONT_HISTORY_SCORE_MAPPING_V1 BEGIN
+      const toFiniteScore = (item: any): number | null => {
+        const candidates = [
+          item?.scoreSorare,
+          item?.score,
+          item?.totalScore,
+          item?.so5Score,
+          item?.playerScore,
+          item?.points,
+        ];
 
+        for (const v of candidates) {
           const n = Number(v);
-          return Number.isFinite(n) ? n : null;
+          if (Number.isFinite(n)) return Math.max(0, Math.min(100, n));
+        }
+
+        return null;
+      };
+
+      const normalized = rawItems
+        .map((item: any) => {
+          const score = toFiniteScore(item);
+          if (score == null) return null;
+
+          const opponentShort =
+            String(
+              item?.opponentShort ??
+              item?.opponent?.shortName ??
+              item?.opponent?.name ??
+              item?.against ??
+              ""
+            ).trim();
+
+          const opponentLogoUrl =
+            item?.opponentLogoUrl ??
+            item?.opponent?.pictureUrl ??
+            item?.opponent?.avatarUrl ??
+            item?.opponent?.logoUrl ??
+            null;
+
+          return {
+            score,
+            opponentShort,
+            opponentLogoUrl,
+          };
         })
-        .filter((n: any) => n !== null);
+        .filter(Boolean) as Array<{
+          score: number;
+          opponentShort: string;
+          opponentLogoUrl: string | null;
+        }>;
 
-      const avg = (arr: number[]) =>
-        arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null;
-
-      const recent40 = nums.slice(0, 40);
+      const recent40 = normalized.map((x) => x.score).slice(0, 40);
       const recent15 = recent40.slice(0, 15);
       const recent5 = recent40.slice(0, 5);
 
+      const avg = (arr: number[]) =>
+        arr.length
+          ? Math.round(arr.reduce((sum, n) => sum + n, 0) / arr.length)
+          : null;
+
+      const opponentLogoUrls = normalized.map((x) => x.opponentLogoUrl).slice(0, 5);
+      const opponentShort = normalized.map((x) => x.opponentShort).slice(0, 5);
+      // XS_FIX_FRONT_HISTORY_SCORE_MAPPING_V1 END
+
       return {
-        ...(json || {}),
         ok: true,
-        playerSlug: json.playerSlug || s,
-        slug: json.slug || s,
+        playerSlug: s,
+        slug: s,
+        playerName: json.playerName || json.name || s,
+        position: json.position || null,
+        activeClub: json.activeClub || json.club || null,
+        l5: avg(recent5),
+        l15: avg(recent15),
+        lastScore: recent5.length ? recent5[0] : null,
         recentScores: recent5,
         recentScores15: recent15,
         recentScores40: recent40,
-        scores: recent40,
-        items: rawItems,
-        matches: rawItems,
-        l5: json.l5 ?? avg(recent5),
-        l15: json.l15 ?? avg(recent15),
-        l40: json.l40 ?? avg(recent40),
-        averageScore: json.averageScore ?? avg(recent5),
-        opponentLogoUrls: json.opponentLogoUrls || [],
-        opponentShort: json.opponentShort || [],
+        opponentLogoUrls,
+        opponentShort,
         meta: {
           ...(json.meta || {}),
           source: "history/player-chart",
-          marker: "XS_FIX_FRONT_PERF_HISTORY_FIRST_NO_403_V5",
+          marker: "XS_FIX_FRONT_HISTORY_SCORE_MAPPING_V1",
           count: rawItems.length,
+          mappedCount: normalized.length,
         },
         source: "history/player-chart",
       } as PublicPlayerPerformance;
@@ -570,6 +616,7 @@ export async function publicPlayerPerformance(
 
 
 /* XS_PUBLIC_PLAYER_PERF_CLIENT_V1_END */
+
 
 
 
