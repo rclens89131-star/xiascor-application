@@ -463,7 +463,12 @@ const PERF_BASE_URL = "https://xiascor-backend-tssdy62zqa-ez.a.run.app"; /* XS_P
 
     const qs = new URLSearchParams();
     qs.set("slug", s);
-    if (did) qs.set("deviceId", did);
+    // XS_NO_DEVICEID_ON_PUBLIC_PERF_V1
+    // IMPORTANT:
+    // - deviceId reste autorise uniquement pour /public-player-performance-auth au-dessus.
+    // - La route publique /public-player-performance doit rester 100% publique et stable.
+    // - Evite les effets de bord Cloud Run / cache / auth sur les performances publiques.
+    // if (did) qs.set("deviceId", did);
     const url = `${PERF_BASE_URL}/public-player-performance?${qs.toString()}`;
     const r = await fetch(url, { headers: { accept: "application/json", "ngrok-skip-browser-warning": "1" } }); /* XS_NGROK_SKIP_HEADER_V1 */
     const txt = await r.text();
@@ -598,6 +603,7 @@ const PERF_BASE_URL = "https://xiascor-backend-tssdy62zqa-ez.a.run.app"; /* XS_P
   } as any;
 }
 /* XS_PUBLIC_PLAYER_PERF_CLIENT_V1_END */
+
 
 
 
