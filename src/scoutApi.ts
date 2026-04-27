@@ -413,196 +413,164 @@ export type PublicPlayerPerformance = {
   meta?: any;
 };
 
+
+/* XS_FIX_FRONT_PERF_HISTORY_FIRST_NO_403_V5
+ * Cloud Run -> Sorare peut être bloqué par CloudFront 403 sur les routes perf.
+ * Pour stabiliser l'app, on utilise d'abord /history/player-chart.
+ * Si history est vide/KO, on retourne un fallback propre au lieu de casser l'UI.
+ */
+/* XS_FIX_PERF_BASE_URL_GLOBAL_V51
+ * Constante globale utilisée par publicPlayerPerformance().
+ * Cloud Run reste la source stable pour history/player-chart.
+ */
+const PERF_BASE_URL = "https://xiascor-backend-tssdy62zqa-ez.a.run.app";
 export async function publicPlayerPerformance(
   slug: string,
-  opts?: { deviceId?: string | null }
+  opts?: { deviceId?: string | null; limit?: number } | string
 ): Promise<PublicPlayerPerformance> {
   const s = String(slug || "").trim();
-  if (!s) throw new Error("player slug missing");
 
-  const did = String(opts?.deviceId || "").trim();
-const PERF_BASE_URL = "https://xiascor-backend-tssdy62zqa-ez.a.run.app"; /* XS_PUBLIC_PLAYER_PERF_FORCE_CLOUDRUN_V1 */
-  const limit = 40;
+  const limit =
+    typeof opts === "object" && opts?.limit
+      ? Math.max(1, Math.min(40, Number(opts.limit) || 40))
+      : 40;
 
-  async function fetchPerfOnce(): Promise<any> {
-    // XS_FRONT_AUTH_PERF_SAFE_V1 BEGIN
-    // Si deviceId existe, on tente d'abord la route AUTH Sorare.
-    // Si ça échoue, on continue vers public-player-performance puis history/player-chart.
-    if (did) {
-      try {
-        const authQs = new URLSearchParams();
-        authQs.set("slug", s);
-        authQs.set("deviceId", did);
+  const empty: any = {
+    ok: true,
+    playerSlug: s,
+    slug: s,
+    l5: null,
+    l15: null,
+    l40: null,
+    averageScore: null,
+    recentScores: [],
+    recentScores15: [],
+    recentScores40: [],
+    scores: [],
+    items: [],
+    matches: [],
+    opponentLogoUrls: [],
+    opponentShort: [],
+    meta: {
+      source: "front-history-empty-fallback",
+      marker: "XS_FIX_FRONT_PERF_HISTORY_FIRST_NO_403_V5",
+      reason: "history empty or unavailable; Sorare perf routes skipped to avoid CloudFront 403",
+    },
+    source: "front-history-empty-fallback",
+  };
 
-        const authUrl = `${PERF_BASE_URL}/public-player-performance-auth?${authQs.toString()}`;
-        const ar = await fetch(authUrl, {
-          headers: { accept: "application/json", "ngrok-skip-browser-warning": "1" },
-        });
+  if (!s) return empty as PublicPlayerPerformance;
 
-        const atxt = await ar.text();
-        let aj: any = null;
-        try { aj = atxt ? JSON.parse(atxt) : null; } catch {}
+  const base =
+    typeof PERF_BASE_URL === "string" && PERF_BASE_URL
+      ? PERF_BASE_URL.replace(/\/+$/, "")
+      : "";
 
-        if (ar.ok && aj) {
-          return {
-            ...(aj || {}),
-            meta: {
-              ...((aj && aj.meta) || {}),
-              source: "public-player-performance-auth",
-              xsAuthFirst: true,
-            },
-          };
-        }
+  async function fetchTextSafe(url: string) {
+    const r = await fetch(url, {
+      headers: {
+        accept: "application/json",
+      },
+    });
 
-        console.warn("[publicPlayerPerformance] auth failed, fallback public/history:", ar.status, String(atxt || "").slice(0, 180));
-      } catch (e: any) {
-        console.warn("[publicPlayerPerformance] auth exception, fallback public/history:", String(e?.message || e));
-      }
-    }
-    // XS_FRONT_AUTH_PERF_SAFE_V1 END
-
-    const qs = new URLSearchParams();
-    qs.set("slug", s);
-    // XS_NO_DEVICEID_ON_PUBLIC_PERF_V1
-    // IMPORTANT:
-    // - deviceId reste autorise uniquement pour /public-player-performance-auth au-dessus.
-    // - La route publique /public-player-performance doit rester 100% publique et stable.
-    // - Evite les effets de bord Cloud Run / cache / auth sur les performances publiques.
-    // if (did) qs.set("deviceId", did);
-    const url = `${PERF_BASE_URL}/public-player-performance?${qs.toString()}`;
-    const r = await fetch(url, { headers: { accept: "application/json", "ngrok-skip-browser-warning": "1" } }); /* XS_NGROK_SKIP_HEADER_V1 */
-    const txt = await r.text();
+    const txt = await r.text().catch(() => "");
     let json: any = null;
-    try { json = txt ? JSON.parse(txt) : null; } catch {}
-    if (!r.ok) {
-      const msg = (json && (json.error || json.message)) ? (json.error || json.message) : ("HTTP " + r.status);
-      throw new Error("public-player-performance failed: " + msg);
-    }
-    return json || {};
-  }
 
-  async function fetchChartOnce(): Promise<any> {
-    const url = `${PERF_BASE_URL}/history/player-chart/${encodeURIComponent(s)}?limit=${limit}`;
-    const r = await fetch(url, { headers: { accept: "application/json", "ngrok-skip-browser-warning": "1" } }); /* XS_NGROK_SKIP_HEADER_V1 */
-    const txt = await r.text();
-    let json: any = null;
-    try { json = txt ? JSON.parse(txt) : null; } catch {}
-    if (!r.ok) {
-      const msg = (json && (json.error || json.message)) ? (json.error || json.message) : ("HTTP " + r.status);
-      throw new Error("history/player-chart failed: " + msg);
+    try {
+      json = txt ? JSON.parse(txt) : null;
+    } catch {
+      json = null;
     }
-    return json || {};
+
+    return { r, txt, json };
   }
 
   try {
-    const perf: any = await fetchPerfOnce();
-    const perfScores = Array.isArray(perf?.recentScores)
-      ? perf.recentScores.map((x: any) => Number(x)).filter((n: any) => Number.isFinite(n))
-      : [];
+    const historyUrl =
+      base +
+      "/history/player-chart/" +
+      encodeURIComponent(s) +
+      "?limit=" +
+      encodeURIComponent(String(limit));
 
-    const perfOppsRaw = Array.isArray(perf?.recentOpponents)
-      ? perf.recentOpponents
-      : (Array.isArray(perf?.opponents) ? perf.opponents : []);
+    const { r, txt, json } = await fetchTextSafe(historyUrl);
 
-    const perfOpps = perfOppsRaw.map((o: any) => ({
-      logoUrl: String(o?.logoUrl || "").trim() || null,
-      shortName: String(o?.shortName || o?.name || o?.slug || "").trim() || null,
-      opponent: String(o?.name || o?.opponent || "").trim() || null,
-      homeAway: String(o?.homeAway || "").trim() || null,
-    }));
+    if (r.ok && json) {
+      const rawItems = Array.isArray(json.items)
+        ? json.items
+        : Array.isArray(json.matches)
+          ? json.matches
+          : Array.isArray(json.scores)
+            ? json.scores
+            : [];
 
-    if (perfScores.length > 0) {
-      function avg(arr: number[], take: number): number | null {
-        const slice = arr.slice(0, take).filter((n) => Number.isFinite(n));
-        if (!slice.length) return null;
-        const sum = slice.reduce((a, b) => a + b, 0);
-        return Math.round((sum / slice.length) * 10) / 10;
-      }
+      const nums = rawItems
+        .map((it: any) => {
+          const v =
+            it?.score ??
+            it?.playerScore ??
+            it?.so5Score ??
+            it?.decisiveScore ??
+            it?.value ??
+            it;
+
+          const n = Number(v);
+          return Number.isFinite(n) ? n : null;
+        })
+        .filter((n: any) => n !== null);
+
+      const avg = (arr: number[]) =>
+        arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null;
+
+      const recent40 = nums.slice(0, 40);
+      const recent15 = recent40.slice(0, 15);
+      const recent5 = recent40.slice(0, 5);
 
       return {
-        playerSlug: String(perf?.playerSlug || s),
-        playerName: perf?.playerName ?? null,
-        position: perf?.position ?? null,
-        activeClub: perf?.activeClub ?? null,
-        lastScore: perfScores.length ? perfScores[0] : null,
-        l5: (typeof perf?.l5 === "number") ? perf.l5 : avg(perfScores, 5),
-        l15: (typeof perf?.l15 === "number") ? perf.l15 : avg(perfScores, 15),
-        recentScores: perfScores,
-        recentScores15: perfScores.slice(0, 15),
-        recentScores40: perfScores.slice(0, 40),
+        ...(json || {}),
+        ok: true,
+        playerSlug: json.playerSlug || s,
+        slug: json.slug || s,
+        recentScores: recent5,
+        recentScores15: recent15,
+        recentScores40: recent40,
+        scores: recent40,
+        items: rawItems,
+        matches: rawItems,
+        l5: json.l5 ?? avg(recent5),
+        l15: json.l15 ?? avg(recent15),
+        l40: json.l40 ?? avg(recent40),
+        averageScore: json.averageScore ?? avg(recent5),
+        opponentLogoUrls: json.opponentLogoUrls || [],
+        opponentShort: json.opponentShort || [],
         meta: {
-          source: "public-player-performance",
-          opponents: perfOpps,
-          raw: perf?.meta ?? null,
+          ...(json.meta || {}),
+          source: "history/player-chart",
+          marker: "XS_FIX_FRONT_PERF_HISTORY_FIRST_NO_403_V5",
+          count: rawItems.length,
         },
-      } as any;
+        source: "history/player-chart",
+      } as PublicPlayerPerformance;
     }
-  } catch {}
 
-  let json: any = await fetchChartOnce();
-  let items = Array.isArray(json?.items) ? json.items : [];
-
-  if ((!items || items.length === 0) && did) {
-    const syncQs = new URLSearchParams();
-    syncQs.set("slug", s);
-    syncQs.set("deviceId", did);
-    syncQs.set("last", "10");
-
-    try {
-      await fetch(`${PERF_BASE_URL}/history/sync-player-scores?${syncQs.toString()}`, {
-        method: "POST",
-        headers: { "content-type": "application/json", accept: "application/json" },
-        body: JSON.stringify({ slug: s, deviceId: did, last: 10 }),
-      });
-    } catch {}
-
-    try {
-      json = await fetchChartOnce();
-      items = Array.isArray(json?.items) ? json.items : [];
-    } catch {}
+    console.warn(
+      "[publicPlayerPerformance] history failed, safe fallback:",
+      r.status,
+      String(txt || "").slice(0, 160)
+    );
+  } catch (e: any) {
+    console.warn(
+      "[publicPlayerPerformance] history exception, safe fallback:",
+      String(e?.message || e)
+    );
   }
 
-  const scores = (Array.isArray(items) ? items : [])
-    .map((it: any) => {
-      const n = Number(it?.scoreSorare);
-      return Number.isFinite(n) ? n : null;
-    })
-    .filter((n: any) => n !== null) as number[];
-
-  function avg(arr: number[], take: number): number | null {
-    const slice = arr.slice(0, take).filter((n) => Number.isFinite(n));
-    if (!slice.length) return null;
-    const sum = slice.reduce((a, b) => a + b, 0);
-    return Math.round((sum / slice.length) * 10) / 10;
-  }
-
-  const opponents = (Array.isArray(items) ? items : []).map((it: any) => ({
-    logoUrl: String(it?.opponentLogoUrl || "").trim() || null,
-    shortName: String(it?.opponentShort || it?.opponent || "").trim() || null,
-    opponent: String(it?.opponent || "").trim() || null,
-    homeAway: String(it?.homeAway || "").trim() || null,
-  }));
-
-  return {
-    playerSlug: s,
-    playerName: null,
-    position: null,
-    activeClub: null,
-    lastScore: scores.length ? scores[0] : null,
-    l5: avg(scores, 5),
-    l15: avg(scores, 15),
-    recentScores: scores,
-    recentScores15: scores.slice(0, 15),
-    recentScores40: scores.slice(0, 40),
-    meta: {
-      source: "history/player-chart",
-      count: items.length,
-      items,
-      opponents,
-    },
-  } as any;
+  return empty as PublicPlayerPerformance;
 }
+
+
 /* XS_PUBLIC_PLAYER_PERF_CLIENT_V1_END */
+
 
 
 
