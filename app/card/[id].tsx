@@ -168,9 +168,24 @@ export default function CardDetailScreen() {
   // XS_FIX_CARD_DETAIL_OPPONENT_LOGOS_NESTED_V1 BEGIN
   // Sert à afficher le logo du club adverse sous chaque barre de performance.
   // On garde un fallback texte si l'API ne donne pas encore de logo.
-    const xsOppSlice = Array.isArray(historyChart) && historyChart.length
-    ? historyChart.slice(0, scores.length || 5)
-    : (Array.isArray(series.opp) ? series.opp.slice(0, scores.length || 5) : []);
+      // XS_CARD_DETAIL_LATEST_MATCH_RIGHT_ALL_CARDS_V1
+  // On trie les matchs par date ASC pour afficher le plus récent à droite.
+  const xsBaseHistory = Array.isArray(historyChart) && historyChart.length ? historyChart.slice(0, 5) : [];
+  const xsSortedHistory = xsBaseHistory
+    .slice()
+    .sort((a: any, b: any) => {
+      const da = new Date(a?.matchDate || a?.date || 0).getTime();
+      const db = new Date(b?.matchDate || b?.date || 0).getTime();
+      return da - db;
+    });
+
+  const xsOppSlice = xsSortedHistory.length
+    ? xsSortedHistory
+    : (Array.isArray(series.opp) ? series.opp.slice(0, scores.length || 5).reverse() : []);
+
+  const xsDisplayScores = xsSortedHistory.length
+    ? xsSortedHistory.map((x: any) => Number(x?.scoreSorare ?? x?.score ?? 0))
+    : (Array.isArray(scores) ? scores.slice(0, 5).reverse() : []);
 
   function xsPickOpponentLogoUrl(x: any): string | null {
     const raw =
@@ -305,7 +320,7 @@ const avg5 = avgOf(series.l5) ?? asNum((card as any)?.l5) ?? asNum((perf as any)
             <Text style={{ color: "#FF7B7B" }}>Erreur de chargement: {error || "inconnue"}</Text>
           ) : scores.length > 0 ? (
             <SorarePerformanceChart
-              recentScores={scores as any}
+              recentScores={xsDisplayScores as any}
               opponentLogoUrls={xsOpponentLogoUrls}
               opponentShort={xsOpponentShort}
             />
@@ -360,6 +375,7 @@ const avg5 = avgOf(series.l5) ?? asNum((card as any)?.l5) ?? asNum((perf as any)
     </ScrollView>
   );
 }
+
 
 
 

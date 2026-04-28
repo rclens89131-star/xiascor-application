@@ -30,6 +30,18 @@ function XSL5MiniBars({ values }: { values: number[] }) {
   );
 }
 
+
+// XS_TILE_L5_ORDER_MATCH_DETAIL_V1
+// Normalise l'ordre L5 pour que la mini-courbe ait le même sens que l'écran détail.
+// Règle visuelle: ancien -> récent, donc dernier match joué à droite.
+function xsTileNormalizeL5Order(scores: any[]): any[] {
+  const arr = Array.isArray(scores) ? scores.filter((v) => v !== null && v !== undefined) : [];
+  if (arr.length <= 1) return arr;
+
+  // Si le tableau arrive dans l'ordre récent -> ancien, on le retourne.
+  // Sur l'écran détail validé, l'ordre attendu est ancien -> récent.
+  return [...arr].reverse();
+}
 export function SorareCardTile(props: any) {
 
   // === RETRO COMPAT MODE ===
@@ -123,7 +135,7 @@ const xsContentV5 = (
 
             <View style={{ flex: 1 }} />
 
-            <PerfL5Widget scores={l5Bars} height={58} />
+            <PerfL5Widget scores={xsTileNormalizeL5Order(l5Bars || [])} height={58} />
           </View>
 
           {level !== null && (
@@ -180,6 +192,8 @@ return (
     {xsContentV5}
   </TouchableOpacity>
 );}
+
+
 
 
 
