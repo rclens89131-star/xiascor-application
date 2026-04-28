@@ -1,0 +1,86 @@
+﻿  const [xsL5Cache, setXsL5Cache] = useState<Record<string, number[]>>({});
+  const xsL5LoadingRef = useRef<Record<string, boolean>>({});
+
+  useEffect(() => {
+    // Prefetch léger: complète l'historique L5 par joueur (slug) si la carte n'a pas de scores.
+    const slugs = Array.from(new Set(
+      (items || [])
+        .map((c: any) => String(c?.anyPlayer?.slug || c?.playerSlug || c?.player?.slug || "").trim())
+        .filter((s: string) => !!s)
+    ));
+
+    const missing = slugs.filter((s) =>
+      !Array.isArray((xsL5Cache as any)[s]) && !xsL5LoadingRef.current[s]
+    );
+
+    if (missing.length === 0) return;
+
+    (async () => {
+      const batch = missing.slice(0, 20);
+      for (const slug of batch) {
+        try {
+          xsL5LoadingRef.current[slug] = true;
+
+          const resp: any = await publicPlayerPerformance(slug);
+          const arr = Array.isArray(resp?.recentScores) ? resp.recentScores.slice(0, 5) : [];
+          const scores = arr
+            .map((x: any) => (typeof x === "number" ? x : Number(x)))
+            .filter((n: any) => typeof n === "number" && Number.isFinite(n))
+            .map((n: number) => xsClamp(n, 0, 100));
+
+          if (scores.length > 0) {
+            setXsL5Cache((prev) => ({ ...(prev || {}), [slug]: scores }));
+          }
+        } catch (e) {
+          // silencieux: ne jamais casser Mes cartes si une requête rate
+        } finally {
+          xsL5LoadingRef.current[slug] = false;
+        }
+      }
+    })();
+  }, [items, xsL5Cache]);
+/* XS_L5_PREFETCH_CACHE_V1_END */
+
+const [pageInfo, setPageInfo] = useState<PageInfo | undefined>();
+const [loading, setLoading] = useState(true);
+const [loadingMore, setLoadingMore] = useState(false);
+const [syncing, setSyncing] = useState(false);
+const [error, setError] = useState("");
+  /* XS_UI_LAST_SYNC_LABEL_V1 */
+const [lastSync, setLastSync] = useState<string>("");
+const loadingMoreRef = useRef(false);
+const ensureDeviceId = useCallback(async () => {
+  // XS_PREFER_OAUTH_DEVICEID_V2 — prefer OAuth deviceId (xs_device_id) when available
+const oauthId = (await AsyncStorage.getItem(OAUTH_DEVICE_ID_KEY)) || "";
+  if (oauthId.trim()) {
+    try { await AsyncStorage.setItem(DEVICE_ID_KEY, oauthId.trim()); } catch {}
+    return oauthId.trim();
+  }
+
+  // XS_PREFER_JWT_DEVICEID_V2 — then prefer the JWT-linked deviceId set in Settings
+const jwtId = (await AsyncStorage.getItem(JWT_DEVICE_ID_KEY)) || "";
+  if (jwtId.trim()) return jwtId.trim();
+const existing = (await AsyncStorage.getItem(DEVICE_ID_KEY)) || "";
+  if (existing.trim()) return existing.trim();
+const generated = `xs-device-${Date.now()}`;
+  await AsyncStorage.setItem(DEVICE_ID_KEY, generated);
+  return generated;
+}, []);
+const loadInitial = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+const id = await ensureDeviceId();
+      setDeviceId(id);
+const res = await myCardsList(id, 50);
+      
+      try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
+      setItems(res.cards || []);
+      setPageInfo(res.pageInfo);
+    } catch (e: any) {
+      setError(e?.message || "Erreur chargement");
+    } finally {
+      setLoading(false);
+    }
+  }, [ensureDeviceId]);
+const loadMore = useCallback(async () => {

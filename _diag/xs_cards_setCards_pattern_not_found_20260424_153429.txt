@@ -1,0 +1,18 @@
+﻿
+LineNumber Line                                                                                                       
+---------- ----                                                                                                       
+        12 import { myCardsList, myCardsSync, type PageInfo } from "../../src/scoutApi";                              
+       383 const [pageInfo, setPageInfo] = useState<PageInfo | undefined>();                                          
+       408 const loadInitial = useCallback(async () => {                                                              
+       414 const res = await myCardsList(id, 50);                                                                     
+       418       setPageInfo(res.pageInfo);                                                                           
+       430 const res = await myCardsList(deviceId, 50, pageInfo.endCursor || undefined);                              
+       434       setPageInfo(res.pageInfo);                                                                           
+       448       await loadInitial();                                                                                 
+       454   }, [deviceId, loadInitial]);                                                                             
+       457     loadInitial();                                                                                         
+       458   }, [loadInitial]);                                                                                       
+       555               <Text style={{ color: theme.muted }}>Aucune carte en cache. Lance une synchronisation.</Text>
+
+
+

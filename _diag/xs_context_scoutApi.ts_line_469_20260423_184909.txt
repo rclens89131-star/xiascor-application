@@ -1,0 +1,86 @@
+﻿    const r = await fetch(url, { headers: { accept: "application/json", "ngrok-skip-browser-warning": "1" } }); /* XS_NGROK_SKIP_HEADER_V1 */
+    const txt = await r.text();
+    let json: any = null;
+    try { json = txt ? JSON.parse(txt) : null; } catch {}
+    if (!r.ok) {
+      const msg = (json && (json.error || json.message)) ? (json.error || json.message) : ("HTTP " + r.status);
+      throw new Error("history/player-chart failed: " + msg);
+    }
+    return json || {};
+  }
+
+  try {
+    const perf: any = await fetchPerfOnce();
+    const perfScores = Array.isArray(perf?.recentScores)
+      ? perf.recentScores.map((x: any) => Number(x)).filter((n: any) => Number.isFinite(n))
+      : [];
+
+    const perfOppsRaw = Array.isArray(perf?.recentOpponents)
+      ? perf.recentOpponents
+      : (Array.isArray(perf?.opponents) ? perf.opponents : []);
+
+    const perfOpps = perfOppsRaw.map((o: any) => ({
+      logoUrl: String(o?.logoUrl || "").trim() || null,
+      shortName: String(o?.shortName || o?.name || o?.slug || "").trim() || null,
+      opponent: String(o?.name || o?.opponent || "").trim() || null,
+      homeAway: String(o?.homeAway || "").trim() || null,
+    }));
+
+    if (perfScores.length > 0) {
+      function avg(arr: number[], take: number): number | null {
+        const slice = arr.slice(0, take).filter((n) => Number.isFinite(n));
+        if (!slice.length) return null;
+        const sum = slice.reduce((a, b) => a + b, 0);
+        return Math.round((sum / slice.length) * 10) / 10;
+      }
+
+      return {
+        playerSlug: String(perf?.playerSlug || s),
+        playerName: perf?.playerName ?? null,
+        position: perf?.position ?? null,
+        activeClub: perf?.activeClub ?? null,
+        lastScore: perfScores.length ? perfScores[0] : null,
+        l5: (typeof perf?.l5 === "number") ? perf.l5 : avg(perfScores, 5),
+        l15: (typeof perf?.l15 === "number") ? perf.l15 : avg(perfScores, 15),
+        recentScores: perfScores,
+        recentScores15: perfScores.slice(0, 15),
+        recentScores40: perfScores.slice(0, 40),
+        meta: {
+          source: "public-player-performance",
+          opponents: perfOpps,
+          raw: perf?.meta ?? null,
+        },
+      } as any;
+    }
+  } catch {}
+
+  let json: any = await fetchChartOnce();
+  let items = Array.isArray(json?.items) ? json.items : [];
+
+  if ((!items || items.length === 0) && did) {
+    const syncQs = new URLSearchParams();
+    syncQs.set("slug", s);
+    syncQs.set("deviceId", did);
+    syncQs.set("last", "10");
+
+    try {
+      await fetch(`${PERF_BASE_URL}/history/sync-player-scores?${syncQs.toString()}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ slug: s, deviceId: did, last: 10 }),
+      });
+    } catch {}
+
+    try {
+      json = await fetchChartOnce();
+      items = Array.isArray(json?.items) ? json.items : [];
+    } catch {}
+  }
+
+  const scores = (Array.isArray(items) ? items : [])
+    .map((it: any) => {
+      const n = Number(it?.scoreSorare);
+      return Number.isFinite(n) ? n : null;
+    })
+    .filter((n: any) => n !== null) as number[];
+

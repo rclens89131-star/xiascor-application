@@ -1,0 +1,144 @@
+﻿FILE: C:\Users\rclen\Desktop\sorare-app\app\(auth)\login.tsx
+PATTERN: DEVICE_KEY|LINKED_KEY|AsyncStorage|deviceId|my-cards|sync
+LINE: 9
+RANGE: 1 - 139
+
+import React, { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Linking, Pressable, ScrollView, Text, View } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { router } from "expo-router";
+
+const DEVICE_KEY = "xs_device_id";
+const LINKED_KEY = "xs_linked_v1";
+
+function makeDeviceId() {
+  return "dev_" + Date.now() + "_" + Math.random().toString(36).slice(2, 10);
+}
+
+type MeResponse = {
+  ok?: boolean;
+  userSlug?: string;
+  nickname?: string;
+  error?: string;
+};
+
+type AuthStatusResponse = {
+  hasAuth?: boolean;
+  hasOAuthToken?: boolean;
+  scope?: string | null;
+  created_at?: number | null;
+};
+
+export default function SorareLoginScreen() {
+const BASE_URL = String(process.env.EXPO_PUBLIC_BASE_URL || "https://xiascor-backend-tssdy62zqa-ez.a.run.app").trim();
+const AUTH_BASE_URL = String(process.env.EXPO_PUBLIC_AUTH_BASE_URL || "https://xiascor-backend-tssdy62zqa-ez.a.run.app").trim(); // XS_OAUTH_AUTH_BASE_V1
+
+  const [deviceId, setDeviceId] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [busySync, setBusySync] = useState(false);
+  const [statusText, setStatusText] = useState("En attente d'autorisation");
+
+// XS_FIX_LOGIN_AFTER_OAUTH_OK_NAVIGATE_V1 BEGIN
+// XS_REPAIR_LOGIN_HOOK_PLACEMENT_V1
+// Quand OAuth est OK, on quitte l'écran Connexion Sorare et on revient dans l'application.
+useEffect(() => {
+  const s = String(statusText || "");
+  if (!s.toLowerCase().includes("oauth ok")) return;
+
+  const t = setTimeout(() => {
+    try {
+      router.replace("/(tabs)/cards" as any);
+    } catch {
+      try {
+        router.replace("/(tabs)" as any);
+      } catch {}
+    }
+  }, 1800);
+
+  return () => clearTimeout(t);
+}, [statusText]);
+// XS_FIX_LOGIN_AFTER_OAUTH_OK_NAVIGATE_V1 END
+
+  const [debug, setDebug] = useState("");
+
+  const loginUrl = useMemo(() => {
+    return AUTH_BASE_URL.replace(/\/+$/, "") + "/auth/sorare"; // XS_OAUTH_CLOUDRUN_LOGIN_V2
+  }, [AUTH_BASE_URL]);
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      try {
+        const existing = await AsyncStorage.getItem(DEVICE_KEY);
+        if (existing) {
+          if (alive) setDeviceId(existing);
+          return;
+        }
+        const nextId = makeDeviceId();
+        await AsyncStorage.setItem(DEVICE_KEY, nextId);
+        if (alive) setDeviceId(nextId);
+      } catch (e: any) {
+        if (alive) {
+          setDebug("deviceId error: " + String(e?.message || e));
+        }
+      }
+    })();
+return () => {
+      alive = false;
+    };
+  }, []);
+
+  async function refreshMeAndSync(id: string) {
+    const safeBase = AUTH_BASE_URL.replace(/\/+$/, ""); // XS_OAUTH_STATUS_BASE_V1
+    setBusySync(true);
+    try {
+      const meRes = await fetch(safeBase + "/me?deviceId=" + encodeURIComponent(id), {
+        headers: { accept: "application/json" },
+      });
+      const meJson: MeResponse = await meRes.json().catch(() => ({}));
+      if (!meRes.ok || !meJson?.ok) {
+        throw new Error(String(meJson?.error || ("HTTP " + meRes.status)));
+      }
+
+      setStatusText("✅ Connecté: " + String(meJson.nickname || meJson.userSlug || "ok"));
+
+      const syncRes = await fetch(
+        safeBase + "/my-cards/sync?deviceId=" + encodeURIComponent(id),
+        {
+          method: "POST",
+          headers: { "content-type": "application/json", accept: "application/json" },
+          body: "{}",
+        }
+      );
+
+      const syncJson = await syncRes.json().catch(() => ({}));
+      if (!syncRes.ok || !syncJson?.ok) {
+        throw new Error("sync failed: " + String(syncJson?.error || ("HTTP " + syncRes.status)));
+      }
+
+      await AsyncStorage.setItem(LINKED_KEY, "1");
+      setDebug("sync ok | count=" + String(syncJson?.count ?? "?"));
+      router.replace("/(tabs)");
+    } finally {
+      setBusySync(false);
+    }
+  }
+
+  useEffect(() => {
+    let timer: any = null;
+    let alive = true;
+
+    async function poll() {
+      if (!deviceId) return;
+      try {
+        const safeBase = AUTH_BASE_URL.replace(/\/+$/, ""); // XS_OAUTH_STATUS_BASE_V1
+        const res = await fetch(safeBase + "/auth/sorare/status", {
+          headers: { accept: "application/json" },
+        });
+        const json: AuthStatusResponse = await res.json().catch(() => ({}));
+
+        if (!alive) return;
+
+        if (json?.hasOAuthToken) {
+          setStatusText("OAuth OK — synchronisation en cours...");

@@ -1,0 +1,71 @@
+﻿      ? (perf as any).recentScores15.slice(0, 15)
+      : (Array.isArray((perf as any)?.recentScores) ? (perf as any).recentScores.slice(0, 15) : []);
+    const l40 = Array.isArray((perf as any)?.recentScores40)
+      ? (perf as any).recentScores40.slice(0, 40)
+      : (Array.isArray((perf as any)?.recentScores) ? (perf as any).recentScores.slice(0, 40) : []);
+    // XS_FIX_CARD_DETAIL_OPPONENTS_FALLBACK_V1 BEGIN
+    const opp =
+      Array.isArray((perf as any)?.recentOpponents) ? (perf as any).recentOpponents :
+      (Array.isArray((perf as any)?.opponents) ? (perf as any).opponents :
+      (Array.isArray((perf as any)?.meta?.opponents) ? (perf as any).meta.opponents : []));
+    // XS_FIX_CARD_DETAIL_OPPONENTS_FALLBACK_V1 END
+    return { l5, l15, l40, opp };
+  }, [perf]);
+
+  const scores =
+    activeSeries === "L5" ? series.l5 :
+    activeSeries === "L15" ? series.l15 :
+    series.l40;
+
+  
+  // XS_FIX_CARD_DETAIL_OPPONENT_LOGOS_NESTED_V1 BEGIN
+  // Sert à afficher le logo du club adverse sous chaque barre de performance.
+  // On garde un fallback texte si l'API ne donne pas encore de logo.
+  const xsOppSlice = Array.isArray(series.opp) ? series.opp.slice(0, scores.length || 5) : [];
+
+  function xsPickOpponentLogoUrl(x: any): string | null {
+    const raw =
+      x?.logoUrl ??
+      x?.opponentLogoUrl ??
+      x?.clubLogoUrl ??
+      x?.teamLogoUrl ??
+      x?.crestUrl ??
+      x?.logo ??
+      x?.pictureUrl ??
+      x?.club?.pictureUrl ??
+      x?.club?.logoUrl ??
+      x?.club?.crestUrl ??
+      x?.opponentClub?.pictureUrl ??
+      x?.opponentClub?.logoUrl ??
+      x?.opponentClub?.crestUrl ??
+      x?.opponent?.club?.pictureUrl ??
+      x?.opponent?.club?.logoUrl ??
+      x?.opponent?.club?.crestUrl ??
+      x?.opponentTeam?.pictureUrl ??
+      x?.opponentTeam?.logoUrl ??
+      x?.opponentTeam?.crestUrl ??
+      x?.opponent?.pictureUrl ??
+      x?.opponent?.logoUrl ??
+      x?.team?.pictureUrl ??
+      x?.team?.logoUrl ??
+      x?.team?.crestUrl ??
+      x?.match?.opponentClub?.pictureUrl ??
+      x?.match?.opponentClub?.logoUrl ??
+      x?.match?.opponentClub?.crestUrl ??
+      null;
+
+    const s = String(raw || "").trim();
+    return s.length > 0 ? s : null;
+  }
+
+  function xsPickOpponentShort(x: any): string | null {
+    const raw =
+      x?.shortName ??
+      x?.opponentShort ??
+      x?.short ??
+      x?.code ??
+      x?.opponent ??
+      x?.name ??
+      x?.club?.shortName ??
+      x?.club?.name ??
+      x?.opponentClub?.shortName ??

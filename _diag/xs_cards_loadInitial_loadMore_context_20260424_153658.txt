@@ -1,0 +1,1450 @@
+﻿
+============================================================
+HIT LINE 12: import { myCardsList, myCardsSync, type PageInfo } from "../../src/scoutApi";
+RANGE 1 - 82
+============================================================
+/* XS_CARDS_CENTER_ITEMWIDTH_V1 */
+/* XS_CARDS_CENTER_2COL_V2 */
+/* XS_FIX_L5_FALLBACK_V1 */
+/* XS_CARDS_CENTER_2COL_V1 */
+/* XS_MYCARDS_REMOVE_UNDER_META_V1 */
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useRouter } from "expo-router";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import PerfL5Widget from "../../src/components/PerfL5Widget";
+import { ActivityIndicator, FlatList, Image, Pressable, SafeAreaView, Text, View, useWindowDimensions, Dimensions, Alert } from "react-native";
+import { theme } from "../../src/theme";
+import { myCardsList, myCardsSync, type PageInfo } from "../../src/scoutApi";
+/* XS_MYCARDS_UI_META_V1_BEGIN */
+/* XS_CARDS_GRID_GROW_V1
+   Objectif:
+// XS_TEXT_OUTSIDE_TEXT_FIX_V1 - garder 2 colonnes mais remplir l'espace -> tiles plus grandes
+   - calcul largeur tuile = (screenWidth - padding*2 - gap) / 2
+*/
+const XS_GRID_PADDING = 16;
+const XS_GRID_GAP = 12;
+const XS_TILE_WIDTH = Math.floor((Dimensions.get("window").width - (XS_GRID_PADDING * 2) - XS_GRID_GAP) / 2);
+
+  // XS_NAV_CARDID_FALLBACK_V1
+  function xsGetCardNavParams(card: any){
+    const playerSlug = String(card?.anyPlayer?.slug ?? card?.player?.slug ?? card?.playerSlug ?? "").trim();
+    const id = String(card?.id ?? card?.cardId ?? card?.slug ?? playerSlug ?? "").trim();
+    return { id, playerSlug };
+  }
+function xsNum(v: any): number | null {
+const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+function xsTxt(v: any): string {
+const s = (v == null) ? "" : String(v);
+  return s.trim();
+}
+function xsBonusPctFromPower(power: any): number | null {
+  // Sorare power is usually a multiplier string like "1.040"
+const p = xsNum(power);
+  if (p === null) return null;
+  return (p - 1) * 100;
+}
+/* XS_MYCARDS_UI_META_V1_END */
+import { SorareCardTile } from "../../src/components/SorareCardTile"; // XS_SORARE_TILE_IMPORT_V1
+import { publicPlayerPerformance } from "../../src/scoutApi";
+const DEVICE_ID_KEY = "XS_DEVICE_ID_V1";
+const JWT_DEVICE_ID_KEY = "XS_JWT_DEVICE_ID_V1";
+const OAUTH_DEVICE_ID_KEY = "xs_device_id"; // XS_PREFER_OAUTH_DEVICEID_V2
+type MyCardItemLocal = {
+  slug?: string;
+  pictureUrl?: string | null;
+  rarity?: string | null;
+  rarityTyped?: string | null;
+  seasonYear?: number | null;
+  serialNumber?: number | null;
+  anyTeam?: { name?: string | null } | null;
+  anyPlayer?: { displayName?: string | null } | null;
+  player?: { displayName?: string | null; activeClub?: { name?: string | null } | null } | null;
+};
+/* XS_MY_CARDS_UI_TYPING_V1_END */
+function cardKey(card: MyCardItemLocal) {
+  return String(
+    card?.slug ||
+      `${card?.anyPlayer?.displayName || card?.player?.displayName || "unknown"}
+
+/* XS_CARDS_L15_LAST_V1 — helpers safe (L15 + last score) */
+function getL15Value(card: any): number | null {
+const v =
+    card?.l15 ??
+    card?.L15 ??
+    card?.l15Score ??
+    card?.scoreL15 ??
+    card?.player?.l15 ??
+    card?.card?.l15 ??
+    null;
+const n = typeof v === "number" ? v : (typeof v === "string" ? Number(v) : NaN);
+  return Number.isFinite(n) ? n : null;
+}
+function getLastScoreValue(card: any): number | null {
+const direct =
+    card?.lastScore ??
+    card?.last_score ??
+
+============================================================
+HIT LINE 338: const [items, setItems] = useState<MyCardItemLocal[]>([]);
+RANGE 303 - 408
+============================================================
+      style={{ alignSelf: "stretch" }}
+    >
+<SorareCardTile
+width={xsTileWidth2col(width)} imageUrl={xsSafeStr(card?.pictureUrl)}
+      playerName={playerName}
+      clubName={clubName}
+      seasonLabel={season}
+      serialLabel={serial}
+      scarcityLabel={rarity}
+      l15={xsGetL15ValueV1(card as any)} /* XS_CARDS_FIX_L15_PROP_SCOPE_V1 */
+      deltaPct={bonusPct}
+      trendBars={xsTrendBarsFromL15((typeof (card as any)?.l5 === "number") ? (card as any).l5 : xsGetL15ValueV1(card as any))} /* XS_CARDS_FIX_TRENDBARS_SCOPE_V1 */
+      l5={(typeof (card as any)?.l5 === "number") ? (card as any).l5 : null} // XS_FIX_L5_FALLBACK_V1 // XS_MYCARDS_PASS_L5_LEVEL_V1
+      l5Bars={xsL5Mini} /* XS_L5_MINICHART_TILE_RENDER_V1 */
+      level={(typeof (card as any)?.level === "number") ? (card as any).level : ((card as any)?.cardLevel ?? 0)} // XS_MYCARDS_PASS_L5_LEVEL_V1
+    />
+  
+    </Pressable>);
+}
+/* XS_MYCARDS_SORARE_TILE_V1_END */
+
+  
+/* XS_CARDS_2COL_WIDTH_V1_BEGIN */
+/* XS_MYCARDS_WIDEN_GRID_REAL_V1 — constants (module scope) */
+const XS_MYCARDS_PAD = 8;
+const XS_MYCARDS_GAP = 8;
+/* XS_MYCARDS_WIDEN_GRID_REAL_V1 — width math */
+function xsTileWidth2col(screenW: number): number {
+  // 2 colonnes + padding + gap => chaque tuile prend (presque) toute la largeur dispo
+  return Math.floor((screenW - (XS_MYCARDS_PAD * 2) - XS_MYCARDS_GAP) / 2);
+}
+/* XS_CARDS_2COL_WIDTH_V1_END */
+export default function CardsScreen() {
+/* XS_MY_CARDS_UI_V1_BEGIN */
+const [deviceId, setDeviceId] = useState("");
+const [items, setItems] = useState<MyCardItemLocal[]>([]);
+/* XS_L5_PREFETCH_CACHE_V1_BEGIN */
+  const [xsL5Cache, setXsL5Cache] = useState<Record<string, number[]>>({});
+  const xsL5LoadingRef = useRef<Record<string, boolean>>({});
+
+  useEffect(() => {
+    // Prefetch léger: complète l'historique L5 par joueur (slug) si la carte n'a pas de scores.
+    const slugs = Array.from(new Set(
+      (items || [])
+        .map((c: any) => String(c?.anyPlayer?.slug || c?.playerSlug || c?.player?.slug || "").trim())
+        .filter((s: string) => !!s)
+    ));
+
+    const missing = slugs.filter((s) =>
+      !Array.isArray((xsL5Cache as any)[s]) && !xsL5LoadingRef.current[s]
+    );
+
+    if (missing.length === 0) return;
+
+    (async () => {
+      const batch = missing.slice(0, 20);
+      for (const slug of batch) {
+        try {
+          xsL5LoadingRef.current[slug] = true;
+
+          const resp: any = await publicPlayerPerformance(slug);
+          const arr = Array.isArray(resp?.recentScores) ? resp.recentScores.slice(0, 5) : [];
+          const scores = arr
+            .map((x: any) => (typeof x === "number" ? x : Number(x)))
+            .filter((n: any) => typeof n === "number" && Number.isFinite(n))
+            .map((n: number) => xsClamp(n, 0, 100));
+
+          if (scores.length > 0) {
+            setXsL5Cache((prev) => ({ ...(prev || {}), [slug]: scores }));
+          }
+        } catch (e) {
+          // silencieux: ne jamais casser Mes cartes si une requête rate
+        } finally {
+          xsL5LoadingRef.current[slug] = false;
+        }
+      }
+    })();
+  }, [items, xsL5Cache]);
+/* XS_L5_PREFETCH_CACHE_V1_END */
+
+const [pageInfo, setPageInfo] = useState<PageInfo | undefined>();
+const [loading, setLoading] = useState(true);
+const [loadingMore, setLoadingMore] = useState(false);
+const [syncing, setSyncing] = useState(false);
+const [error, setError] = useState("");
+  /* XS_UI_LAST_SYNC_LABEL_V1 */
+const [lastSync, setLastSync] = useState<string>("");
+const loadingMoreRef = useRef(false);
+const ensureDeviceId = useCallback(async () => {
+  // XS_PREFER_OAUTH_DEVICEID_V2 — prefer OAuth deviceId (xs_device_id) when available
+const oauthId = (await AsyncStorage.getItem(OAUTH_DEVICE_ID_KEY)) || "";
+  if (oauthId.trim()) {
+    try { await AsyncStorage.setItem(DEVICE_ID_KEY, oauthId.trim()); } catch {}
+    return oauthId.trim();
+  }
+
+  // XS_PREFER_JWT_DEVICEID_V2 — then prefer the JWT-linked deviceId set in Settings
+const jwtId = (await AsyncStorage.getItem(JWT_DEVICE_ID_KEY)) || "";
+  if (jwtId.trim()) return jwtId.trim();
+const existing = (await AsyncStorage.getItem(DEVICE_ID_KEY)) || "";
+  if (existing.trim()) return existing.trim();
+const generated = `xs-device-${Date.now()}`;
+  await AsyncStorage.setItem(DEVICE_ID_KEY, generated);
+  return generated;
+}, []);
+const loadInitial = useCallback(async () => {
+
+============================================================
+HIT LINE 383: const [pageInfo, setPageInfo] = useState<PageInfo | undefined>();
+RANGE 348 - 453
+============================================================
+        .filter((s: string) => !!s)
+    ));
+
+    const missing = slugs.filter((s) =>
+      !Array.isArray((xsL5Cache as any)[s]) && !xsL5LoadingRef.current[s]
+    );
+
+    if (missing.length === 0) return;
+
+    (async () => {
+      const batch = missing.slice(0, 20);
+      for (const slug of batch) {
+        try {
+          xsL5LoadingRef.current[slug] = true;
+
+          const resp: any = await publicPlayerPerformance(slug);
+          const arr = Array.isArray(resp?.recentScores) ? resp.recentScores.slice(0, 5) : [];
+          const scores = arr
+            .map((x: any) => (typeof x === "number" ? x : Number(x)))
+            .filter((n: any) => typeof n === "number" && Number.isFinite(n))
+            .map((n: number) => xsClamp(n, 0, 100));
+
+          if (scores.length > 0) {
+            setXsL5Cache((prev) => ({ ...(prev || {}), [slug]: scores }));
+          }
+        } catch (e) {
+          // silencieux: ne jamais casser Mes cartes si une requête rate
+        } finally {
+          xsL5LoadingRef.current[slug] = false;
+        }
+      }
+    })();
+  }, [items, xsL5Cache]);
+/* XS_L5_PREFETCH_CACHE_V1_END */
+
+const [pageInfo, setPageInfo] = useState<PageInfo | undefined>();
+const [loading, setLoading] = useState(true);
+const [loadingMore, setLoadingMore] = useState(false);
+const [syncing, setSyncing] = useState(false);
+const [error, setError] = useState("");
+  /* XS_UI_LAST_SYNC_LABEL_V1 */
+const [lastSync, setLastSync] = useState<string>("");
+const loadingMoreRef = useRef(false);
+const ensureDeviceId = useCallback(async () => {
+  // XS_PREFER_OAUTH_DEVICEID_V2 — prefer OAuth deviceId (xs_device_id) when available
+const oauthId = (await AsyncStorage.getItem(OAUTH_DEVICE_ID_KEY)) || "";
+  if (oauthId.trim()) {
+    try { await AsyncStorage.setItem(DEVICE_ID_KEY, oauthId.trim()); } catch {}
+    return oauthId.trim();
+  }
+
+  // XS_PREFER_JWT_DEVICEID_V2 — then prefer the JWT-linked deviceId set in Settings
+const jwtId = (await AsyncStorage.getItem(JWT_DEVICE_ID_KEY)) || "";
+  if (jwtId.trim()) return jwtId.trim();
+const existing = (await AsyncStorage.getItem(DEVICE_ID_KEY)) || "";
+  if (existing.trim()) return existing.trim();
+const generated = `xs-device-${Date.now()}`;
+  await AsyncStorage.setItem(DEVICE_ID_KEY, generated);
+  return generated;
+}, []);
+const loadInitial = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+const id = await ensureDeviceId();
+      setDeviceId(id);
+const res = await myCardsList(id, 50);
+      
+      try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
+      setItems(res.cards || []);
+      setPageInfo(res.pageInfo);
+    } catch (e: any) {
+      setError(e?.message || "Erreur chargement");
+    } finally {
+      setLoading(false);
+    }
+  }, [ensureDeviceId]);
+const loadMore = useCallback(async () => {
+    if (!pageInfo?.hasNextPage || !pageInfo?.endCursor || loadingMoreRef.current || !deviceId) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+const res = await myCardsList(deviceId, 50, pageInfo.endCursor || undefined);
+      
+      try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
+      setItems((prev) => [...prev, ...(res.cards || [])]);
+      setPageInfo(res.pageInfo);
+    } catch (e: any) {
+      setError(e?.message || "Erreur pagination");
+    } finally {
+      setLoadingMore(false);
+      loadingMoreRef.current = false;
+    }
+  }, [deviceId, pageInfo?.endCursor, pageInfo?.hasNextPage]);
+const onSync = useCallback(async () => {
+    if (!deviceId) return;
+    setSyncing(true);
+    setError("");
+    try {
+      await myCardsSync(deviceId, { first: 50, maxPages: 80, maxCards: 20000, sleepMs: 250 });
+      await loadInitial();
+    } catch (e: any) {
+      setError(e?.message || "Erreur synchronisation");
+    } finally {
+      setSyncing(false);
+    }
+
+============================================================
+HIT LINE 408: const loadInitial = useCallback(async () => {
+RANGE 373 - 478
+============================================================
+        } catch (e) {
+          // silencieux: ne jamais casser Mes cartes si une requête rate
+        } finally {
+          xsL5LoadingRef.current[slug] = false;
+        }
+      }
+    })();
+  }, [items, xsL5Cache]);
+/* XS_L5_PREFETCH_CACHE_V1_END */
+
+const [pageInfo, setPageInfo] = useState<PageInfo | undefined>();
+const [loading, setLoading] = useState(true);
+const [loadingMore, setLoadingMore] = useState(false);
+const [syncing, setSyncing] = useState(false);
+const [error, setError] = useState("");
+  /* XS_UI_LAST_SYNC_LABEL_V1 */
+const [lastSync, setLastSync] = useState<string>("");
+const loadingMoreRef = useRef(false);
+const ensureDeviceId = useCallback(async () => {
+  // XS_PREFER_OAUTH_DEVICEID_V2 — prefer OAuth deviceId (xs_device_id) when available
+const oauthId = (await AsyncStorage.getItem(OAUTH_DEVICE_ID_KEY)) || "";
+  if (oauthId.trim()) {
+    try { await AsyncStorage.setItem(DEVICE_ID_KEY, oauthId.trim()); } catch {}
+    return oauthId.trim();
+  }
+
+  // XS_PREFER_JWT_DEVICEID_V2 — then prefer the JWT-linked deviceId set in Settings
+const jwtId = (await AsyncStorage.getItem(JWT_DEVICE_ID_KEY)) || "";
+  if (jwtId.trim()) return jwtId.trim();
+const existing = (await AsyncStorage.getItem(DEVICE_ID_KEY)) || "";
+  if (existing.trim()) return existing.trim();
+const generated = `xs-device-${Date.now()}`;
+  await AsyncStorage.setItem(DEVICE_ID_KEY, generated);
+  return generated;
+}, []);
+const loadInitial = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+const id = await ensureDeviceId();
+      setDeviceId(id);
+const res = await myCardsList(id, 50);
+      
+      try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
+      setItems(res.cards || []);
+      setPageInfo(res.pageInfo);
+    } catch (e: any) {
+      setError(e?.message || "Erreur chargement");
+    } finally {
+      setLoading(false);
+    }
+  }, [ensureDeviceId]);
+const loadMore = useCallback(async () => {
+    if (!pageInfo?.hasNextPage || !pageInfo?.endCursor || loadingMoreRef.current || !deviceId) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+const res = await myCardsList(deviceId, 50, pageInfo.endCursor || undefined);
+      
+      try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
+      setItems((prev) => [...prev, ...(res.cards || [])]);
+      setPageInfo(res.pageInfo);
+    } catch (e: any) {
+      setError(e?.message || "Erreur pagination");
+    } finally {
+      setLoadingMore(false);
+      loadingMoreRef.current = false;
+    }
+  }, [deviceId, pageInfo?.endCursor, pageInfo?.hasNextPage]);
+const onSync = useCallback(async () => {
+    if (!deviceId) return;
+    setSyncing(true);
+    setError("");
+    try {
+      await myCardsSync(deviceId, { first: 50, maxPages: 80, maxCards: 20000, sleepMs: 250 });
+      await loadInitial();
+    } catch (e: any) {
+      setError(e?.message || "Erreur synchronisation");
+    } finally {
+      setSyncing(false);
+    }
+  }, [deviceId, loadInitial]);
+
+  useEffect(() => {
+    loadInitial();
+  }, [loadInitial]);
+const { width } = useWindowDimensions();
+const layout = useMemo(() => {
+const H_PADDING = 16;
+const GAP = 12;
+const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
+    return { H_PADDING, GAP, itemWidth };
+  }, [width]);
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
+
+      <View style={{ padding: 16, gap: 10 }}>
+        <Text style={{ color: theme.text, fontSize: 22, fontWeight: "900" }}>Mes cartes</Text>
+
+        <Pressable
+          onPress={onSync}
+          disabled={syncing || loading}
+          style={{
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+
+============================================================
+HIT LINE 414: const res = await myCardsList(id, 50);
+RANGE 379 - 484
+============================================================
+    })();
+  }, [items, xsL5Cache]);
+/* XS_L5_PREFETCH_CACHE_V1_END */
+
+const [pageInfo, setPageInfo] = useState<PageInfo | undefined>();
+const [loading, setLoading] = useState(true);
+const [loadingMore, setLoadingMore] = useState(false);
+const [syncing, setSyncing] = useState(false);
+const [error, setError] = useState("");
+  /* XS_UI_LAST_SYNC_LABEL_V1 */
+const [lastSync, setLastSync] = useState<string>("");
+const loadingMoreRef = useRef(false);
+const ensureDeviceId = useCallback(async () => {
+  // XS_PREFER_OAUTH_DEVICEID_V2 — prefer OAuth deviceId (xs_device_id) when available
+const oauthId = (await AsyncStorage.getItem(OAUTH_DEVICE_ID_KEY)) || "";
+  if (oauthId.trim()) {
+    try { await AsyncStorage.setItem(DEVICE_ID_KEY, oauthId.trim()); } catch {}
+    return oauthId.trim();
+  }
+
+  // XS_PREFER_JWT_DEVICEID_V2 — then prefer the JWT-linked deviceId set in Settings
+const jwtId = (await AsyncStorage.getItem(JWT_DEVICE_ID_KEY)) || "";
+  if (jwtId.trim()) return jwtId.trim();
+const existing = (await AsyncStorage.getItem(DEVICE_ID_KEY)) || "";
+  if (existing.trim()) return existing.trim();
+const generated = `xs-device-${Date.now()}`;
+  await AsyncStorage.setItem(DEVICE_ID_KEY, generated);
+  return generated;
+}, []);
+const loadInitial = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+const id = await ensureDeviceId();
+      setDeviceId(id);
+const res = await myCardsList(id, 50);
+      
+      try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
+      setItems(res.cards || []);
+      setPageInfo(res.pageInfo);
+    } catch (e: any) {
+      setError(e?.message || "Erreur chargement");
+    } finally {
+      setLoading(false);
+    }
+  }, [ensureDeviceId]);
+const loadMore = useCallback(async () => {
+    if (!pageInfo?.hasNextPage || !pageInfo?.endCursor || loadingMoreRef.current || !deviceId) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+const res = await myCardsList(deviceId, 50, pageInfo.endCursor || undefined);
+      
+      try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
+      setItems((prev) => [...prev, ...(res.cards || [])]);
+      setPageInfo(res.pageInfo);
+    } catch (e: any) {
+      setError(e?.message || "Erreur pagination");
+    } finally {
+      setLoadingMore(false);
+      loadingMoreRef.current = false;
+    }
+  }, [deviceId, pageInfo?.endCursor, pageInfo?.hasNextPage]);
+const onSync = useCallback(async () => {
+    if (!deviceId) return;
+    setSyncing(true);
+    setError("");
+    try {
+      await myCardsSync(deviceId, { first: 50, maxPages: 80, maxCards: 20000, sleepMs: 250 });
+      await loadInitial();
+    } catch (e: any) {
+      setError(e?.message || "Erreur synchronisation");
+    } finally {
+      setSyncing(false);
+    }
+  }, [deviceId, loadInitial]);
+
+  useEffect(() => {
+    loadInitial();
+  }, [loadInitial]);
+const { width } = useWindowDimensions();
+const layout = useMemo(() => {
+const H_PADDING = 16;
+const GAP = 12;
+const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
+    return { H_PADDING, GAP, itemWidth };
+  }, [width]);
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
+
+      <View style={{ padding: 16, gap: 10 }}>
+        <Text style={{ color: theme.text, fontSize: 22, fontWeight: "900" }}>Mes cartes</Text>
+
+        <Pressable
+          onPress={onSync}
+          disabled={syncing || loading}
+          style={{
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            alignSelf: "flex-start",
+            borderRadius: 14,
+            backgroundColor: "rgba(59,130,246,0.18)",
+            borderWidth: 1,
+            borderColor: "rgba(59,130,246,0.35)",
+            opacity: syncing || loading ? 0.7 : 1,
+
+============================================================
+HIT LINE 417:       setItems(res.cards || []);
+RANGE 382 - 487
+============================================================
+
+const [pageInfo, setPageInfo] = useState<PageInfo | undefined>();
+const [loading, setLoading] = useState(true);
+const [loadingMore, setLoadingMore] = useState(false);
+const [syncing, setSyncing] = useState(false);
+const [error, setError] = useState("");
+  /* XS_UI_LAST_SYNC_LABEL_V1 */
+const [lastSync, setLastSync] = useState<string>("");
+const loadingMoreRef = useRef(false);
+const ensureDeviceId = useCallback(async () => {
+  // XS_PREFER_OAUTH_DEVICEID_V2 — prefer OAuth deviceId (xs_device_id) when available
+const oauthId = (await AsyncStorage.getItem(OAUTH_DEVICE_ID_KEY)) || "";
+  if (oauthId.trim()) {
+    try { await AsyncStorage.setItem(DEVICE_ID_KEY, oauthId.trim()); } catch {}
+    return oauthId.trim();
+  }
+
+  // XS_PREFER_JWT_DEVICEID_V2 — then prefer the JWT-linked deviceId set in Settings
+const jwtId = (await AsyncStorage.getItem(JWT_DEVICE_ID_KEY)) || "";
+  if (jwtId.trim()) return jwtId.trim();
+const existing = (await AsyncStorage.getItem(DEVICE_ID_KEY)) || "";
+  if (existing.trim()) return existing.trim();
+const generated = `xs-device-${Date.now()}`;
+  await AsyncStorage.setItem(DEVICE_ID_KEY, generated);
+  return generated;
+}, []);
+const loadInitial = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+const id = await ensureDeviceId();
+      setDeviceId(id);
+const res = await myCardsList(id, 50);
+      
+      try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
+      setItems(res.cards || []);
+      setPageInfo(res.pageInfo);
+    } catch (e: any) {
+      setError(e?.message || "Erreur chargement");
+    } finally {
+      setLoading(false);
+    }
+  }, [ensureDeviceId]);
+const loadMore = useCallback(async () => {
+    if (!pageInfo?.hasNextPage || !pageInfo?.endCursor || loadingMoreRef.current || !deviceId) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+const res = await myCardsList(deviceId, 50, pageInfo.endCursor || undefined);
+      
+      try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
+      setItems((prev) => [...prev, ...(res.cards || [])]);
+      setPageInfo(res.pageInfo);
+    } catch (e: any) {
+      setError(e?.message || "Erreur pagination");
+    } finally {
+      setLoadingMore(false);
+      loadingMoreRef.current = false;
+    }
+  }, [deviceId, pageInfo?.endCursor, pageInfo?.hasNextPage]);
+const onSync = useCallback(async () => {
+    if (!deviceId) return;
+    setSyncing(true);
+    setError("");
+    try {
+      await myCardsSync(deviceId, { first: 50, maxPages: 80, maxCards: 20000, sleepMs: 250 });
+      await loadInitial();
+    } catch (e: any) {
+      setError(e?.message || "Erreur synchronisation");
+    } finally {
+      setSyncing(false);
+    }
+  }, [deviceId, loadInitial]);
+
+  useEffect(() => {
+    loadInitial();
+  }, [loadInitial]);
+const { width } = useWindowDimensions();
+const layout = useMemo(() => {
+const H_PADDING = 16;
+const GAP = 12;
+const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
+    return { H_PADDING, GAP, itemWidth };
+  }, [width]);
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
+
+      <View style={{ padding: 16, gap: 10 }}>
+        <Text style={{ color: theme.text, fontSize: 22, fontWeight: "900" }}>Mes cartes</Text>
+
+        <Pressable
+          onPress={onSync}
+          disabled={syncing || loading}
+          style={{
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            alignSelf: "flex-start",
+            borderRadius: 14,
+            backgroundColor: "rgba(59,130,246,0.18)",
+            borderWidth: 1,
+            borderColor: "rgba(59,130,246,0.35)",
+            opacity: syncing || loading ? 0.7 : 1,
+          }}
+        >
+          <Text style={{ color: theme.text, fontWeight: "900" }}>{syncing ? "Synchronisation…" : "Synchroniser"}</Text>
+
+============================================================
+HIT LINE 418:       setPageInfo(res.pageInfo);
+RANGE 383 - 488
+============================================================
+const [pageInfo, setPageInfo] = useState<PageInfo | undefined>();
+const [loading, setLoading] = useState(true);
+const [loadingMore, setLoadingMore] = useState(false);
+const [syncing, setSyncing] = useState(false);
+const [error, setError] = useState("");
+  /* XS_UI_LAST_SYNC_LABEL_V1 */
+const [lastSync, setLastSync] = useState<string>("");
+const loadingMoreRef = useRef(false);
+const ensureDeviceId = useCallback(async () => {
+  // XS_PREFER_OAUTH_DEVICEID_V2 — prefer OAuth deviceId (xs_device_id) when available
+const oauthId = (await AsyncStorage.getItem(OAUTH_DEVICE_ID_KEY)) || "";
+  if (oauthId.trim()) {
+    try { await AsyncStorage.setItem(DEVICE_ID_KEY, oauthId.trim()); } catch {}
+    return oauthId.trim();
+  }
+
+  // XS_PREFER_JWT_DEVICEID_V2 — then prefer the JWT-linked deviceId set in Settings
+const jwtId = (await AsyncStorage.getItem(JWT_DEVICE_ID_KEY)) || "";
+  if (jwtId.trim()) return jwtId.trim();
+const existing = (await AsyncStorage.getItem(DEVICE_ID_KEY)) || "";
+  if (existing.trim()) return existing.trim();
+const generated = `xs-device-${Date.now()}`;
+  await AsyncStorage.setItem(DEVICE_ID_KEY, generated);
+  return generated;
+}, []);
+const loadInitial = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+const id = await ensureDeviceId();
+      setDeviceId(id);
+const res = await myCardsList(id, 50);
+      
+      try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
+      setItems(res.cards || []);
+      setPageInfo(res.pageInfo);
+    } catch (e: any) {
+      setError(e?.message || "Erreur chargement");
+    } finally {
+      setLoading(false);
+    }
+  }, [ensureDeviceId]);
+const loadMore = useCallback(async () => {
+    if (!pageInfo?.hasNextPage || !pageInfo?.endCursor || loadingMoreRef.current || !deviceId) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+const res = await myCardsList(deviceId, 50, pageInfo.endCursor || undefined);
+      
+      try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
+      setItems((prev) => [...prev, ...(res.cards || [])]);
+      setPageInfo(res.pageInfo);
+    } catch (e: any) {
+      setError(e?.message || "Erreur pagination");
+    } finally {
+      setLoadingMore(false);
+      loadingMoreRef.current = false;
+    }
+  }, [deviceId, pageInfo?.endCursor, pageInfo?.hasNextPage]);
+const onSync = useCallback(async () => {
+    if (!deviceId) return;
+    setSyncing(true);
+    setError("");
+    try {
+      await myCardsSync(deviceId, { first: 50, maxPages: 80, maxCards: 20000, sleepMs: 250 });
+      await loadInitial();
+    } catch (e: any) {
+      setError(e?.message || "Erreur synchronisation");
+    } finally {
+      setSyncing(false);
+    }
+  }, [deviceId, loadInitial]);
+
+  useEffect(() => {
+    loadInitial();
+  }, [loadInitial]);
+const { width } = useWindowDimensions();
+const layout = useMemo(() => {
+const H_PADDING = 16;
+const GAP = 12;
+const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
+    return { H_PADDING, GAP, itemWidth };
+  }, [width]);
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
+
+      <View style={{ padding: 16, gap: 10 }}>
+        <Text style={{ color: theme.text, fontSize: 22, fontWeight: "900" }}>Mes cartes</Text>
+
+        <Pressable
+          onPress={onSync}
+          disabled={syncing || loading}
+          style={{
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            alignSelf: "flex-start",
+            borderRadius: 14,
+            backgroundColor: "rgba(59,130,246,0.18)",
+            borderWidth: 1,
+            borderColor: "rgba(59,130,246,0.35)",
+            opacity: syncing || loading ? 0.7 : 1,
+          }}
+        >
+          <Text style={{ color: theme.text, fontWeight: "900" }}>{syncing ? "Synchronisation…" : "Synchroniser"}</Text>
+</Pressable>
+
+============================================================
+HIT LINE 425: const loadMore = useCallback(async () => {
+RANGE 390 - 495
+============================================================
+const loadingMoreRef = useRef(false);
+const ensureDeviceId = useCallback(async () => {
+  // XS_PREFER_OAUTH_DEVICEID_V2 — prefer OAuth deviceId (xs_device_id) when available
+const oauthId = (await AsyncStorage.getItem(OAUTH_DEVICE_ID_KEY)) || "";
+  if (oauthId.trim()) {
+    try { await AsyncStorage.setItem(DEVICE_ID_KEY, oauthId.trim()); } catch {}
+    return oauthId.trim();
+  }
+
+  // XS_PREFER_JWT_DEVICEID_V2 — then prefer the JWT-linked deviceId set in Settings
+const jwtId = (await AsyncStorage.getItem(JWT_DEVICE_ID_KEY)) || "";
+  if (jwtId.trim()) return jwtId.trim();
+const existing = (await AsyncStorage.getItem(DEVICE_ID_KEY)) || "";
+  if (existing.trim()) return existing.trim();
+const generated = `xs-device-${Date.now()}`;
+  await AsyncStorage.setItem(DEVICE_ID_KEY, generated);
+  return generated;
+}, []);
+const loadInitial = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+const id = await ensureDeviceId();
+      setDeviceId(id);
+const res = await myCardsList(id, 50);
+      
+      try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
+      setItems(res.cards || []);
+      setPageInfo(res.pageInfo);
+    } catch (e: any) {
+      setError(e?.message || "Erreur chargement");
+    } finally {
+      setLoading(false);
+    }
+  }, [ensureDeviceId]);
+const loadMore = useCallback(async () => {
+    if (!pageInfo?.hasNextPage || !pageInfo?.endCursor || loadingMoreRef.current || !deviceId) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+const res = await myCardsList(deviceId, 50, pageInfo.endCursor || undefined);
+      
+      try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
+      setItems((prev) => [...prev, ...(res.cards || [])]);
+      setPageInfo(res.pageInfo);
+    } catch (e: any) {
+      setError(e?.message || "Erreur pagination");
+    } finally {
+      setLoadingMore(false);
+      loadingMoreRef.current = false;
+    }
+  }, [deviceId, pageInfo?.endCursor, pageInfo?.hasNextPage]);
+const onSync = useCallback(async () => {
+    if (!deviceId) return;
+    setSyncing(true);
+    setError("");
+    try {
+      await myCardsSync(deviceId, { first: 50, maxPages: 80, maxCards: 20000, sleepMs: 250 });
+      await loadInitial();
+    } catch (e: any) {
+      setError(e?.message || "Erreur synchronisation");
+    } finally {
+      setSyncing(false);
+    }
+  }, [deviceId, loadInitial]);
+
+  useEffect(() => {
+    loadInitial();
+  }, [loadInitial]);
+const { width } = useWindowDimensions();
+const layout = useMemo(() => {
+const H_PADDING = 16;
+const GAP = 12;
+const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
+    return { H_PADDING, GAP, itemWidth };
+  }, [width]);
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
+
+      <View style={{ padding: 16, gap: 10 }}>
+        <Text style={{ color: theme.text, fontSize: 22, fontWeight: "900" }}>Mes cartes</Text>
+
+        <Pressable
+          onPress={onSync}
+          disabled={syncing || loading}
+          style={{
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            alignSelf: "flex-start",
+            borderRadius: 14,
+            backgroundColor: "rgba(59,130,246,0.18)",
+            borderWidth: 1,
+            borderColor: "rgba(59,130,246,0.35)",
+            opacity: syncing || loading ? 0.7 : 1,
+          }}
+        >
+          <Text style={{ color: theme.text, fontWeight: "900" }}>{syncing ? "Synchronisation…" : "Synchroniser"}</Text>
+</Pressable>
+
+        {error ? (
+          <Text style={{ color: theme.bad, fontWeight: "800" }}>Erreur: {error}</Text>
+        ) : (
+          <View style={{ gap: 2 }}>
+            {lastSync ? <Text style={{ color: theme.muted }}>Dernière sync: {lastSync}</Text> : null}
+          </View>
+
+============================================================
+HIT LINE 430: const res = await myCardsList(deviceId, 50, pageInfo.endCursor || undefined);
+RANGE 395 - 500
+============================================================
+    try { await AsyncStorage.setItem(DEVICE_ID_KEY, oauthId.trim()); } catch {}
+    return oauthId.trim();
+  }
+
+  // XS_PREFER_JWT_DEVICEID_V2 — then prefer the JWT-linked deviceId set in Settings
+const jwtId = (await AsyncStorage.getItem(JWT_DEVICE_ID_KEY)) || "";
+  if (jwtId.trim()) return jwtId.trim();
+const existing = (await AsyncStorage.getItem(DEVICE_ID_KEY)) || "";
+  if (existing.trim()) return existing.trim();
+const generated = `xs-device-${Date.now()}`;
+  await AsyncStorage.setItem(DEVICE_ID_KEY, generated);
+  return generated;
+}, []);
+const loadInitial = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+const id = await ensureDeviceId();
+      setDeviceId(id);
+const res = await myCardsList(id, 50);
+      
+      try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
+      setItems(res.cards || []);
+      setPageInfo(res.pageInfo);
+    } catch (e: any) {
+      setError(e?.message || "Erreur chargement");
+    } finally {
+      setLoading(false);
+    }
+  }, [ensureDeviceId]);
+const loadMore = useCallback(async () => {
+    if (!pageInfo?.hasNextPage || !pageInfo?.endCursor || loadingMoreRef.current || !deviceId) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+const res = await myCardsList(deviceId, 50, pageInfo.endCursor || undefined);
+      
+      try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
+      setItems((prev) => [...prev, ...(res.cards || [])]);
+      setPageInfo(res.pageInfo);
+    } catch (e: any) {
+      setError(e?.message || "Erreur pagination");
+    } finally {
+      setLoadingMore(false);
+      loadingMoreRef.current = false;
+    }
+  }, [deviceId, pageInfo?.endCursor, pageInfo?.hasNextPage]);
+const onSync = useCallback(async () => {
+    if (!deviceId) return;
+    setSyncing(true);
+    setError("");
+    try {
+      await myCardsSync(deviceId, { first: 50, maxPages: 80, maxCards: 20000, sleepMs: 250 });
+      await loadInitial();
+    } catch (e: any) {
+      setError(e?.message || "Erreur synchronisation");
+    } finally {
+      setSyncing(false);
+    }
+  }, [deviceId, loadInitial]);
+
+  useEffect(() => {
+    loadInitial();
+  }, [loadInitial]);
+const { width } = useWindowDimensions();
+const layout = useMemo(() => {
+const H_PADDING = 16;
+const GAP = 12;
+const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
+    return { H_PADDING, GAP, itemWidth };
+  }, [width]);
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
+
+      <View style={{ padding: 16, gap: 10 }}>
+        <Text style={{ color: theme.text, fontSize: 22, fontWeight: "900" }}>Mes cartes</Text>
+
+        <Pressable
+          onPress={onSync}
+          disabled={syncing || loading}
+          style={{
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            alignSelf: "flex-start",
+            borderRadius: 14,
+            backgroundColor: "rgba(59,130,246,0.18)",
+            borderWidth: 1,
+            borderColor: "rgba(59,130,246,0.35)",
+            opacity: syncing || loading ? 0.7 : 1,
+          }}
+        >
+          <Text style={{ color: theme.text, fontWeight: "900" }}>{syncing ? "Synchronisation…" : "Synchroniser"}</Text>
+</Pressable>
+
+        {error ? (
+          <Text style={{ color: theme.bad, fontWeight: "800" }}>Erreur: {error}</Text>
+        ) : (
+          <View style={{ gap: 2 }}>
+            {lastSync ? <Text style={{ color: theme.muted }}>Dernière sync: {lastSync}</Text> : null}
+          </View>
+        )}
+      </View>
+
+      {loading ? (
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+
+============================================================
+HIT LINE 433:       setItems((prev) => [...prev, ...(res.cards || [])]);
+RANGE 398 - 503
+============================================================
+
+  // XS_PREFER_JWT_DEVICEID_V2 — then prefer the JWT-linked deviceId set in Settings
+const jwtId = (await AsyncStorage.getItem(JWT_DEVICE_ID_KEY)) || "";
+  if (jwtId.trim()) return jwtId.trim();
+const existing = (await AsyncStorage.getItem(DEVICE_ID_KEY)) || "";
+  if (existing.trim()) return existing.trim();
+const generated = `xs-device-${Date.now()}`;
+  await AsyncStorage.setItem(DEVICE_ID_KEY, generated);
+  return generated;
+}, []);
+const loadInitial = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+const id = await ensureDeviceId();
+      setDeviceId(id);
+const res = await myCardsList(id, 50);
+      
+      try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
+      setItems(res.cards || []);
+      setPageInfo(res.pageInfo);
+    } catch (e: any) {
+      setError(e?.message || "Erreur chargement");
+    } finally {
+      setLoading(false);
+    }
+  }, [ensureDeviceId]);
+const loadMore = useCallback(async () => {
+    if (!pageInfo?.hasNextPage || !pageInfo?.endCursor || loadingMoreRef.current || !deviceId) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+const res = await myCardsList(deviceId, 50, pageInfo.endCursor || undefined);
+      
+      try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
+      setItems((prev) => [...prev, ...(res.cards || [])]);
+      setPageInfo(res.pageInfo);
+    } catch (e: any) {
+      setError(e?.message || "Erreur pagination");
+    } finally {
+      setLoadingMore(false);
+      loadingMoreRef.current = false;
+    }
+  }, [deviceId, pageInfo?.endCursor, pageInfo?.hasNextPage]);
+const onSync = useCallback(async () => {
+    if (!deviceId) return;
+    setSyncing(true);
+    setError("");
+    try {
+      await myCardsSync(deviceId, { first: 50, maxPages: 80, maxCards: 20000, sleepMs: 250 });
+      await loadInitial();
+    } catch (e: any) {
+      setError(e?.message || "Erreur synchronisation");
+    } finally {
+      setSyncing(false);
+    }
+  }, [deviceId, loadInitial]);
+
+  useEffect(() => {
+    loadInitial();
+  }, [loadInitial]);
+const { width } = useWindowDimensions();
+const layout = useMemo(() => {
+const H_PADDING = 16;
+const GAP = 12;
+const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
+    return { H_PADDING, GAP, itemWidth };
+  }, [width]);
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
+
+      <View style={{ padding: 16, gap: 10 }}>
+        <Text style={{ color: theme.text, fontSize: 22, fontWeight: "900" }}>Mes cartes</Text>
+
+        <Pressable
+          onPress={onSync}
+          disabled={syncing || loading}
+          style={{
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            alignSelf: "flex-start",
+            borderRadius: 14,
+            backgroundColor: "rgba(59,130,246,0.18)",
+            borderWidth: 1,
+            borderColor: "rgba(59,130,246,0.35)",
+            opacity: syncing || loading ? 0.7 : 1,
+          }}
+        >
+          <Text style={{ color: theme.text, fontWeight: "900" }}>{syncing ? "Synchronisation…" : "Synchroniser"}</Text>
+</Pressable>
+
+        {error ? (
+          <Text style={{ color: theme.bad, fontWeight: "800" }}>Erreur: {error}</Text>
+        ) : (
+          <View style={{ gap: 2 }}>
+            {lastSync ? <Text style={{ color: theme.muted }}>Dernière sync: {lastSync}</Text> : null}
+          </View>
+        )}
+      </View>
+
+      {loading ? (
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+          <ActivityIndicator />
+          <Text style={{ color: theme.muted, marginTop: 8 }}>Chargement…</Text>
+        </View>
+
+============================================================
+HIT LINE 434:       setPageInfo(res.pageInfo);
+RANGE 399 - 504
+============================================================
+  // XS_PREFER_JWT_DEVICEID_V2 — then prefer the JWT-linked deviceId set in Settings
+const jwtId = (await AsyncStorage.getItem(JWT_DEVICE_ID_KEY)) || "";
+  if (jwtId.trim()) return jwtId.trim();
+const existing = (await AsyncStorage.getItem(DEVICE_ID_KEY)) || "";
+  if (existing.trim()) return existing.trim();
+const generated = `xs-device-${Date.now()}`;
+  await AsyncStorage.setItem(DEVICE_ID_KEY, generated);
+  return generated;
+}, []);
+const loadInitial = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+const id = await ensureDeviceId();
+      setDeviceId(id);
+const res = await myCardsList(id, 50);
+      
+      try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
+      setItems(res.cards || []);
+      setPageInfo(res.pageInfo);
+    } catch (e: any) {
+      setError(e?.message || "Erreur chargement");
+    } finally {
+      setLoading(false);
+    }
+  }, [ensureDeviceId]);
+const loadMore = useCallback(async () => {
+    if (!pageInfo?.hasNextPage || !pageInfo?.endCursor || loadingMoreRef.current || !deviceId) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+const res = await myCardsList(deviceId, 50, pageInfo.endCursor || undefined);
+      
+      try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
+      setItems((prev) => [...prev, ...(res.cards || [])]);
+      setPageInfo(res.pageInfo);
+    } catch (e: any) {
+      setError(e?.message || "Erreur pagination");
+    } finally {
+      setLoadingMore(false);
+      loadingMoreRef.current = false;
+    }
+  }, [deviceId, pageInfo?.endCursor, pageInfo?.hasNextPage]);
+const onSync = useCallback(async () => {
+    if (!deviceId) return;
+    setSyncing(true);
+    setError("");
+    try {
+      await myCardsSync(deviceId, { first: 50, maxPages: 80, maxCards: 20000, sleepMs: 250 });
+      await loadInitial();
+    } catch (e: any) {
+      setError(e?.message || "Erreur synchronisation");
+    } finally {
+      setSyncing(false);
+    }
+  }, [deviceId, loadInitial]);
+
+  useEffect(() => {
+    loadInitial();
+  }, [loadInitial]);
+const { width } = useWindowDimensions();
+const layout = useMemo(() => {
+const H_PADDING = 16;
+const GAP = 12;
+const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
+    return { H_PADDING, GAP, itemWidth };
+  }, [width]);
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
+
+      <View style={{ padding: 16, gap: 10 }}>
+        <Text style={{ color: theme.text, fontSize: 22, fontWeight: "900" }}>Mes cartes</Text>
+
+        <Pressable
+          onPress={onSync}
+          disabled={syncing || loading}
+          style={{
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            alignSelf: "flex-start",
+            borderRadius: 14,
+            backgroundColor: "rgba(59,130,246,0.18)",
+            borderWidth: 1,
+            borderColor: "rgba(59,130,246,0.35)",
+            opacity: syncing || loading ? 0.7 : 1,
+          }}
+        >
+          <Text style={{ color: theme.text, fontWeight: "900" }}>{syncing ? "Synchronisation…" : "Synchroniser"}</Text>
+</Pressable>
+
+        {error ? (
+          <Text style={{ color: theme.bad, fontWeight: "800" }}>Erreur: {error}</Text>
+        ) : (
+          <View style={{ gap: 2 }}>
+            {lastSync ? <Text style={{ color: theme.muted }}>Dernière sync: {lastSync}</Text> : null}
+          </View>
+        )}
+      </View>
+
+      {loading ? (
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+          <ActivityIndicator />
+          <Text style={{ color: theme.muted, marginTop: 8 }}>Chargement…</Text>
+        </View>
+      ) : (
+
+============================================================
+HIT LINE 487:           <Text style={{ color: theme.text, fontWeight: "900" }}>{syncing ? "Synchronisation…" : "Synchroniser"}</Text>
+RANGE 452 - 557
+============================================================
+      setSyncing(false);
+    }
+  }, [deviceId, loadInitial]);
+
+  useEffect(() => {
+    loadInitial();
+  }, [loadInitial]);
+const { width } = useWindowDimensions();
+const layout = useMemo(() => {
+const H_PADDING = 16;
+const GAP = 12;
+const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
+    return { H_PADDING, GAP, itemWidth };
+  }, [width]);
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
+
+      <View style={{ padding: 16, gap: 10 }}>
+        <Text style={{ color: theme.text, fontSize: 22, fontWeight: "900" }}>Mes cartes</Text>
+
+        <Pressable
+          onPress={onSync}
+          disabled={syncing || loading}
+          style={{
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            alignSelf: "flex-start",
+            borderRadius: 14,
+            backgroundColor: "rgba(59,130,246,0.18)",
+            borderWidth: 1,
+            borderColor: "rgba(59,130,246,0.35)",
+            opacity: syncing || loading ? 0.7 : 1,
+          }}
+        >
+          <Text style={{ color: theme.text, fontWeight: "900" }}>{syncing ? "Synchronisation…" : "Synchroniser"}</Text>
+</Pressable>
+
+        {error ? (
+          <Text style={{ color: theme.bad, fontWeight: "800" }}>Erreur: {error}</Text>
+        ) : (
+          <View style={{ gap: 2 }}>
+            {lastSync ? <Text style={{ color: theme.muted }}>Dernière sync: {lastSync}</Text> : null}
+          </View>
+        )}
+      </View>
+
+      {loading ? (
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+          <ActivityIndicator />
+          <Text style={{ color: theme.muted, marginTop: 8 }}>Chargement…</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={items}
+          keyExtractor={(item) => cardKey(item)}
+        contentContainerStyle={{ paddingHorizontal: XS_MYCARDS_PAD, paddingBottom: 120 }}
+        columnWrapperStyle={{ justifyContent: "space-between", gap: XS_MYCARDS_GAP }}
+        numColumns={2}
+          onEndReachedThreshold={0.6}
+          renderItem={({ item, index }) => {
+            /* XS_MYCARDS_WIDEN_GRID_REAL_V2 — removed isLeft (gap handled by columnWrapperStyle) */
+            return (
+              <View
+                style={{
+                  /* XS_MYCARDS_WIDEN_GRID_REAL_V2 */
+                  width: xsTileWidth2col(width),
+                  marginBottom: XS_MYCARDS_GAP,
+                }}
+              >
+                <CardTile card={item} width={width}  l5Cache={xsL5Cache} />{/* XS_MYCARDS_TILEWIDTH_CALL_FIX_V1 */}
+                {/* XS_MYCARDS_UI_META_ITEM_V1 */}
+                {(() => {
+const player =
+                    xsTxt((item as any)?.anyPlayer?.displayName) ||
+                    xsTxt((item as any)?.player?.displayName) ||
+                    xsTxt((item as any)?.anyPlayer?.slug) ||
+                    "—";
+const club =
+                    xsTxt((item as any)?.anyTeam?.name) ||
+                    xsTxt((item as any)?.player?.activeClub?.name) ||
+                    xsTxt((item as any)?.anyTeam?.slug) ||
+                    "—";
+const grade = xsNum((item as any)?.grade);
+  /* XS_UI_L5L15_V1 */
+const l5  = xsNum((item as any)?.l5);
+const bonus = xsBonusPctFromPower((item as any)?.power);
+                  return null; // XS_FIX_EMPTY_RETURN_V1
+                })()}
+              </View>
+            );
+          }}
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={{ paddingVertical: 16 }}>
+                <ActivityIndicator />
+              </View>
+            ) : (
+              <View style={{ height: 16 }} />
+            )
+          }
+          ListEmptyComponent={
+            <View style={{ padding: 16 }}>
+              <Text style={{ color: theme.muted }}>Aucune carte en cache. Lance une synchronisation.</Text>
+              <Pressable onPress={onSync} style={{ marginTop: 12 }}>
+                <Text style={{ color: theme.accent, fontWeight: "900" }}>Synchroniser</Text>
+
+============================================================
+HIT LINE 555:               <Text style={{ color: theme.muted }}>Aucune carte en cache. Lance une synchronisation.</Text>
+RANGE 520 - 586
+============================================================
+                }}
+              >
+                <CardTile card={item} width={width}  l5Cache={xsL5Cache} />{/* XS_MYCARDS_TILEWIDTH_CALL_FIX_V1 */}
+                {/* XS_MYCARDS_UI_META_ITEM_V1 */}
+                {(() => {
+const player =
+                    xsTxt((item as any)?.anyPlayer?.displayName) ||
+                    xsTxt((item as any)?.player?.displayName) ||
+                    xsTxt((item as any)?.anyPlayer?.slug) ||
+                    "—";
+const club =
+                    xsTxt((item as any)?.anyTeam?.name) ||
+                    xsTxt((item as any)?.player?.activeClub?.name) ||
+                    xsTxt((item as any)?.anyTeam?.slug) ||
+                    "—";
+const grade = xsNum((item as any)?.grade);
+  /* XS_UI_L5L15_V1 */
+const l5  = xsNum((item as any)?.l5);
+const bonus = xsBonusPctFromPower((item as any)?.power);
+                  return null; // XS_FIX_EMPTY_RETURN_V1
+                })()}
+              </View>
+            );
+          }}
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={{ paddingVertical: 16 }}>
+                <ActivityIndicator />
+              </View>
+            ) : (
+              <View style={{ height: 16 }} />
+            )
+          }
+          ListEmptyComponent={
+            <View style={{ padding: 16 }}>
+              <Text style={{ color: theme.muted }}>Aucune carte en cache. Lance une synchronisation.</Text>
+              <Pressable onPress={onSync} style={{ marginTop: 12 }}>
+                <Text style={{ color: theme.accent, fontWeight: "900" }}>Synchroniser</Text>
+</Pressable>
+            </View>
+          }
+        />
+      )}
+    </SafeAreaView>
+  );
+  /* XS_MY_CARDS_UI_V1_END */
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+============================================================
+HIT LINE 557:                 <Text style={{ color: theme.accent, fontWeight: "900" }}>Synchroniser</Text>
+RANGE 522 - 586
+============================================================
+                <CardTile card={item} width={width}  l5Cache={xsL5Cache} />{/* XS_MYCARDS_TILEWIDTH_CALL_FIX_V1 */}
+                {/* XS_MYCARDS_UI_META_ITEM_V1 */}
+                {(() => {
+const player =
+                    xsTxt((item as any)?.anyPlayer?.displayName) ||
+                    xsTxt((item as any)?.player?.displayName) ||
+                    xsTxt((item as any)?.anyPlayer?.slug) ||
+                    "—";
+const club =
+                    xsTxt((item as any)?.anyTeam?.name) ||
+                    xsTxt((item as any)?.player?.activeClub?.name) ||
+                    xsTxt((item as any)?.anyTeam?.slug) ||
+                    "—";
+const grade = xsNum((item as any)?.grade);
+  /* XS_UI_L5L15_V1 */
+const l5  = xsNum((item as any)?.l5);
+const bonus = xsBonusPctFromPower((item as any)?.power);
+                  return null; // XS_FIX_EMPTY_RETURN_V1
+                })()}
+              </View>
+            );
+          }}
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={{ paddingVertical: 16 }}>
+                <ActivityIndicator />
+              </View>
+            ) : (
+              <View style={{ height: 16 }} />
+            )
+          }
+          ListEmptyComponent={
+            <View style={{ padding: 16 }}>
+              <Text style={{ color: theme.muted }}>Aucune carte en cache. Lance une synchronisation.</Text>
+              <Pressable onPress={onSync} style={{ marginTop: 12 }}>
+                <Text style={{ color: theme.accent, fontWeight: "900" }}>Synchroniser</Text>
+</Pressable>
+            </View>
+          }
+        />
+      )}
+    </SafeAreaView>
+  );
+  /* XS_MY_CARDS_UI_V1_END */
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

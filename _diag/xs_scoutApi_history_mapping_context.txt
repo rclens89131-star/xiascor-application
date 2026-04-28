@@ -1,0 +1,71 @@
+﻿): Promise<PublicPlayerPerformance> {
+  const s = String(slug || "").trim();
+  if (!s) throw new Error("player slug missing");
+
+  const did = String(opts?.deviceId || "").trim();
+const PERF_BASE_URL = "https://xiascor-backend-tssdy62zqa-ez.a.run.app"; /* XS_PUBLIC_PLAYER_PERF_FORCE_CLOUDRUN_V1 */
+  const limit = 40;
+
+  async function fetchPerfOnce(): Promise<any> {
+    const qs = new URLSearchParams();
+    qs.set("slug", s);
+    if (did) qs.set("deviceId", did);
+    const url = `${PERF_BASE_URL}/public-player-performance?${qs.toString()}`;
+    const r = await fetch(url, { headers: { accept: "application/json", "ngrok-skip-browser-warning": "1" } }); /* XS_NGROK_SKIP_HEADER_V1 */
+    const txt = await r.text();
+    let json: any = null;
+    try { json = txt ? JSON.parse(txt) : null; } catch {}
+    if (!r.ok) {
+      const msg = (json && (json.error || json.message)) ? (json.error || json.message) : ("HTTP " + r.status);
+      throw new Error("public-player-performance failed: " + msg);
+    }
+    return json || {};
+  }
+
+  async function fetchChartOnce(): Promise<any> {
+    const url = `${PERF_BASE_URL}/history/player-chart/${encodeURIComponent(s)}?limit=${limit}`;
+    const r = await fetch(url, { headers: { accept: "application/json", "ngrok-skip-browser-warning": "1" } }); /* XS_NGROK_SKIP_HEADER_V1 */
+    const txt = await r.text();
+    let json: any = null;
+    try { json = txt ? JSON.parse(txt) : null; } catch {}
+    if (!r.ok) {
+      const msg = (json && (json.error || json.message)) ? (json.error || json.message) : ("HTTP " + r.status);
+      throw new Error("history/player-chart failed: " + msg);
+    }
+    return json || {};
+  }
+
+  try {
+    const perf: any = await fetchPerfOnce();
+    const perfScores = Array.isArray(perf?.recentScores)
+      ? perf.recentScores.map((x: any) => Number(x)).filter((n: any) => Number.isFinite(n))
+      : [];
+
+    const perfOppsRaw = Array.isArray(perf?.recentOpponents)
+      ? perf.recentOpponents
+      : (Array.isArray(perf?.opponents) ? perf.opponents : []);
+
+    const perfOpps = perfOppsRaw.map((o: any) => ({
+      logoUrl: String(o?.logoUrl || "").trim() || null,
+      shortName: String(o?.shortName || o?.name || o?.slug || "").trim() || null,
+      opponent: String(o?.name || o?.opponent || "").trim() || null,
+      homeAway: String(o?.homeAway || "").trim() || null,
+    }));
+
+    if (perfScores.length > 0) {
+      function avg(arr: number[], take: number): number | null {
+        const slice = arr.slice(0, take).filter((n) => Number.isFinite(n));
+        if (!slice.length) return null;
+        const sum = slice.reduce((a, b) => a + b, 0);
+        return Math.round((sum / slice.length) * 10) / 10;
+      }
+
+      return {
+        playerSlug: String(perf?.playerSlug || s),
+        playerName: perf?.playerName ?? null,
+        position: perf?.position ?? null,
+        activeClub: perf?.activeClub ?? null,
+        lastScore: perfScores.length ? perfScores[0] : null,
+        l5: (typeof perf?.l5 === "number") ? perf.l5 : avg(perfScores, 5),
+        l15: (typeof perf?.l15 === "number") ? perf.l15 : avg(perfScores, 15),
+        recentScores: perfScores,

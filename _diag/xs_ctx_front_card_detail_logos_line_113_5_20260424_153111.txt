@@ -1,46 +1,8 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { ScrollView, Text, View } from "react-native";
-import { useLocalSearchParams } from "expo-router";
-import { theme } from "../../src/theme";
-import { xsCardNavGet } from "../_lib/cardNavCache";
-import { publicPlayerPerformance } from "../../src/scoutApi";
-import SorarePerformanceChart from "../../src/components/SorarePerformanceChart";
+﻿FILE: C:\Users\rclen\Desktop\sorare-app\app\card\[id].tsx
+PATTERN: publicPlayerPerformance|opponentLogoUrls|recentOpponents|opponents|deviceId
+LINE: 113
+RANGE: 43 - 243
 
-function pickStr(v: any): string {
-  return typeof v === "string" && v.trim() ? v.trim() : "—";
-}
-
-function asNum(v: any): number | null {
-  if (typeof v === "number" && Number.isFinite(v)) return v;
-  if (typeof v === "string") {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
-  }
-  return null;
-}
-
-function avgOf(arr: any[]): number | null {
-  if (!Array.isArray(arr) || arr.length === 0) return null;
-  const nums = arr
-    .map((x) => (typeof x === "number" ? x : Number(x)))
-    .filter((n) => Number.isFinite(n));
-  if (nums.length === 0) return null;
-  const sum = nums.reduce((a, b) => a + b, 0);
-  return Number((sum / nums.length).toFixed(1));
-}
-
-export default function CardDetailScreen() {
-  const params = useLocalSearchParams();
-  const id = String((params as any)?.id ?? "").trim();
-  const playerSlugParam = String((params as any)?.playerSlug ?? "").trim();
-
-  const card = useMemo(() => {
-    if (!id) return null;
-    try {
-      return xsCardNavGet(id);
-    } catch {
-      return null;
     }
   }, [id]);
 
@@ -54,7 +16,6 @@ export default function CardDetailScreen() {
   }, [playerSlugParam, card]);
 
   const [perf, setPerf] = useState<any>(null);
-  const [historyChart, setHistoryChart] = useState<any[]>([]); // XS_HISTORY_CHART_LOGOS_LOAD_V1
   const [state, setState] = useState<"idle" | "loading" | "ok" | "err">("idle");
   const [error, setError] = useState("");
   const [activeSeries, setActiveSeries] = useState<"L5" | "L15" | "L40">("L5");
@@ -78,50 +39,9 @@ export default function CardDetailScreen() {
       }
 
       try {
-                // XS_CARD_DETAIL_PASS_DEVICEID_TO_PERF_V1 BEGIN
-        let xsPerfDeviceId = "";
-        try {
-          const keys = [
-            "xs_device_id",
-            "xs_device_id_v1",
-            "XS_DEVICE_ID_V1",
-            "xs_jwt_device_id_v1",
-            "XS_JWT_DEVICE_ID_V1",
-            "jwt_device_id",
-            "deviceId"
-          ];
-
-          for (const k of keys) {
-            const v = await AsyncStorage.getItem(k);
-            if (v && String(v).trim()) {
-              xsPerfDeviceId = String(v).trim();
-              break;
-            }
-          }
-        } catch {}
-
-        const resp = await publicPlayerPerformance(
-          playerSlug,
-          xsPerfDeviceId ? { deviceId: xsPerfDeviceId } : undefined
-        );
-        // XS_CARD_DETAIL_PASS_DEVICEID_TO_PERF_V1 END
+        const resp = await publicPlayerPerformance(playerSlug);
         if (cancelled) return;
         setPerf(resp || null);
-
-        // XS_HISTORY_CHART_LOGOS_LOAD_V1
-        try {
-          const base = String(process.env.EXPO_PUBLIC_BASE_URL || "https://xiascor-backend-tssdy62zqa-ez.a.run.app").replace(/\/+$/, "");
-          const histUrl = `${base}/history/player-chart/${encodeURIComponent(playerSlug)}?limit=5`;
-          console.log("[card history logos] url=", histUrl);
-          const histResp = await fetch(histUrl);
-          const histJson = await histResp.json();
-          const items = Array.isArray(histJson?.items) ? histJson.items : [];
-          console.log("[card history logos] count=", items.length, "logos=", items.map((x:any)=>x?.opponentLogoUrl).filter(Boolean).length);
-          if (!cancelled) setHistoryChart(items);
-        } catch (histErr:any) {
-          console.log("[card history logos] error=", String(histErr?.message || histErr));
-          if (!cancelled) setHistoryChart([]);
-        }
         setState("ok");
       } catch (e: any) {
         if (cancelled) return;
@@ -168,9 +88,7 @@ export default function CardDetailScreen() {
   // XS_FIX_CARD_DETAIL_OPPONENT_LOGOS_NESTED_V1 BEGIN
   // Sert à afficher le logo du club adverse sous chaque barre de performance.
   // On garde un fallback texte si l'API ne donne pas encore de logo.
-    const xsOppSlice = Array.isArray(historyChart) && historyChart.length
-    ? historyChart.slice(0, scores.length || 5)
-    : (Array.isArray(series.opp) ? series.opp.slice(0, scores.length || 5) : []);
+  const xsOppSlice = Array.isArray(series.opp) ? series.opp.slice(0, scores.length || 5) : [];
 
   function xsPickOpponentLogoUrl(x: any): string | null {
     const raw =
@@ -235,7 +153,7 @@ export default function CardDetailScreen() {
     return s.length > 0 ? s : null;
   }
 
-    const xsOpponentLogoUrls = xsOppSlice.map((x: any) => xsPickOpponentLogoUrl(x));
+  const xsOpponentLogoUrls = xsOppSlice.map((x: any) => xsPickOpponentLogoUrl(x));
   const xsOpponentShort = xsOppSlice.map((x: any) => xsPickOpponentShort(x));
   // XS_FIX_CARD_DETAIL_OPPONENT_LOGOS_NESTED_V1 END
 const avg5 = avgOf(series.l5) ?? asNum((card as any)?.l5) ?? asNum((perf as any)?.l5);
@@ -286,84 +204,3 @@ const avg5 = avgOf(series.l5) ?? asNum((card as any)?.l5) ?? asNum((perf as any)
           <View style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.stroke }}>
             <Text style={{ color: theme.text, fontWeight: "700" }}>Serial: {serial}</Text>
           </View>
-        </View>
-      </View>
-
-      <View style={{ borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, padding: 14 }}>
-        <Text style={{ color: theme.text, fontSize: 18, fontWeight: "900" }}>Forme</Text>
-
-        <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
-          {pill("L5")}
-          {pill("L15")}
-          {pill("L40")}
-        </View>
-
-        <View style={{ marginTop: 12 }}>
-          {state === "loading" ? (
-            <Text style={{ color: theme.muted }}>Chargement…</Text>
-          ) : state === "err" ? (
-            <Text style={{ color: "#FF7B7B" }}>Erreur de chargement: {error || "inconnue"}</Text>
-          ) : scores.length > 0 ? (
-            <SorarePerformanceChart
-              recentScores={scores as any}
-              opponentLogoUrls={xsOpponentLogoUrls}
-              opponentShort={xsOpponentShort}
-            />
-          ) : (
-            <Text style={{ color: theme.muted }}>
-              {playerSlug ? "Aucun score disponible." : "playerSlug manquant."}
-            </Text>
-          )}
-        </View>
-      </View>
-
-      <View style={{ flexDirection: "row", gap: 10 }}>
-        <View style={{ flex: 1, borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, padding: 14 }}>
-          <Text style={{ color: theme.muted, fontSize: 12, fontWeight: "700" }}>L5</Text>
-          <Text style={{ color: theme.text, fontSize: 24, fontWeight: "900", marginTop: 4 }}>
-            {avg5 == null ? "—" : String(avg5)}
-          </Text>
-        </View>
-
-        <View style={{ flex: 1, borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, padding: 14 }}>
-          <Text style={{ color: theme.muted, fontSize: 12, fontWeight: "700" }}>L15</Text>
-          <Text style={{ color: theme.text, fontSize: 24, fontWeight: "900", marginTop: 4 }}>
-            {avg15 == null ? "—" : String(avg15)}
-          </Text>
-        </View>
-
-        <View style={{ flex: 1, borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, padding: 14 }}>
-          <Text style={{ color: theme.muted, fontSize: 12, fontWeight: "700" }}>L40</Text>
-          <Text style={{ color: theme.text, fontSize: 24, fontWeight: "900", marginTop: 4 }}>
-            {avg40 == null ? "—" : String(avg40)}
-          </Text>
-        </View>
-      </View>
-
-      <View style={{ borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, padding: 14, gap: 6 }}>
-        <Text style={{ color: theme.text, fontSize: 16, fontWeight: "900" }}>Debug utile minimal</Text>
-        <Text style={{ color: theme.muted }}>route id: {id || "—"}</Text>
-        <Text style={{ color: theme.muted }}>playerSlug: {playerSlug || "—"}</Text>
-        <Text style={{ color: theme.muted }}>
-          cache card: {card ? "oui" : "non"}
-        </Text>
-        <Text style={{ color: theme.muted }}>
-          recentScores: {Array.isArray((perf as any)?.recentScores) ? (perf as any).recentScores.length : 0}
-        </Text>
-        <Text style={{ color: theme.muted }}>
-          recentScores15: {Array.isArray((perf as any)?.recentScores15) ? (perf as any).recentScores15.length : 0}
-        </Text>
-        <Text style={{ color: theme.muted }}>
-          recentScores40: {Array.isArray((perf as any)?.recentScores40) ? (perf as any).recentScores40.length : 0}
-        </Text>
-      </View>
-    </ScrollView>
-  );
-}
-
-
-
-
-
-
-

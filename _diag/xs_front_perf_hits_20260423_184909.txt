@@ -1,0 +1,107 @@
+﻿
+app\(tabs)\cards.tsx:25:    const playerSlug = String(card?.anyPlayer?.slug ?? card?.player?.slug ?? card?.playerSlug ?? "").trim();
+app\(tabs)\cards.tsx:26:    const id = String(card?.id ?? card?.cardId ?? card?.slug ?? playerSlug ?? "").trim();
+app\(tabs)\cards.tsx:27:    return { id, playerSlug };
+app\(tabs)\cards.tsx:45:import { publicPlayerPerformance } from "../../src/scoutApi";
+app\(tabs)\cards.tsx:58:  player?: { displayName?: string | null; activeClub?: { name?: string | null } | null } | null;
+app\(tabs)\cards.tsx:97:    card?.recentScores ??
+app\(tabs)\cards.tsx:145:    card?.recentScores ??
+app\(tabs)\cards.tsx:183:    card?.recentScores,
+app\(tabs)\cards.tsx:192:    card?.player?.recentScores,
+app\(tabs)\cards.tsx:195:    card?.anyPlayer?.recentScores,
+app\(tabs)\cards.tsx:239:function XSL5MiniBars(props: { values: number[]; opponents?: any[] }) {
+app\(tabs)\cards.tsx:241:  const opponents = Array.isArray((props as any)?.opponents) ? (props as any).opponents.slice(-5) : [];
+app\(tabs)\cards.tsx:247:      opponents={opponents}
+app\(tabs)\cards.tsx:256:const clubName   = xsSafeStr(card?.anyTeam?.name || card?.player?.activeClub?.name || "—");
+app\(tabs)\cards.tsx:262:const playerSlugKey = String((card as any)?.anyPlayer?.slug || (card as any)?.playerSlug || (card as any)?.player?.slug || "").trim();
+app\(tabs)\cards.tsx:266:    : (playerSlugKey && Array.isArray((l5Cache as any)[playerSlugKey]) ? (l5Cache as any)[playerSlugKey] : []);
+app\(tabs)\cards.tsx:280:          const playerSlug =
+app\(tabs)\cards.tsx:286:          const navId = String(id || playerSlug || "");
+app\(tabs)\cards.tsx:292:              playerSlug,
+app\(tabs)\cards.tsx:298:              params: { id: navId, playerSlug: String(playerSlug || "") },
+app\(tabs)\cards.tsx:308:      clubName={clubName}
+app\(tabs)\cards.tsx:347:        .map((c: any) => String(c?.anyPlayer?.slug || c?.playerSlug || c?.player?.slug || "").trim())
+app\(tabs)\cards.tsx:363:          const resp: any = await publicPlayerPerformance(slug);
+app\(tabs)\cards.tsx:364:          const arr = Array.isArray(resp?.recentScores) ? resp.recentScores.slice(0, 5) : [];
+app\(tabs)\cards.tsx:530:const club =
+app\(tabs)\cards.tsx:532:                    xsTxt((item as any)?.player?.activeClub?.name) ||
+app\card\[id].tsx:6:import { publicPlayerPerformance } from "../../src/scoutApi";
+app\card\[id].tsx:7:import SorarePerformanceChart from "../../src/components/SorarePerformanceChart";
+app\card\[id].tsx:35:  const playerSlugParam = String((params as any)?.playerSlug ?? "").trim();
+app\card\[id].tsx:46:  const playerSlug = useMemo(() => {
+app\card\[id].tsx:50:      (card as any)?.playerSlug ??
+app\card\[id].tsx:52:    return String(playerSlugParam || fromCard || "").trim();
+app\card\[id].tsx:53:  }, [playerSlugParam, card]);
+app\card\[id].tsx:64:      if (!playerSlug) {
+app\card\[id].tsx:79:        const resp = await publicPlayerPerformance(playerSlug);
+app\card\[id].tsx:93:  }, [playerSlug]);
+app\card\[id].tsx:96:  const teamName = pickStr((card as any)?.anyTeam?.name ?? (card as any)?.player?.activeClub?.name ?? perf?.activeClub?.name);
+app\card\[id].tsx:103:    const l5 = Array.isArray((perf as any)?.recentScores) ? (perf as any).recentScores.slice(0, 5) : [];
+app\card\[id].tsx:104:    const l15 = Array.isArray((perf as any)?.recentScores15)
+app\card\[id].tsx:105:      ? (perf as any).recentScores15.slice(0, 15)
+app\card\[id].tsx:106:      : (Array.isArray((perf as any)?.recentScores) ? (perf as any).recentScores.slice(0, 15) : []);
+app\card\[id].tsx:107:    const l40 = Array.isArray((perf as any)?.recentScores40)
+app\card\[id].tsx:108:      ? (perf as any).recentScores40.slice(0, 40)
+app\card\[id].tsx:109:      : (Array.isArray((perf as any)?.recentScores) ? (perf as any).recentScores.slice(0, 40) : []);
+app\card\[id].tsx:110:    const opp = Array.isArray((perf as any)?.recentOpponents) ? (perf as any).recentOpponents : [];
+app\card\[id].tsx:185:            <SorarePerformanceChart
+app\card\[id].tsx:186:              recentScores={scores as any}
+app\card\[id].tsx:190:              {playerSlug ? "Aucun score disponible." : "playerSlug manquant."}
+app\card\[id].tsx:222:        <Text style={{ color: theme.muted }}>playerSlug: {playerSlug || "—"}</Text>
+app\card\[id].tsx:227:          recentScores: {Array.isArray((perf as any)?.recentScores) ? (perf as any).recentScores.length : 0}
+app\card\[id].tsx:230:          recentScores15: {Array.isArray((perf as any)?.recentScores15) ? (perf as any).recentScores15.length : 0}
+app\card\[id].tsx:233:          recentScores40: {Array.isArray((perf as any)?.recentScores40) ? (perf as any).recentScores40.length : 0}
+src\components\SorareCardTile.tsx:52:    c.clubName ??
+src\components\SorareCardTile.tsx:78:    Array.isArray(c.recentScores) ? c.recentScores :
+src\components\SorarePerformanceChart.tsx:6:  recentScores: number[];
+src\components\SorarePerformanceChart.tsx:7:  // Optionnel: logos adverses alignés sur recentScores (même longueur). Si absent => placeholder texte.
+src\components\SorarePerformanceChart.tsx:8:  opponentLogoUrls?: (string | null | undefined)[];
+src\components\SorarePerformanceChart.tsx:9:  opponentShort?: (string | null | undefined)[];
+src\components\SorarePerformanceChart.tsx:28:export default function SorarePerformanceChart({
+src\components\SorarePerformanceChart.tsx:29:  recentScores,
+src\components\SorarePerformanceChart.tsx:30:  opponentLogoUrls,
+src\components\SorarePerformanceChart.tsx:31:  opponentShort,
+src\components\SorarePerformanceChart.tsx:34:  const values = Array.isArray(recentScores) ? recentScores.slice(0, 5) : [];
+src\components\SorarePerformanceChart.tsx:50:          const logo = opponentLogoUrls?.[idx] ?? null;
+src\components\SorarePerformanceChart.tsx:51:          const short = (opponentShort?.[idx] ?? "").toString().trim();
+src\components\SorarePerformanceChart.tsx:62:              {/* Opponent logo (or placeholder) */}
+src\components\SorarePerformanceChart.tsx:64:                {logo ? (
+src\components\SorarePerformanceChart.tsx:66:                    source={{ uri: logo }}
+src\scoutApi.ts:98:  playerSlug: string;
+src\scoutApi.ts:101:  activeClub?: { name?: string | null; slug?: string | null } | null;
+src\scoutApi.ts:107:  playerSlug: string;
+src\scoutApi.ts:110:  activeClub?: { name?: string | null; slug?: string | null } | null;
+src\scoutApi.ts:404:export type PublicPlayerPerformance = {
+src\scoutApi.ts:405:  playerSlug: string;
+src\scoutApi.ts:408:  activeClub?: { name?: string | null; slug?: string | null } | null;
+src\scoutApi.ts:412:  recentScores?: number[];
+src\scoutApi.ts:416:export async function publicPlayerPerformance(
+src\scoutApi.ts:419:): Promise<PublicPlayerPerformance> {
+src\scoutApi.ts:444:    const url = `${PERF_BASE_URL}/history/player-chart/${encodeURIComponent(s)}?limit=${limit}`;
+src\scoutApi.ts:451:      throw new Error("history/player-chart failed: " + msg);
+src\scoutApi.ts:458:    const perfScores = Array.isArray(perf?.recentScores)
+src\scoutApi.ts:459:      ? perf.recentScores.map((x: any) => Number(x)).filter((n: any) => Number.isFinite(n))
+src\scoutApi.ts:462:    const perfOppsRaw = Array.isArray(perf?.recentOpponents)
+src\scoutApi.ts:463:      ? perf.recentOpponents
+src\scoutApi.ts:464:      : (Array.isArray(perf?.opponents) ? perf.opponents : []);
+src\scoutApi.ts:467:      logoUrl: String(o?.logoUrl || "").trim() || null,
+src\scoutApi.ts:469:      opponent: String(o?.name || o?.opponent || "").trim() || null,
+src\scoutApi.ts:482:        playerSlug: String(perf?.playerSlug || s),
+src\scoutApi.ts:485:        activeClub: perf?.activeClub ?? null,
+src\scoutApi.ts:489:        recentScores: perfScores,
+src\scoutApi.ts:490:        recentScores15: perfScores.slice(0, 15),
+src\scoutApi.ts:491:        recentScores40: perfScores.slice(0, 40),
+src\scoutApi.ts:494:          opponents: perfOpps,
+src\scoutApi.ts:538:  const opponents = (Array.isArray(items) ? items : []).map((it: any) => ({
+src\scoutApi.ts:539:    logoUrl: String(it?.opponentLogoUrl || "").trim() || null,
+src\scoutApi.ts:540:    shortName: String(it?.opponentShort || it?.opponent || "").trim() || null,
+src\scoutApi.ts:541:    opponent: String(it?.opponent || "").trim() || null,
+src\scoutApi.ts:546:    playerSlug: s,
+src\scoutApi.ts:549:    activeClub: null,
+src\scoutApi.ts:553:    recentScores: scores,
+src\scoutApi.ts:554:    recentScores15: scores.slice(0, 15),
+src\scoutApi.ts:555:    recentScores40: scores.slice(0, 40),
+src\scoutApi.ts:557:      source: "history/player-chart",
+src\scoutApi.ts:560:      opponents,
+
+

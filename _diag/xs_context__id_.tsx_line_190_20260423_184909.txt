@@ -1,0 +1,74 @@
+﻿          </View>
+        </View>
+      </View>
+
+      <View style={{ borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, padding: 14 }}>
+        <Text style={{ color: theme.text, fontSize: 18, fontWeight: "900" }}>Forme</Text>
+
+        <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+          {pill("L5")}
+          {pill("L15")}
+          {pill("L40")}
+        </View>
+
+        <View style={{ marginTop: 12 }}>
+          {state === "loading" ? (
+            <Text style={{ color: theme.muted }}>Chargement…</Text>
+          ) : state === "err" ? (
+            <Text style={{ color: "#FF7B7B" }}>Erreur de chargement: {error || "inconnue"}</Text>
+          ) : scores.length > 0 ? (
+            <SorarePerformanceChart
+              recentScores={scores as any}
+            />
+          ) : (
+            <Text style={{ color: theme.muted }}>
+              {playerSlug ? "Aucun score disponible." : "playerSlug manquant."}
+            </Text>
+          )}
+        </View>
+      </View>
+
+      <View style={{ flexDirection: "row", gap: 10 }}>
+        <View style={{ flex: 1, borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, padding: 14 }}>
+          <Text style={{ color: theme.muted, fontSize: 12, fontWeight: "700" }}>L5</Text>
+          <Text style={{ color: theme.text, fontSize: 24, fontWeight: "900", marginTop: 4 }}>
+            {avg5 == null ? "—" : String(avg5)}
+          </Text>
+        </View>
+
+        <View style={{ flex: 1, borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, padding: 14 }}>
+          <Text style={{ color: theme.muted, fontSize: 12, fontWeight: "700" }}>L15</Text>
+          <Text style={{ color: theme.text, fontSize: 24, fontWeight: "900", marginTop: 4 }}>
+            {avg15 == null ? "—" : String(avg15)}
+          </Text>
+        </View>
+
+        <View style={{ flex: 1, borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, padding: 14 }}>
+          <Text style={{ color: theme.muted, fontSize: 12, fontWeight: "700" }}>L40</Text>
+          <Text style={{ color: theme.text, fontSize: 24, fontWeight: "900", marginTop: 4 }}>
+            {avg40 == null ? "—" : String(avg40)}
+          </Text>
+        </View>
+      </View>
+
+      <View style={{ borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, padding: 14, gap: 6 }}>
+        <Text style={{ color: theme.text, fontSize: 16, fontWeight: "900" }}>Debug utile minimal</Text>
+        <Text style={{ color: theme.muted }}>route id: {id || "—"}</Text>
+        <Text style={{ color: theme.muted }}>playerSlug: {playerSlug || "—"}</Text>
+        <Text style={{ color: theme.muted }}>
+          cache card: {card ? "oui" : "non"}
+        </Text>
+        <Text style={{ color: theme.muted }}>
+          recentScores: {Array.isArray((perf as any)?.recentScores) ? (perf as any).recentScores.length : 0}
+        </Text>
+        <Text style={{ color: theme.muted }}>
+          recentScores15: {Array.isArray((perf as any)?.recentScores15) ? (perf as any).recentScores15.length : 0}
+        </Text>
+        <Text style={{ color: theme.muted }}>
+          recentScores40: {Array.isArray((perf as any)?.recentScores40) ? (perf as any).recentScores40.length : 0}
+        </Text>
+      </View>
+    </ScrollView>
+  );
+}
+

@@ -1,0 +1,86 @@
+﻿  const [perf, setPerf] = useState<any>(null);
+  const [state, setState] = useState<"idle" | "loading" | "ok" | "err">("idle");
+  const [error, setError] = useState("");
+  const [activeSeries, setActiveSeries] = useState<"L5" | "L15" | "L40">("L5");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      if (!playerSlug) {
+        if (!cancelled) {
+          setPerf(null);
+          setState("idle");
+          setError("");
+        }
+        return;
+      }
+
+      if (!cancelled) {
+        setState("loading");
+        setError("");
+      }
+
+      try {
+        const resp = await publicPlayerPerformance(playerSlug);
+        if (cancelled) return;
+        setPerf(resp || null);
+        setState("ok");
+      } catch (e: any) {
+        if (cancelled) return;
+        setPerf(null);
+        setState("err");
+        setError(String(e?.message || e || "Erreur inconnue"));
+      }
+    }
+
+    run();
+    return () => { cancelled = true; };
+  }, [playerSlug]);
+
+  const playerName = pickStr((card as any)?.anyPlayer?.displayName ?? (card as any)?.player?.displayName ?? perf?.playerName);
+  const teamName = pickStr((card as any)?.anyTeam?.name ?? (card as any)?.player?.activeClub?.name ?? perf?.activeClub?.name);
+  const position = pickStr((card as any)?.position ?? perf?.position);
+  const seasonYear = pickStr((card as any)?.seasonYear);
+  const rarity = pickStr((card as any)?.rarityTyped ?? (card as any)?.rarity);
+  const serial = (card as any)?.serialNumber != null ? "#" + String((card as any).serialNumber) : "—";
+
+  const series = useMemo(() => {
+    const l5 = Array.isArray((perf as any)?.recentScores) ? (perf as any).recentScores.slice(0, 5) : [];
+    const l15 = Array.isArray((perf as any)?.recentScores15)
+      ? (perf as any).recentScores15.slice(0, 15)
+      : (Array.isArray((perf as any)?.recentScores) ? (perf as any).recentScores.slice(0, 15) : []);
+    const l40 = Array.isArray((perf as any)?.recentScores40)
+      ? (perf as any).recentScores40.slice(0, 40)
+      : (Array.isArray((perf as any)?.recentScores) ? (perf as any).recentScores.slice(0, 40) : []);
+    const opp = Array.isArray((perf as any)?.recentOpponents) ? (perf as any).recentOpponents : [];
+    return { l5, l15, l40, opp };
+  }, [perf]);
+
+  const scores =
+    activeSeries === "L5" ? series.l5 :
+    activeSeries === "L15" ? series.l15 :
+    series.l40;
+
+  const avg5 = avgOf(series.l5) ?? asNum((card as any)?.l5) ?? asNum((perf as any)?.l5);
+  const avg15 = avgOf(series.l15) ?? asNum((card as any)?.l15) ?? asNum((perf as any)?.l15);
+  const avg40 = avgOf(series.l40) ?? asNum((card as any)?.l40) ?? asNum((perf as any)?.l40);
+
+  function pill(label: "L5" | "L15" | "L40") {
+    const active = activeSeries === label;
+    return (
+      <Text
+        onPress={() => setActiveSeries(label)}
+        style={{
+          paddingVertical: 8,
+          paddingHorizontal: 12,
+          borderRadius: 999,
+          overflow: "hidden",
+          color: active ? "#0B1220" : theme.text,
+          backgroundColor: active ? "#F2C230" : theme.panel,
+          borderWidth: 1,
+          borderColor: active ? "#F2C230" : theme.stroke,
+          fontWeight: "800",
+        }}
+      >
+        {label}

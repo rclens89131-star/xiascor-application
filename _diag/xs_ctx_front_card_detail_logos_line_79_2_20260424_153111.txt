@@ -1,0 +1,206 @@
+﻿FILE: C:\Users\rclen\Desktop\sorare-app\app\card\[id].tsx
+PATTERN: publicPlayerPerformance|opponentLogoUrls|recentOpponents|opponents|deviceId
+LINE: 79
+RANGE: 9 - 209
+
+function pickStr(v: any): string {
+  return typeof v === "string" && v.trim() ? v.trim() : "—";
+}
+
+function asNum(v: any): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function avgOf(arr: any[]): number | null {
+  if (!Array.isArray(arr) || arr.length === 0) return null;
+  const nums = arr
+    .map((x) => (typeof x === "number" ? x : Number(x)))
+    .filter((n) => Number.isFinite(n));
+  if (nums.length === 0) return null;
+  const sum = nums.reduce((a, b) => a + b, 0);
+  return Number((sum / nums.length).toFixed(1));
+}
+
+export default function CardDetailScreen() {
+  const params = useLocalSearchParams();
+  const id = String((params as any)?.id ?? "").trim();
+  const playerSlugParam = String((params as any)?.playerSlug ?? "").trim();
+
+  const card = useMemo(() => {
+    if (!id) return null;
+    try {
+      return xsCardNavGet(id);
+    } catch {
+      return null;
+    }
+  }, [id]);
+
+  const playerSlug = useMemo(() => {
+    const fromCard =
+      (card as any)?.anyPlayer?.slug ??
+      (card as any)?.player?.slug ??
+      (card as any)?.playerSlug ??
+      "";
+    return String(playerSlugParam || fromCard || "").trim();
+  }, [playerSlugParam, card]);
+
+  const [perf, setPerf] = useState<any>(null);
+  const [state, setState] = useState<"idle" | "loading" | "ok" | "err">("idle");
+  const [error, setError] = useState("");
+  const [activeSeries, setActiveSeries] = useState<"L5" | "L15" | "L40">("L5");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      if (!playerSlug) {
+        if (!cancelled) {
+          setPerf(null);
+          setState("idle");
+          setError("");
+        }
+        return;
+      }
+
+      if (!cancelled) {
+        setState("loading");
+        setError("");
+      }
+
+      try {
+        const resp = await publicPlayerPerformance(playerSlug);
+        if (cancelled) return;
+        setPerf(resp || null);
+        setState("ok");
+      } catch (e: any) {
+        if (cancelled) return;
+        setPerf(null);
+        setState("err");
+        setError(String(e?.message || e || "Erreur inconnue"));
+      }
+    }
+
+    run();
+    return () => { cancelled = true; };
+  }, [playerSlug]);
+
+  const playerName = pickStr((card as any)?.anyPlayer?.displayName ?? (card as any)?.player?.displayName ?? perf?.playerName);
+  const teamName = pickStr((card as any)?.anyTeam?.name ?? (card as any)?.player?.activeClub?.name ?? perf?.activeClub?.name);
+  const position = pickStr((card as any)?.position ?? perf?.position);
+  const seasonYear = pickStr((card as any)?.seasonYear);
+  const rarity = pickStr((card as any)?.rarityTyped ?? (card as any)?.rarity);
+  const serial = (card as any)?.serialNumber != null ? "#" + String((card as any).serialNumber) : "—";
+
+  const series = useMemo(() => {
+    const l5 = Array.isArray((perf as any)?.recentScores) ? (perf as any).recentScores.slice(0, 5) : [];
+    const l15 = Array.isArray((perf as any)?.recentScores15)
+      ? (perf as any).recentScores15.slice(0, 15)
+      : (Array.isArray((perf as any)?.recentScores) ? (perf as any).recentScores.slice(0, 15) : []);
+    const l40 = Array.isArray((perf as any)?.recentScores40)
+      ? (perf as any).recentScores40.slice(0, 40)
+      : (Array.isArray((perf as any)?.recentScores) ? (perf as any).recentScores.slice(0, 40) : []);
+    // XS_FIX_CARD_DETAIL_OPPONENTS_FALLBACK_V1 BEGIN
+    const opp =
+      Array.isArray((perf as any)?.recentOpponents) ? (perf as any).recentOpponents :
+      (Array.isArray((perf as any)?.opponents) ? (perf as any).opponents :
+      (Array.isArray((perf as any)?.meta?.opponents) ? (perf as any).meta.opponents : []));
+    // XS_FIX_CARD_DETAIL_OPPONENTS_FALLBACK_V1 END
+    return { l5, l15, l40, opp };
+  }, [perf]);
+
+  const scores =
+    activeSeries === "L5" ? series.l5 :
+    activeSeries === "L15" ? series.l15 :
+    series.l40;
+
+  
+  // XS_FIX_CARD_DETAIL_OPPONENT_LOGOS_NESTED_V1 BEGIN
+  // Sert à afficher le logo du club adverse sous chaque barre de performance.
+  // On garde un fallback texte si l'API ne donne pas encore de logo.
+  const xsOppSlice = Array.isArray(series.opp) ? series.opp.slice(0, scores.length || 5) : [];
+
+  function xsPickOpponentLogoUrl(x: any): string | null {
+    const raw =
+      x?.logoUrl ??
+      x?.opponentLogoUrl ??
+      x?.clubLogoUrl ??
+      x?.teamLogoUrl ??
+      x?.crestUrl ??
+      x?.logo ??
+      x?.pictureUrl ??
+      x?.club?.pictureUrl ??
+      x?.club?.logoUrl ??
+      x?.club?.crestUrl ??
+      x?.opponentClub?.pictureUrl ??
+      x?.opponentClub?.logoUrl ??
+      x?.opponentClub?.crestUrl ??
+      x?.opponent?.club?.pictureUrl ??
+      x?.opponent?.club?.logoUrl ??
+      x?.opponent?.club?.crestUrl ??
+      x?.opponentTeam?.pictureUrl ??
+      x?.opponentTeam?.logoUrl ??
+      x?.opponentTeam?.crestUrl ??
+      x?.opponent?.pictureUrl ??
+      x?.opponent?.logoUrl ??
+      x?.team?.pictureUrl ??
+      x?.team?.logoUrl ??
+      x?.team?.crestUrl ??
+      x?.match?.opponentClub?.pictureUrl ??
+      x?.match?.opponentClub?.logoUrl ??
+      x?.match?.opponentClub?.crestUrl ??
+      null;
+
+    const s = String(raw || "").trim();
+    return s.length > 0 ? s : null;
+  }
+
+  function xsPickOpponentShort(x: any): string | null {
+    const raw =
+      x?.shortName ??
+      x?.opponentShort ??
+      x?.short ??
+      x?.code ??
+      x?.opponent ??
+      x?.name ??
+      x?.club?.shortName ??
+      x?.club?.name ??
+      x?.opponentClub?.shortName ??
+      x?.opponentClub?.name ??
+      x?.opponent?.club?.shortName ??
+      x?.opponent?.club?.name ??
+      x?.opponentTeam?.shortName ??
+      x?.opponentTeam?.name ??
+      x?.opponent?.shortName ??
+      x?.opponent?.name ??
+      x?.team?.shortName ??
+      x?.team?.name ??
+      x?.match?.opponentClub?.shortName ??
+      x?.match?.opponentClub?.name ??
+      null;
+
+    const s = String(raw || "").trim();
+    return s.length > 0 ? s : null;
+  }
+
+  const xsOpponentLogoUrls = xsOppSlice.map((x: any) => xsPickOpponentLogoUrl(x));
+  const xsOpponentShort = xsOppSlice.map((x: any) => xsPickOpponentShort(x));
+  // XS_FIX_CARD_DETAIL_OPPONENT_LOGOS_NESTED_V1 END
+const avg5 = avgOf(series.l5) ?? asNum((card as any)?.l5) ?? asNum((perf as any)?.l5);
+  const avg15 = avgOf(series.l15) ?? asNum((card as any)?.l15) ?? asNum((perf as any)?.l15);
+  const avg40 = avgOf(series.l40) ?? asNum((card as any)?.l40) ?? asNum((perf as any)?.l40);
+
+  function pill(label: "L5" | "L15" | "L40") {
+    const active = activeSeries === label;
+    return (
+      <Text
+        onPress={() => setActiveSeries(label)}
+        style={{
+          paddingVertical: 8,
+          paddingHorizontal: 12,
+          borderRadius: 999,
+          overflow: "hidden",

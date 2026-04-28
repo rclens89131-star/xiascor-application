@@ -1,0 +1,206 @@
+﻿FILE: C:\Users\rclen\Desktop\sorare-app\src\scoutApi.ts
+PATTERN: myCardsGet|myCardsPage|myCardsSync|deviceStatus|publicPlayerPerformance|history/player-chart
+LINE: 167
+RANGE: 97 - 297
+
+export type RecruiterRow = {
+  playerSlug: string;
+  playerName?: string | null;
+  position?: string | null;
+  activeClub?: { name?: string | null; slug?: string | null } | null;
+  minPriceEur?: number | null;
+  offerCount?: number | null;
+  leagues?: string[] | null;
+};
+export type RecruiterPlayer = {
+  playerSlug: string;
+  playerName?: string | null;
+  position?: string | null;
+  activeClub?: { name?: string | null; slug?: string | null } | null;
+  offersByLeague?: Record<string, any[]> | null;
+  offers?: any[] | null;
+};
+export async function scoutRecruter(params?: { first?: number; q?: string }) {
+  const qs = new URLSearchParams();
+  qs.set("first", String(params?.first ?? 40));
+  if (params?.q) qs.set("q", params.q);
+
+  const url = `${BASE_URL}/scout/recruter?${qs.toString()}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`scoutRecruter HTTP ${r.status}`);
+  return (await r.json()) as { items: RecruiterRow[]; meta?: any };
+}
+export async function scoutPlayer(slug: string, params?: { first?: number }) {
+  const qs = new URLSearchParams();
+  qs.set("first", String(params?.first ?? 50));
+
+  const url = `${BASE_URL}/scout/player2/${encodeURIComponent(slug)}?${qs.toString()}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`scoutPlayer HTTP ${r.status}`);
+  return (await r.json()) as RecruiterPlayer;
+}
+
+
+
+
+
+
+
+
+/* XS_SCOUT_PLAYER2_API_V2_BEGIN */
+export async function scoutPlayer2(
+  slug: string,
+  params?: { first?: number; allowUnknownPrices?: boolean }
+) {
+  const qs = new URLSearchParams();
+  if (params?.first != null) qs.set("first", String(params.first));
+  if (params?.allowUnknownPrices) qs.set("allowUnknownPrices", "1");
+  const tail = qs.toString() ? `?${qs.toString()}` : "";
+  return apiFetch<any>(`/scout/player2/${encodeURIComponent(String(slug || ""))}${tail}`);
+}
+/* XS_SCOUT_PLAYER2_API_V2_END */
+
+/* ============================
+   XS_JWT_API_HELPERS_V1_BEGIN
+   Objectif:
+   - jwtLogin(baseUrl, deviceId, email, password)
+   - jwtStatus(baseUrl, deviceId)
+   Notes:
+   - Le token JWT reste côté backend (jamais renvoyé)
+   ============================ */
+
+export async function jwtLogin(baseUrl: string, deviceId: string, email: string, password: string, aud?: string){
+  const url = `${baseUrl}/auth/jwt/login`;
+  // XS_MYCARDS_SYNC_PROBE_V1: log URL réelle appelée (debug iPhone)
+  try { console.log("[myCardsSync] AUTH_BASE_URL=", AUTH_BASE_URL); } catch {} // XS_MYCARDS_AUTH_BASE_V2
+  try { console.log("[myCardsSync] url=", url); } catch {}
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "content-type":"application/json" },
+    body: JSON.stringify({ deviceId, email, password, aud })
+  });
+  const j = await r.json().catch(()=> ({}));
+  if(!r.ok){
+    const msg = (j && (j.error || j.message)) ? (j.error || j.message) : `http_${r.status}`;
+    throw new Error(`jwtLogin:${msg}`);
+  }
+  return j as any;
+}
+
+export async function jwtStatus(baseUrl: string, deviceId: string){
+  const url = `${baseUrl}/auth/jwt/status?deviceId=${encodeURIComponent(deviceId)}`;
+  const r = await fetch(url);
+  const j = await r.json().catch(()=> ({}));
+  if(!r.ok){
+    const msg = (j && (j.error || j.message)) ? (j.error || j.message) : `http_${r.status}`;
+    throw new Error(`jwtStatus:${msg}`);
+  }
+  return j as any;
+}
+
+/* XS_JWT_API_HELPERS_V1_END */
+
+
+/* XS_MY_CARDS_API_V1_BEGIN
+   Purpose:
+   - Client NEVER calls Sorare GraphQL directly.
+   - Client reads backend cache via /my-cards and triggers backend sync via /my-cards/sync.
+*/
+export type MyCardsMeta = {
+  model?: string;
+  deviceId?: string;
+  userSlug?: string | null;
+  nickname?: string | null;
+  fetchedAt?: string;
+  count?: number;
+  pages?: number;
+  jwtAud?: string | null;
+};
+
+export type MyCardItem = {
+  slug?: string;
+  pictureUrl?: string;
+  rarityTyped?: string;
+  seasonYear?: number;
+  serialNumber?: number;
+  // optional extras (backend normalizer may add):
+  rarity?: string;
+  season?: { year?: number };
+};
+
+export async function myCardsGet(deviceId: string){
+  const id = String(deviceId || "").trim();
+  if(!id) throw new Error("missing deviceId");
+  const url = `${AUTH_BASE_URL}/my-cards?deviceId=${encodeURIComponent(id)}`; // XS_MYCARDS_AUTH_BASE_V2
+  const r = await fetch(url);
+  const j = await r.json().catch(()=>null);
+  if(!r.ok) throw new Error((j && (j.error || j.message)) ? String(j.error || j.message) : `HTTP ${r.status}`);
+  return j as { ok: boolean; cached?: boolean; meta?: MyCardsMeta; cards?: MyCardItem[]; pageInfo?: any };
+}
+
+export type MyCardsSyncOpts = {
+  jwtAud?: string;
+  first?: number;
+  maxPages?: number;
+  maxCards?: number;
+  sleepMs?: number;
+};
+
+
+/* XS_MY_CARDS_LIST_V1_BEGIN */
+export async function myCardsList(deviceId: string, first = 50, after?: string) {
+  const qs = new URLSearchParams();
+  qs.set("deviceId", deviceId);
+  qs.set("first", String(first));
+  if (after) qs.set("after", after);
+  const url = `${AUTH_BASE_URL}/my-cards?${qs.toString()}`; // XS_MYCARDS_REMAINING_AUTH_V5
+  const r = await fetch(url);
+  const j = await r.json().catch(() => null);
+  if (!r.ok) throw new Error((j && (j.error || j.message)) ? String(j.error || j.message) : `HTTP ${r.status}`);
+  return j as { ok?: boolean; cached?: boolean; meta?: any; cards: any[]; pageInfo?: PageInfo };
+}
+/* XS_MY_CARDS_LIST_V1_END */
+export async function myCardsSync(deviceId: string, opts?: MyCardsSyncOpts){
+  const id = String(deviceId || "").trim();
+  if(!id) throw new Error("missing deviceId");
+  const aud = String((opts && opts.jwtAud) || "sorare:com");
+
+  // XS_MYCARDS_SYNC_QS_V1: backend lit surtout la query string (deviceId/opts).
+  const first = (opts && opts.first != null) ? opts.first : 100;
+  const maxPages = (opts && opts.maxPages != null) ? opts.maxPages : 120;
+  const maxCards = (opts && opts.maxCards != null) ? opts.maxCards : 6000;
+  const sleepMs = (opts && opts.sleepMs != null) ? opts.sleepMs : 200;
+
+  const qs = new URLSearchParams({
+    deviceId: id,
+    jwtAud: aud,
+    first: String(first),
+    maxPages: String(maxPages),
+    maxCards: String(maxCards),
+    sleepMs: String(sleepMs),
+  });
+  const url = `${AUTH_BASE_URL}/my-cards/sync?${qs.toString()}`; // XS_MYCARDS_AUTH_BASE_V2
+
+  // On garde aussi le body pour compat (si backend évolue) — mais la source de vérité = query string.
+  const body = { deviceId: id, jwtAud: aud, first, maxPages, maxCards, sleepMs };
+
+  // XS_MYCARDS_SYNC_PROBE_V1: log URL réelle appelée (debug iPhone)
+  try { console.log("[myCardsSync] AUTH_BASE_URL=", AUTH_BASE_URL); } catch {} // XS_MYCARDS_AUTH_BASE_V2
+  try { console.log("[myCardsSync] url=", url); } catch {}
+  const r = await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) });
+  const j = await r.json().catch(()=>null);
+  if(!r.ok) throw new Error((j && (j.error || j.message)) ? String(j.error || j.message) : `HTTP ${r.status}`);
+  return j as { ok: boolean; count?: number; cachePath?: string; meta?: MyCardsMeta };
+}
+/* XS_MY_CARDS_API_V1_END */
+
+/* XS_SCOUTAPI_MYCARDS_GETPAGE_V2 */
+export async function myCardsGetPage(
+  deviceId: string,
+  opts?: { first?: number; after?: string | null }
+): Promise<any> {
+  const id = String(deviceId || "").trim();
+  if (!id) throw new Error("missing deviceId");
+
+  const qs = new URLSearchParams();
+  qs.set("deviceId", id);

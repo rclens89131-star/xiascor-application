@@ -1,0 +1,47 @@
+﻿
+app\card\[id].tsx:3:import { useLocalSearchParams } from "expo-router";
+app\card\[id].tsx:6:import { publicPlayerPerformance } from "../../src/scoutApi";
+app\card\[id].tsx:33:  const params = useLocalSearchParams();
+app\card\[id].tsx:34:  const id = String((params as any)?.id ?? "").trim();
+app\card\[id].tsx:35:  const playerSlugParam = String((params as any)?.playerSlug ?? "").trim();
+app\card\[id].tsx:38:    if (!id) return null;
+app\card\[id].tsx:40:      return xsCardNavGet(id);
+app\card\[id].tsx:44:  }, [id]);
+app\card\[id].tsx:46:  const playerSlug = useMemo(() => {
+app\card\[id].tsx:50:      (card as any)?.playerSlug ??
+app\card\[id].tsx:52:    return String(playerSlugParam || fromCard || "").trim();
+app\card\[id].tsx:53:  }, [playerSlugParam, card]);
+app\card\[id].tsx:56:  const [state, setState] = useState<"idle" | "loading" | "ok" | "err">("idle");
+app\card\[id].tsx:64:      if (!playerSlug) {
+app\card\[id].tsx:67:          setState("idle");
+app\card\[id].tsx:79:        const resp = await publicPlayerPerformance(playerSlug);
+app\card\[id].tsx:93:  }, [playerSlug]);
+app\card\[id].tsx:103:    const l5 = Array.isArray((perf as any)?.recentScores) ? (perf as any).recentScores.slice(0, 5) : [];
+app\card\[id].tsx:104:    const l15 = Array.isArray((perf as any)?.recentScores15)
+app\card\[id].tsx:105:      ? (perf as any).recentScores15.slice(0, 15)
+app\card\[id].tsx:106:      : (Array.isArray((perf as any)?.recentScores) ? (perf as any).recentScores.slice(0, 15) : []);
+app\card\[id].tsx:107:    const l40 = Array.isArray((perf as any)?.recentScores40)
+app\card\[id].tsx:108:      ? (perf as any).recentScores40.slice(0, 40)
+app\card\[id].tsx:109:      : (Array.isArray((perf as any)?.recentScores) ? (perf as any).recentScores.slice(0, 40) : []);
+app\card\[id].tsx:110:    const opp = Array.isArray((perf as any)?.recentOpponents) ? (perf as any).recentOpponents : [];
+app\card\[id].tsx:132:          overflow: "hidden",
+app\card\[id].tsx:135:          borderWidth: 1,
+app\card\[id].tsx:150:      <View style={{ borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, padding: 14 }}>
+app\card\[id].tsx:155:          <View style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.stroke }}>
+app\card\[id].tsx:158:          <View style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.stroke }}>
+app\card\[id].tsx:161:          <View style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.stroke }}>
+app\card\[id].tsx:164:          <View style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.stroke }}>
+app\card\[id].tsx:170:      <View style={{ borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, padding: 14 }}>
+app\card\[id].tsx:186:              recentScores={scores as any}
+app\card\[id].tsx:190:              {playerSlug ? "Aucun score disponible." : "playerSlug manquant."}
+app\card\[id].tsx:197:        <View style={{ flex: 1, borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, padding: 14 }}>
+app\card\[id].tsx:204:        <View style={{ flex: 1, borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, padding: 14 }}>
+app\card\[id].tsx:211:        <View style={{ flex: 1, borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, padding: 14 }}>
+app\card\[id].tsx:219:      <View style={{ borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, padding: 14, gap: 6 }}>
+app\card\[id].tsx:221:        <Text style={{ color: theme.muted }}>route id: {id || "—"}</Text>
+app\card\[id].tsx:222:        <Text style={{ color: theme.muted }}>playerSlug: {playerSlug || "—"}</Text>
+app\card\[id].tsx:227:          recentScores: {Array.isArray((perf as any)?.recentScores) ? (perf as any).recentScores.length : 0}
+app\card\[id].tsx:230:          recentScores15: {Array.isArray((perf as any)?.recentScores15) ? (perf as any).recentScores15.length : 0}
+app\card\[id].tsx:233:          recentScores40: {Array.isArray((perf as any)?.recentScores40) ? (perf as any).recentScores40.length : 0}
+
+

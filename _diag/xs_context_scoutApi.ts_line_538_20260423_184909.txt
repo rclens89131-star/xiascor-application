@@ -1,0 +1,65 @@
+﻿        body: JSON.stringify({ slug: s, deviceId: did, last: 10 }),
+      });
+    } catch {}
+
+    try {
+      json = await fetchChartOnce();
+      items = Array.isArray(json?.items) ? json.items : [];
+    } catch {}
+  }
+
+  const scores = (Array.isArray(items) ? items : [])
+    .map((it: any) => {
+      const n = Number(it?.scoreSorare);
+      return Number.isFinite(n) ? n : null;
+    })
+    .filter((n: any) => n !== null) as number[];
+
+  function avg(arr: number[], take: number): number | null {
+    const slice = arr.slice(0, take).filter((n) => Number.isFinite(n));
+    if (!slice.length) return null;
+    const sum = slice.reduce((a, b) => a + b, 0);
+    return Math.round((sum / slice.length) * 10) / 10;
+  }
+
+  const opponents = (Array.isArray(items) ? items : []).map((it: any) => ({
+    logoUrl: String(it?.opponentLogoUrl || "").trim() || null,
+    shortName: String(it?.opponentShort || it?.opponent || "").trim() || null,
+    opponent: String(it?.opponent || "").trim() || null,
+    homeAway: String(it?.homeAway || "").trim() || null,
+  }));
+
+  return {
+    playerSlug: s,
+    playerName: null,
+    position: null,
+    activeClub: null,
+    lastScore: scores.length ? scores[0] : null,
+    l5: avg(scores, 5),
+    l15: avg(scores, 15),
+    recentScores: scores,
+    recentScores15: scores.slice(0, 15),
+    recentScores40: scores.slice(0, 40),
+    meta: {
+      source: "history/player-chart",
+      count: items.length,
+      items,
+      opponents,
+    },
+  } as any;
+}
+/* XS_PUBLIC_PLAYER_PERF_CLIENT_V1_END */
+
+
+
+
+
+
+
+
+
+
+
+
+
+

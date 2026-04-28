@@ -1,0 +1,86 @@
+﻿    card?.lastGameScore ??
+    card?.lastScore ??
+    card?.gameScore ??
+    card?.latestScore ??
+    card?.player?.lastGameScore ??
+    card?.anyPlayer?.lastGameScore ??
+    null;
+
+  const oneNum = toNum(one);
+  if (Number.isFinite(oneNum)) return [oneNum];
+
+  // Très important: on ne duplique plus artificiellement le L5 moyen.
+  return [];
+}
+/* XS_L5_MINICHART_TILE_V1_END */
+/* XS_L5_MINICHART_TILE_RENDER_V1_BEGIN */
+function XSL5MiniBars(props: { values: number[]; opponents?: any[] }) {
+  const scores = Array.isArray(props?.values) ? props.values.slice(-5) : [];
+  const opponents = Array.isArray((props as any)?.opponents) ? (props as any).opponents.slice(-5) : [];
+  if (scores.length === 0) return null;
+
+  return (
+    <PerfL5Widget
+      scores={scores}
+      opponents={opponents}
+      height={58}
+    />
+  );
+}
+/* XS_L5_MINICHART_TILE_RENDER_V1_END */
+function CardTile({ card, width, l5Cache = {} }: { card: MyCardItemLocal; width: number; l5Cache?: Record<string, number[]> }) { /* XS_L5CACHE_OPTIONAL_V2 */
+  const router = useRouter(); /* XS_CARD_TILE_NAV_V1 */
+const playerName = xsSafeStr(card?.anyPlayer?.displayName || card?.player?.displayName || "Unknown");
+const clubName   = xsSafeStr(card?.anyTeam?.name || card?.player?.activeClub?.name || "—");
+const rarity     = xsSafeStr((card?.rarityTyped || card?.rarity || "limited")).toLowerCase();
+const season     = (card?.seasonYear != null) ? String(card.seasonYear) : "—";
+const serial     = (card?.serialNumber != null) ? "#" + String(card.serialNumber) : "#—";
+const bonusPct = xsBonusPctFromPower((card as any)?.power ?? (card as any)?.cardPower ?? (card as any)?.playerPower ?? null);
+const xsL5Mini0 = xsL5BarsFromCard(card as any); /* XS_L5_MINICHART_TILE_RENDER_V1_PASS */
+const playerSlugKey = String((card as any)?.anyPlayer?.slug || (card as any)?.playerSlug || (card as any)?.player?.slug || "").trim();
+const xsL5Mini =
+  (xsL5Mini0 && xsL5Mini0.length)
+    ? xsL5Mini0
+    : (playerSlugKey && Array.isArray((l5Cache as any)[playerSlugKey]) ? (l5Cache as any)[playerSlugKey] : []);
+
+  return (
+        <Pressable
+      onPress={() => {
+        /* XS_FIX_CARD_CLICK_NAV_V1_BEGIN */
+          const id =
+            (card as any)?.id ??
+            (card as any)?.cardId ??
+            (card as any)?.slug ??
+            (card as any)?.anyCard?.id ??
+            (card as any)?.anyCard?.slug ??
+            "";
+
+          const playerSlug =
+            (card as any)?.anyPlayer?.slug ??
+            (card as any)?.player?.slug ??
+            (card as any)?.slug ??
+            "";
+
+          const navId = String(id || playerSlug || "");
+
+          if (!navId) {
+            // Debug visible via logs; évite le "tap silencieux"
+            console.log("XS_FIX_CARD_CLICK_NAV_V1: missing navId", {
+              id,
+              playerSlug,
+              keys: card ? Object.keys(card as any) : [],
+            });
+          } else {
+            router.push({
+              pathname: "/card/[id]",
+              params: { id: navId, playerSlug: String(playerSlug || "") },
+            });
+          }
+/* XS_FIX_CARD_CLICK_NAV_V1_END */
+      }}
+      style={{ alignSelf: "stretch" }}
+    >
+<SorareCardTile
+width={xsTileWidth2col(width)} imageUrl={xsSafeStr(card?.pictureUrl)}
+      playerName={playerName}
+      clubName={clubName}

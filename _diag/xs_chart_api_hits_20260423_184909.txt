@@ -1,0 +1,17 @@
+﻿
+src\components\SorarePerformanceChart.tsx:2:import { View, Text, Image } from "react-native";
+src\components\SorarePerformanceChart.tsx:4:type Props = {
+src\components\SorarePerformanceChart.tsx:6:  recentScores: number[];
+src\components\SorarePerformanceChart.tsx:7:  // Optionnel: logos adverses alignés sur recentScores (même longueur). Si absent => placeholder texte.
+src\components\SorarePerformanceChart.tsx:8:  opponentLogoUrls?: (string | null | undefined)[];
+src\components\SorarePerformanceChart.tsx:9:  opponentShort?: (string | null | undefined)[];
+src\components\SorarePerformanceChart.tsx:29:  recentScores,
+src\components\SorarePerformanceChart.tsx:30:  opponentLogoUrls,
+src\components\SorarePerformanceChart.tsx:31:  opponentShort,
+src\components\SorarePerformanceChart.tsx:33:}: Props) {
+src\components\SorarePerformanceChart.tsx:34:  const values = Array.isArray(recentScores) ? recentScores.slice(0, 5) : [];
+src\components\SorarePerformanceChart.tsx:50:          const logo = opponentLogoUrls?.[idx] ?? null;
+src\components\SorarePerformanceChart.tsx:51:          const short = (opponentShort?.[idx] ?? "").toString().trim();
+src\components\SorarePerformanceChart.tsx:65:                  <Image
+
+

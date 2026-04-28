@@ -1,0 +1,86 @@
+﻿    card?.player?.l15 ??
+    card?.card?.l15 ??
+    null;
+const n = typeof v === "number" ? v : (typeof v === "string" ? Number(v) : NaN);
+  return Number.isFinite(n) ? n : null;
+}
+function getLastScoreValue(card: any): number | null {
+const direct =
+    card?.lastScore ??
+    card?.last_score ??
+    card?.score ??
+    card?.lastGameScore ??
+    null;
+
+  if (typeof direct === "number") return Number.isFinite(direct) ? direct : null;
+  if (typeof direct === "string") {
+const n = Number(direct);
+    return Number.isFinite(n) ? n : null;
+  }
+const arr =
+    card?.scores ??
+    card?.gameScores ??
+    card?.scoreHistory ??
+    card?.games ??
+    card?.recentScores ??
+    null;
+
+  if (Array.isArray(arr) && arr.length > 0) {
+const last = arr[arr.length - 1];
+const v = last?.score ?? last?.total ?? last?.value ?? last;
+const n = typeof v === "number" ? v : (typeof v === "string" ? Number(v) : NaN);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  return null;
+}
+/* XS_CARDS_L15_LAST_V1_END */
+-${card?.seasonYear || "na"}-${card?.serialNumber || "na"}`
+  );
+}
+
+/* XS_CARDS_L15_LAST_HELPERS_V2 — helpers safe (L15 + last score) */
+function xsGetL15ValueV1(card: any): number | null {
+const v =
+    card?.l15 ??
+    card?.L15 ??
+    card?.l15Score ??
+    card?.scoreL15 ??
+    card?.player?.l15 ??
+    card?.card?.l15 ??
+    null;
+const n = typeof v === "number" ? v : (typeof v === "string" ? Number(v) : NaN);
+  return Number.isFinite(n) ? n : null;
+}
+function xsGetLastScoreValueV1(card: any): number | null {
+const direct =
+    card?.lastScore ??
+    card?.last_score ??
+    card?.score ??
+    card?.lastGameScore ??
+    null;
+
+  if (typeof direct === "number") return Number.isFinite(direct) ? direct : null;
+  if (typeof direct === "string") {
+const n = Number(direct);
+    return Number.isFinite(n) ? n : null;
+  }
+const arr =
+    card?.scores ??
+    card?.gameScores ??
+    card?.scoreHistory ??
+    card?.games ??
+    card?.recentScores ??
+    null;
+
+  if (Array.isArray(arr) && arr.length > 0) {
+const last = arr[arr.length - 1];
+const v = last?.score ?? last?.total ?? last?.value ?? last;
+const n = typeof v === "number" ? v : (typeof v === "string" ? Number(v) : NaN);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  return null;
+}
+/* XS_CARDS_L15_LAST_HELPERS_V2_END */
+/* XS_MYCARDS_SORARE_TILE_V1_BEGIN */

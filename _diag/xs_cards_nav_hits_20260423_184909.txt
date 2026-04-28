@@ -1,0 +1,101 @@
+﻿
+app\(tabs)\cards.tsx:1:/* XS_CARDS_CENTER_ITEMWIDTH_V1 */
+app\(tabs)\cards.tsx:9:import PerfL5Widget from "../../src/components/PerfL5Widget";
+app\(tabs)\cards.tsx:14:/* XS_CARDS_GRID_GROW_V1
+app\(tabs)\cards.tsx:16:// XS_TEXT_OUTSIDE_TEXT_FIX_V1 - garder 2 colonnes mais remplir l'espace -> tiles plus grandes
+app\(tabs)\cards.tsx:17:   - calcul largeur tuile = (screenWidth - padding*2 - gap) / 2
+app\(tabs)\cards.tsx:19:const XS_GRID_PADDING = 16;
+app\(tabs)\cards.tsx:20:const XS_GRID_GAP = 12;
+app\(tabs)\cards.tsx:21:const XS_TILE_WIDTH = Math.floor((Dimensions.get("window").width - (XS_GRID_PADDING * 2) - XS_GRID_GAP) / 2);
+app\(tabs)\cards.tsx:23:  // XS_NAV_CARDID_FALLBACK_V1
+app\(tabs)\cards.tsx:25:    const playerSlug = String(card?.anyPlayer?.slug ?? card?.player?.slug ?? card?.playerSlug ?? "").trim();
+app\(tabs)\cards.tsx:26:    const id = String(card?.id ?? card?.cardId ?? card?.slug ?? playerSlug ?? "").trim();
+app\(tabs)\cards.tsx:27:    return { id, playerSlug };
+app\(tabs)\cards.tsx:46:const DEVICE_ID_KEY = "XS_DEVICE_ID_V1";
+app\(tabs)\cards.tsx:47:const JWT_DEVICE_ID_KEY = "XS_JWT_DEVICE_ID_V1";
+app\(tabs)\cards.tsx:48:const OAUTH_DEVICE_ID_KEY = "xs_device_id"; // XS_PREFER_OAUTH_DEVICEID_V2
+app\(tabs)\cards.tsx:50:  slug?: string;
+app\(tabs)\cards.tsx:57:  anyPlayer?: { displayName?: string | null } | null;
+app\(tabs)\cards.tsx:63:    card?.slug ||
+app\(tabs)\cards.tsx:64:      `${card?.anyPlayer?.displayName || card?.player?.displayName || "unknown"}
+app\(tabs)\cards.tsx:195:    card?.anyPlayer?.recentScores,
+app\(tabs)\cards.tsx:196:    card?.anyPlayer?.lastFiveScores,
+app\(tabs)\cards.tsx:197:    card?.anyPlayer?.l5Scores,
+app\(tabs)\cards.tsx:228:    card?.anyPlayer?.lastGameScore ??
+app\(tabs)\cards.tsx:245:    <PerfL5Widget
+app\(tabs)\cards.tsx:253:function CardTile({ card, width, l5Cache = {} }: { card: MyCardItemLocal; width: number; l5Cache?: Record<string, number[]> }) { /* XS_L5CACHE_OPTIONAL_V2 */
+app\(tabs)\cards.tsx:255:const playerName = xsSafeStr(card?.anyPlayer?.displayName || card?.player?.displayName || "Unknown");
+app\(tabs)\cards.tsx:262:const playerSlugKey = String((card as any)?.anyPlayer?.slug || (card as any)?.playerSlug || (card as any)?.player?.slug || "").trim();
+app\(tabs)\cards.tsx:266:    : (playerSlugKey && Array.isArray((l5Cache as any)[playerSlugKey]) ? (l5Cache as any)[playerSlugKey] : []);
+app\(tabs)\cards.tsx:270:      onPress={() => {
+app\(tabs)\cards.tsx:272:          const id =
+app\(tabs)\cards.tsx:273:            (card as any)?.id ??
+app\(tabs)\cards.tsx:274:            (card as any)?.cardId ??
+app\(tabs)\cards.tsx:275:            (card as any)?.slug ??
+app\(tabs)\cards.tsx:276:            (card as any)?.anyCard?.id ??
+app\(tabs)\cards.tsx:277:            (card as any)?.anyCard?.slug ??
+app\(tabs)\cards.tsx:280:          const playerSlug =
+app\(tabs)\cards.tsx:281:            (card as any)?.anyPlayer?.slug ??
+app\(tabs)\cards.tsx:282:            (card as any)?.player?.slug ??
+app\(tabs)\cards.tsx:283:            (card as any)?.slug ??
+app\(tabs)\cards.tsx:286:          const navId = String(id || playerSlug || "");
+app\(tabs)\cards.tsx:288:          if (!navId) {
+app\(tabs)\cards.tsx:290:            console.log("XS_FIX_CARD_CLICK_NAV_V1: missing navId", {
+app\(tabs)\cards.tsx:291:              id,
+app\(tabs)\cards.tsx:292:              playerSlug,
+app\(tabs)\cards.tsx:296:            router.push({
+app\(tabs)\cards.tsx:297:              pathname: "/card/[id]",
+app\(tabs)\cards.tsx:298:              params: { id: navId, playerSlug: String(playerSlug || "") },
+app\(tabs)\cards.tsx:306:width={xsTileWidth2col(width)} imageUrl={xsSafeStr(card?.pictureUrl)}
+app\(tabs)\cards.tsx:325:/* XS_CARDS_2COL_WIDTH_V1_BEGIN */
+app\(tabs)\cards.tsx:326:/* XS_MYCARDS_WIDEN_GRID_REAL_V1 — constants (module scope) */
+app\(tabs)\cards.tsx:329:/* XS_MYCARDS_WIDEN_GRID_REAL_V1 — width math */
+app\(tabs)\cards.tsx:330:function xsTileWidth2col(screenW: number): number {
+app\(tabs)\cards.tsx:334:/* XS_CARDS_2COL_WIDTH_V1_END */
+app\(tabs)\cards.tsx:337:const [deviceId, setDeviceId] = useState("");
+app\(tabs)\cards.tsx:344:    // Prefetch léger: complète l'historique L5 par joueur (slug) si la carte n'a pas de scores.
+app\(tabs)\cards.tsx:345:    const slugs = Array.from(new Set(
+app\(tabs)\cards.tsx:347:        .map((c: any) => String(c?.anyPlayer?.slug || c?.playerSlug || c?.player?.slug || "").trim())
+app\(tabs)\cards.tsx:351:    const missing = slugs.filter((s) =>
+app\(tabs)\cards.tsx:359:      for (const slug of batch) {
+app\(tabs)\cards.tsx:361:          xsL5LoadingRef.current[slug] = true;
+app\(tabs)\cards.tsx:363:          const resp: any = await publicPlayerPerformance(slug);
+app\(tabs)\cards.tsx:371:            setXsL5Cache((prev) => ({ ...(prev || {}), [slug]: scores }));
+app\(tabs)\cards.tsx:376:          xsL5LoadingRef.current[slug] = false;
+app\(tabs)\cards.tsx:391:const ensureDeviceId = useCallback(async () => {
+app\(tabs)\cards.tsx:392:  // XS_PREFER_OAUTH_DEVICEID_V2 — prefer OAuth deviceId (xs_device_id) when available
+app\(tabs)\cards.tsx:393:const oauthId = (await AsyncStorage.getItem(OAUTH_DEVICE_ID_KEY)) || "";
+app\(tabs)\cards.tsx:394:  if (oauthId.trim()) {
+app\(tabs)\cards.tsx:395:    try { await AsyncStorage.setItem(DEVICE_ID_KEY, oauthId.trim()); } catch {}
+app\(tabs)\cards.tsx:396:    return oauthId.trim();
+app\(tabs)\cards.tsx:399:  // XS_PREFER_JWT_DEVICEID_V2 — then prefer the JWT-linked deviceId set in Settings
+app\(tabs)\cards.tsx:400:const jwtId = (await AsyncStorage.getItem(JWT_DEVICE_ID_KEY)) || "";
+app\(tabs)\cards.tsx:401:  if (jwtId.trim()) return jwtId.trim();
+app\(tabs)\cards.tsx:402:const existing = (await AsyncStorage.getItem(DEVICE_ID_KEY)) || "";
+app\(tabs)\cards.tsx:405:  await AsyncStorage.setItem(DEVICE_ID_KEY, generated);
+app\(tabs)\cards.tsx:412:const id = await ensureDeviceId();
+app\(tabs)\cards.tsx:413:      setDeviceId(id);
+app\(tabs)\cards.tsx:414:const res = await myCardsList(id, 50);
+app\(tabs)\cards.tsx:424:  }, [ensureDeviceId]);
+app\(tabs)\cards.tsx:426:    if (!pageInfo?.hasNextPage || !pageInfo?.endCursor || loadingMoreRef.current || !deviceId) return;
+app\(tabs)\cards.tsx:430:const res = await myCardsList(deviceId, 50, pageInfo.endCursor || undefined);
+app\(tabs)\cards.tsx:441:  }, [deviceId, pageInfo?.endCursor, pageInfo?.hasNextPage]);
+app\(tabs)\cards.tsx:443:    if (!deviceId) return;
+app\(tabs)\cards.tsx:447:      await myCardsSync(deviceId, { first: 50, maxPages: 80, maxCards: 20000, sleepMs: 250 });
+app\(tabs)\cards.tsx:454:  }, [deviceId, loadInitial]);
+app\(tabs)\cards.tsx:459:const { width } = useWindowDimensions();
+app\(tabs)\cards.tsx:463:const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
+app\(tabs)\cards.tsx:464:    return { H_PADDING, GAP, itemWidth };
+app\(tabs)\cards.tsx:465:  }, [width]);
+app\(tabs)\cards.tsx:474:          onPress={onSync}
+app\(tabs)\cards.tsx:482:            borderWidth: 1,
+app\(tabs)\cards.tsx:513:            /* XS_MYCARDS_WIDEN_GRID_REAL_V2 — removed isLeft (gap handled by columnWrapperStyle) */
+app\(tabs)\cards.tsx:517:                  /* XS_MYCARDS_WIDEN_GRID_REAL_V2 */
+app\(tabs)\cards.tsx:518:                  width: xsTileWidth2col(width),
+app\(tabs)\cards.tsx:522:                <CardTile card={item} width={width}  l5Cache={xsL5Cache} />{/* XS_MYCARDS_TILEWIDTH_CALL_FIX_V1 */}
+app\(tabs)\cards.tsx:526:                    xsTxt((item as any)?.anyPlayer?.displayName) ||
+app\(tabs)\cards.tsx:528:                    xsTxt((item as any)?.anyPlayer?.slug) ||
+app\(tabs)\cards.tsx:533:                    xsTxt((item as any)?.anyTeam?.slug) ||
+app\(tabs)\cards.tsx:556:              <Pressable onPress={onSync} style={{ marginTop: 12 }}>
+
+

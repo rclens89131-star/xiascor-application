@@ -1,0 +1,67 @@
+﻿import React, { useEffect, useMemo, useState } from "react";
+import { ScrollView, Text, View } from "react-native";
+import { useLocalSearchParams } from "expo-router";
+import { theme } from "../../src/theme";
+import { xsCardNavGet } from "../_lib/cardNavCache";
+import { publicPlayerPerformance } from "../../src/scoutApi";
+import SorarePerformanceChart from "../../src/components/SorarePerformanceChart";
+
+function pickStr(v: any): string {
+  return typeof v === "string" && v.trim() ? v.trim() : "—";
+}
+
+function asNum(v: any): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function avgOf(arr: any[]): number | null {
+  if (!Array.isArray(arr) || arr.length === 0) return null;
+  const nums = arr
+    .map((x) => (typeof x === "number" ? x : Number(x)))
+    .filter((n) => Number.isFinite(n));
+  if (nums.length === 0) return null;
+  const sum = nums.reduce((a, b) => a + b, 0);
+  return Number((sum / nums.length).toFixed(1));
+}
+
+export default function CardDetailScreen() {
+  const params = useLocalSearchParams();
+  const id = String((params as any)?.id ?? "").trim();
+  const playerSlugParam = String((params as any)?.playerSlug ?? "").trim();
+
+  const card = useMemo(() => {
+    if (!id) return null;
+    try {
+      return xsCardNavGet(id);
+    } catch {
+      return null;
+    }
+  }, [id]);
+
+  const playerSlug = useMemo(() => {
+    const fromCard =
+      (card as any)?.anyPlayer?.slug ??
+      (card as any)?.player?.slug ??
+      (card as any)?.playerSlug ??
+      "";
+    return String(playerSlugParam || fromCard || "").trim();
+  }, [playerSlugParam, card]);
+
+  const [perf, setPerf] = useState<any>(null);
+  const [state, setState] = useState<"idle" | "loading" | "ok" | "err">("idle");
+  const [error, setError] = useState("");
+  const [activeSeries, setActiveSeries] = useState<"L5" | "L15" | "L40">("L5");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      if (!playerSlug) {
+        if (!cancelled) {
+          setPerf(null);
+          setState("idle");
