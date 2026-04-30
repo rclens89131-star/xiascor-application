@@ -57,7 +57,7 @@ export default function CardDetailScreen() {
   const [historyChart, setHistoryChart] = useState<any[]>([]); // XS_HISTORY_CHART_LOGOS_LOAD_V1
   const [state, setState] = useState<"idle" | "loading" | "ok" | "err">("idle");
   const [error, setError] = useState("");
-  const [activeSeries, setActiveSeries] = useState<"L5" | "L15" | "L40">("L5");
+  const [activeSeries, setActiveSeries] = useState<"L5" | "L15" | "ALL">("L5");
 
   useEffect(() => {
     let cancelled = false;
@@ -111,7 +111,7 @@ export default function CardDetailScreen() {
         // XS_HISTORY_CHART_LOGOS_LOAD_V1
         try {
           const base = String(process.env.EXPO_PUBLIC_BASE_URL || "https://xiascor-backend-tssdy62zqa-ez.a.run.app").replace(/\/+$/, "");
-          const histUrl = `${base}/history/player-chart/${encodeURIComponent(playerSlug)}?limit=40`;
+          const histUrl = `${base}/history/player-chart/${encodeURIComponent(playerSlug)}?limit=500`;
           console.log("[card history logos] url=", histUrl);
           const histResp = await fetch(histUrl);
           const histJson = await histResp.json();
@@ -170,7 +170,7 @@ export default function CardDetailScreen() {
   // On garde un fallback texte si l'API ne donne pas encore de logo.
       // XS_CARD_DETAIL_LATEST_MATCH_RIGHT_ALL_CARDS_V1
   // On trie les matchs par date ASC pour afficher le plus récent à droite.
-  const xsWantedCount = activeSeries === "L5" ? 5 : activeSeries === "L15" ? 15 : 40;
+  const xsWantedCount = activeSeries === "L5" ? 5 : activeSeries === "L15" ? 15 : (Array.isArray(historyChart) && historyChart.length ? historyChart.length : scores.length);
   const xsBaseHistory = Array.isArray(historyChart) && historyChart.length ? historyChart.slice(0, xsWantedCount) : [];
   const xsSortedHistory = xsBaseHistory
     .slice()
@@ -258,7 +258,7 @@ const avg5 = avgOf(series.l5) ?? asNum((card as any)?.l5) ?? asNum((perf as any)
   const avg15 = avgOf(series.l15) ?? asNum((card as any)?.l15) ?? asNum((perf as any)?.l15);
   const avg40 = avgOf(series.l40) ?? asNum((card as any)?.l40) ?? asNum((perf as any)?.l40);
 
-  function pill(label: "L5" | "L15" | "L40") {
+  function pill(label: "L5" | "L15" | "ALL") {
     const active = activeSeries === label;
     return (
       <Text
@@ -311,7 +311,7 @@ const avg5 = avgOf(series.l5) ?? asNum((card as any)?.l5) ?? asNum((perf as any)
         <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
           {pill("L5")}
           {pill("L15")}
-          {pill("L40")}
+          {pill("ALL")}
         </View>
 
         <View style={{ marginTop: 12 }}>
@@ -370,12 +370,13 @@ const avg5 = avgOf(series.l5) ?? asNum((card as any)?.l5) ?? asNum((perf as any)
           recentScores15: {Array.isArray((perf as any)?.recentScores15) ? (perf as any).recentScores15.length : 0}
         </Text>
         <Text style={{ color: theme.muted }}>
-          recentScores40: {Array.isArray((perf as any)?.recentScores40) ? (perf as any).recentScores40.length : 0}
+          ALL/historyChart: {Array.isArray((perf as any)?.historyChart) ? historyChart.length : 0}
         </Text>
       </View>
     </ScrollView>
   );
 }
+
 
 
 
