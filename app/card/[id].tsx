@@ -111,7 +111,7 @@ export default function CardDetailScreen() {
         // XS_HISTORY_CHART_LOGOS_LOAD_V1
         try {
           const base = String(process.env.EXPO_PUBLIC_BASE_URL || "https://xiascor-backend-tssdy62zqa-ez.a.run.app").replace(/\/+$/, "");
-          const histUrl = `${base}/history/player-chart/${encodeURIComponent(playerSlug)}?limit=5`;
+          const histUrl = `${base}/history/player-chart/${encodeURIComponent(playerSlug)}?limit=40`;
           console.log("[card history logos] url=", histUrl);
           const histResp = await fetch(histUrl);
           const histJson = await histResp.json();
@@ -375,6 +375,7 @@ const avg5 = avgOf(series.l5) ?? asNum((card as any)?.l5) ?? asNum((perf as any)
     </ScrollView>
   );
 }
+
 
 
 
