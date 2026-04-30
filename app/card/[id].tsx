@@ -370,12 +370,13 @@ const avg5 = avgOf(series.l5) ?? asNum((card as any)?.l5) ?? asNum((perf as any)
           recentScores15: {Array.isArray((perf as any)?.recentScores15) ? (perf as any).recentScores15.length : 0}
         </Text>
         <Text style={{ color: theme.muted }}>
-          ALL/historyChart: {Array.isArray((perf as any)?.historyChart) ? historyChart.length : 0}
+          ALL/historyChart: {Array.isArray(historyChart) ? historyChart.length : 0}
         </Text>
       </View>
     </ScrollView>
   );
 }
+
 
 
 
