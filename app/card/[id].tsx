@@ -170,7 +170,8 @@ export default function CardDetailScreen() {
   // On garde un fallback texte si l'API ne donne pas encore de logo.
       // XS_CARD_DETAIL_LATEST_MATCH_RIGHT_ALL_CARDS_V1
   // On trie les matchs par date ASC pour afficher le plus récent à droite.
-  const xsBaseHistory = Array.isArray(historyChart) && historyChart.length ? historyChart.slice(0, 5) : [];
+  const xsWantedCount = activeSeries === "L5" ? 5 : activeSeries === "L15" ? 15 : 40;
+  const xsBaseHistory = Array.isArray(historyChart) && historyChart.length ? historyChart.slice(0, xsWantedCount) : [];
   const xsSortedHistory = xsBaseHistory
     .slice()
     .sort((a: any, b: any) => {
@@ -185,7 +186,7 @@ export default function CardDetailScreen() {
 
   const xsDisplayScores = xsSortedHistory.length
     ? xsSortedHistory.map((x: any) => Number(x?.scoreSorare ?? x?.score ?? 0))
-    : (Array.isArray(scores) ? scores.slice(0, 5).reverse() : []);
+    : (Array.isArray(scores) ? scores.slice(0, xsWantedCount).reverse() : []);
 
   function xsPickOpponentLogoUrl(x: any): string | null {
     const raw =
@@ -375,6 +376,7 @@ const avg5 = avgOf(series.l5) ?? asNum((card as any)?.l5) ?? asNum((perf as any)
     </ScrollView>
   );
 }
+
 
 
 

@@ -31,7 +31,7 @@ export default function SorarePerformanceChart({
   opponentShort,
   title = "",
 }: Props) {
-  const values = Array.isArray(recentScores) ? recentScores.slice(0, 5) : [];
+  const values = Array.isArray(recentScores) ? recentScores : [];
   const max = 100;
 
   return (
@@ -80,9 +80,10 @@ export default function SorarePerformanceChart({
 
       <Text style={{ color: "#9ca3af", fontSize: 12, marginTop: 8 }}>
         {/* XS_SORARE_CHART_STYLE_V1 */}
-        Scores sur 5 matchs (barres verticales, couleur selon seuils).
+        Scores affichés selon L5 / L15 / L40 (barres verticales, couleur selon seuils).
       </Text>
     </View>
   );
 }
+
 
