@@ -43,6 +43,9 @@ function xsScoreColorL5L15L40(score: number | null): string {
 
 const XS_HISTORY_CHART_CLOUDRUN_V2 = "https://xiascor-backend-tssdy62zqa-ez.a.run.app";
 
+const XS_HISTORY_SYNC_CLOUDRUN_V1 = "https://xiascor-backend-tssdy62zqa-ez.a.run.app";
+
+
 export default function CardDetailScreen() {
   const params = useLocalSearchParams();
   const id = String((params as any)?.id ?? "").trim();
@@ -153,7 +156,52 @@ return () => { cancelled = true; };
   const position = pickStr((card as any)?.position ?? perf?.position);
   const seasonYear = pickStr((card as any)?.seasonYear);
   const rarity = pickStr((card as any)?.rarityTyped ?? (card as any)?.rarity);
-  const serial = (card as any)?.serialNumber != null ? "#" + String((card as any).serialNumber) : "—";
+  const serial = (card as any)?.serialNumber != null ? "#" + String((card as any).serialNumber) : "—";
+
+  /* XS_CARD_HISTORY_AUTO_SYNC_V1 */
+  useEffect(() => {
+    if (!playerSlug) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const base = XS_HISTORY_SYNC_CLOUDRUN_V1.replace(/\/+$/, "");
+        const syncUrl = `${base}/history/sync-player-scores`;
+        const chartUrl = `${base}/history/player-chart/${encodeURIComponent(playerSlug)}?limit=500`;
+
+        console.log("[card history sync] start", { playerSlug, last: 100 });
+
+        await fetch(syncUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slug: playerSlug, last: 100 }),
+        });
+
+        const refreshed = await fetch(chartUrl);
+        const refreshedJson = await refreshed.json().catch(() => null);
+        const refreshedItems = Array.isArray((refreshedJson as any)?.items) ? (refreshedJson as any).items : [];
+
+        if (!cancelled && refreshedItems.length > 0) {
+          setHistoryChart(refreshedItems);
+        }
+
+        if (!cancelled) {
+          console.log("[card history sync] ok", { playerSlug, count: refreshedItems.length });
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          console.log("[card history sync] error", { playerSlug, message: e?.message || String(e) });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [playerSlug]);
+  /* XS_CARD_HISTORY_AUTO_SYNC_V1_END */
+
 
   const series = useMemo(() => {
     const l5 = Array.isArray((perf as any)?.recentScores) ? (perf as any).recentScores.slice(0, 5) : [];
@@ -401,6 +449,9 @@ return (
     </ScrollView>
   );
 }
+
+
+
 
 
 
