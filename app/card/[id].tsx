@@ -170,7 +170,7 @@ export default function CardDetailScreen() {
   // On garde un fallback texte si l'API ne donne pas encore de logo.
       // XS_CARD_DETAIL_LATEST_MATCH_RIGHT_ALL_CARDS_V1
   // On trie les matchs par date ASC pour afficher le plus récent à droite.
-  const xsWantedCount = activeSeries === "L5" ? 5 : activeSeries === "L15" ? 15 : (Array.isArray(historyChart) && historyChart.length ? historyChart.length : scores.length);
+  const xsWantedCount = activeSeries === "L5" ? 5 : activeSeries === "L15" ? 15 : 40;
   const xsBaseHistory = Array.isArray(historyChart) && historyChart.length ? historyChart.slice(0, xsWantedCount) : [];
   const xsSortedHistory = xsBaseHistory
     .slice()
@@ -376,6 +376,7 @@ const avg5 = avgOf(series.l5) ?? asNum((card as any)?.l5) ?? asNum((perf as any)
     </ScrollView>
   );
 }
+
 
 
 

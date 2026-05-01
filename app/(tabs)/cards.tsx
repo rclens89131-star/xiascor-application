@@ -9,7 +9,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import PerfL5Widget from "../../src/components/PerfL5Widget";
 import { ActivityIndicator, FlatList, Image, Pressable, SafeAreaView, Text, View, useWindowDimensions, Dimensions, Alert } from "react-native";
 import { theme } from "../../src/theme";
-import { myCardsList, myCardsSync, type PageInfo } from "../../src/scoutApi";
+import { myCardsList, myCardsSync, publicPlayerPerformance, syncMyCardsHistoryBatch, type PageInfo } from "../../src/scoutApi";
 /* XS_MYCARDS_UI_META_V1_BEGIN */
 /* XS_CARDS_GRID_GROW_V1
    Objectif:
@@ -42,7 +42,7 @@ const p = xsNum(power);
 }
 /* XS_MYCARDS_UI_META_V1_END */
 import { SorareCardTile } from "../../src/components/SorareCardTile"; // XS_SORARE_TILE_IMPORT_V1
-import { publicPlayerPerformance } from "../../src/scoutApi";
+
 const DEVICE_ID_KEY = "XS_DEVICE_ID_V1";
 const JWT_DEVICE_ID_KEY = "XS_JWT_DEVICE_ID_V1";
 const OAUTH_DEVICE_ID_KEY = "xs_device_id";
@@ -527,7 +527,40 @@ const onSync = useCallback(async () => {
     setError("");
     try {
       await myCardsSync(deviceId, { first: 50, maxPages: 80, maxCards: 20000, sleepMs: 250 });
-      await loadInitial();
+
+      // XS_WIRE_HISTORY_BATCH_AFTER_MY_CARDS_SYNC_V2
+      const resRaw = await myCardsList(deviceId, 50);
+      const res = await xsApplyMyCardsLocalCacheSafeV1(deviceId, resRaw);
+      const syncCards = Array.isArray((res as any)?.cards) ? (res as any).cards : [];
+
+      try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
+      setItems(syncCards);
+      setPageInfo((res as any)?.pageInfo);
+
+      const xsHistorySlugsDebug = Array.from(new Set(
+        (syncCards || [])
+          .map((c: any) => c?.playerSlug || c?.player?.slug || c?.anyPlayer?.slug)
+          .filter(Boolean)
+      ));
+      console.log("[history batch] trigger cards=", syncCards.length, "slugs=", xsHistorySlugsDebug.length, xsHistorySlugsDebug.slice(0, 20));
+
+      if (syncCards.length) {
+        const xsBaseUrl = String(process.env.EXPO_PUBLIC_BASE_URL || "");
+        const xsStoredHistoryDeviceId =
+          (await AsyncStorage.getItem("xs_device_id")) ||
+          deviceId;
+
+        const xsHistoryDeviceId =
+          xsBaseUrl.includes("192.168.") || xsBaseUrl.includes("127.0.0.1") || xsBaseUrl.includes("localhost")
+            ? "dev_test_123"
+            : xsStoredHistoryDeviceId;
+
+        console.log("[history batch] deviceId=", xsHistoryDeviceId);
+
+        syncMyCardsHistoryBatch(xsHistoryDeviceId, syncCards)
+          .then((r: any) => console.log("[history batch] done=", r))
+          .catch((e: any) => console.log("[history batch] async error=", e?.message || e));
+      }
     } catch (e: any) {
       setError(e?.message || "Erreur synchronisation");
     } finally {
@@ -646,6 +679,13 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
+
+
+
+
+
+
 
 
 

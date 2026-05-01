@@ -634,3 +634,38 @@ export async function publicPlayerPerformance(
 
 
 
+
+// XS_SYNC_MY_CARDS_HISTORY_BATCH_V1
+export async function syncMyCardsHistoryBatch(deviceId: string, cards: any[]) {
+  try {
+    const BASE_URL =
+      process.env.EXPO_PUBLIC_BASE_URL ??
+      "https://xiascor-backend-tssdy62zqa-ez.a.run.app";
+
+    const slugs = Array.from(new Set(
+      (cards || [])
+        .map((c: any) => c?.playerSlug || c?.player?.slug || c?.anyPlayer?.slug)
+        .filter(Boolean)
+    ));
+
+    if (!slugs.length) return { ok: false, error: "no_slugs" };
+
+    const url =
+      `${BASE_URL}/history/sync-my-cards-scores` +
+      `?deviceId=${encodeURIComponent(deviceId)}` +
+      `&last=100&concurrency=2` +
+      `&slugs=${encodeURIComponent(slugs.join(","))}`;
+
+    console.log("[history batch] url=", url);
+
+    const r = await fetch(url, { method: "POST" });
+    const json = await r.json();
+
+    console.log("[history batch] result=", json);
+
+    return json;
+  } catch (e: any) {
+    console.log("[history batch] error=", e?.message || e);
+    return { ok: false, error: String(e?.message || e) };
+  }
+}
