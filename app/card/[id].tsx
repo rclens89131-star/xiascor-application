@@ -30,6 +30,17 @@ function avgOf(arr: any[]): number | null {
   return Number((sum / nums.length).toFixed(1));
 }
 
+/* XS_SCORE_COLOR_L5_L15_L40_V1 */
+function xsScoreColorL5L15L40(score: number | null): string {
+  if (typeof score !== "number" || !Number.isFinite(score)) return "#9CA3AF";
+  if (score >= 65) return "#38BDF8"; // bleu = excellent
+  if (score >= 50) return "#22C55E"; // vert = bon
+  if (score >= 40) return "#FACC15"; // jaune = moyen
+  return "#EF4444"; // rouge = faible
+}
+/* XS_SCORE_COLOR_L5_L15_L40_V1_END */
+
+
 const XS_HISTORY_CHART_CLOUDRUN_V2 = "https://xiascor-backend-tssdy62zqa-ez.a.run.app";
 
 export default function CardDetailScreen() {
@@ -350,22 +361,22 @@ return (
       <View style={{ flexDirection: "row", gap: 10 }}>
         <View style={{ flex: 1, borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, padding: 14 }}>
           <Text style={{ color: theme.muted, fontSize: 12, fontWeight: "700" }}>L5</Text>
-          <Text style={{ color: theme.text, fontSize: 24, fontWeight: "900", marginTop: 4 }}>
-            {avg5 == null ? "—" : String(avg5)}
+          <Text style={{ color: xsScoreColorL5L15L40(avg5), fontSize: 24, fontWeight: "900", marginTop: 4 }}>
+            {avg5 == null ? "—" : String(Math.round(avg5))}
           </Text>
         </View>
 
         <View style={{ flex: 1, borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, padding: 14 }}>
           <Text style={{ color: theme.muted, fontSize: 12, fontWeight: "700" }}>L15</Text>
-          <Text style={{ color: theme.text, fontSize: 24, fontWeight: "900", marginTop: 4 }}>
-            {avg15 == null ? "—" : String(avg15)}
+          <Text style={{ color: xsScoreColorL5L15L40(avg15), fontSize: 24, fontWeight: "900", marginTop: 4 }}>
+            {avg15 == null ? "—" : String(Math.round(avg15))}
           </Text>
         </View>
 
         <View style={{ flex: 1, borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, padding: 14 }}>
           <Text style={{ color: theme.muted, fontSize: 12, fontWeight: "700" }}>L40</Text>
-          <Text style={{ color: theme.text, fontSize: 24, fontWeight: "900", marginTop: 4 }}>
-            {avg40 == null ? "—" : String(avg40)}
+          <Text style={{ color: xsScoreColorL5L15L40(avg40), fontSize: 24, fontWeight: "900", marginTop: 4 }}>
+            {avg40 == null ? "—" : String(Math.round(avg40))}
           </Text>
         </View>
       </View>
@@ -390,6 +401,7 @@ return (
     </ScrollView>
   );
 }
+
 
 
 
