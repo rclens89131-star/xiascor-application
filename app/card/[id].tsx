@@ -30,6 +30,8 @@ function avgOf(arr: any[]): number | null {
   return Number((sum / nums.length).toFixed(1));
 }
 
+const XS_HISTORY_CHART_CLOUDRUN_V2 = "https://xiascor-backend-tssdy62zqa-ez.a.run.app";
+
 export default function CardDetailScreen() {
   const params = useLocalSearchParams();
   const id = String((params as any)?.id ?? "").trim();
@@ -110,7 +112,7 @@ export default function CardDetailScreen() {
 
         // XS_HISTORY_CHART_LOGOS_LOAD_V1
         try {
-          const base = String(process.env.EXPO_PUBLIC_BASE_URL || "https://xiascor-backend-tssdy62zqa-ez.a.run.app").replace(/\/+$/, "");
+          const base = XS_HISTORY_CHART_CLOUDRUN_V2.replace(/\/+$/, "");
           const histUrl = `${base}/history/player-chart/${encodeURIComponent(playerSlug)}?limit=500`;
           console.log("[card history logos] url=", histUrl);
           const histResp = await fetch(histUrl);
@@ -132,7 +134,7 @@ export default function CardDetailScreen() {
     }
 
     run();
-    return () => { cancelled = true; };
+return () => { cancelled = true; };
   }, [playerSlug]);
 
   const playerName = pickStr((card as any)?.anyPlayer?.displayName ?? (card as any)?.player?.displayName ?? perf?.playerName);
@@ -260,7 +262,7 @@ const avg5 = avgOf(series.l5) ?? asNum((card as any)?.l5) ?? asNum((perf as any)
 
   function pill(label: "L5" | "L15" | "ALL") {
     const active = activeSeries === label;
-    return (
+return (
       <Text
         onPress={() => setActiveSeries(label)}
         style={{
@@ -279,8 +281,7 @@ const avg5 = avgOf(series.l5) ?? asNum((card as any)?.l5) ?? asNum((perf as any)
       </Text>
     );
   }
-
-  return (
+return (
     <ScrollView
       style={{ flex: 1, backgroundColor: theme.bg }}
       contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 12 }}
@@ -320,11 +321,24 @@ const avg5 = avgOf(series.l5) ?? asNum((card as any)?.l5) ?? asNum((perf as any)
           ) : state === "err" ? (
             <Text style={{ color: "#FF7B7B" }}>Erreur de chargement: {error || "inconnue"}</Text>
           ) : scores.length > 0 ? (
-            <SorarePerformanceChart
+            <View style={{ width: "100%", overflow: "hidden" }}>
+  {/* XS_CHART_HORIZONTAL_SCROLL_V2 */}
+  <ScrollView
+    horizontal
+    showsHorizontalScrollIndicator={true}
+    nestedScrollEnabled
+    contentContainerStyle={{ paddingRight: 16 }}
+  >
+    <View style={{ width: Math.max(360, (Array.isArray(xsDisplayScores) ? xsDisplayScores.length : 5) * 58) }}>
+      <SorarePerformanceChart
               recentScores={xsDisplayScores as any}
               opponentLogoUrls={xsOpponentLogoUrls}
               opponentShort={xsOpponentShort}
             />
+    </View>
+  </ScrollView>
+  {/* XS_CHART_HORIZONTAL_SCROLL_V2_END */}
+</View>
           ) : (
             <Text style={{ color: theme.muted }}>
               {playerSlug ? "Aucun score disponible." : "playerSlug manquant."}
@@ -376,6 +390,11 @@ const avg5 = avgOf(series.l5) ?? asNum((card as any)?.l5) ?? asNum((perf as any)
     </ScrollView>
   );
 }
+
+
+
+
+
 
 
 
