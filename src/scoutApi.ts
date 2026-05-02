@@ -637,6 +637,9 @@ export async function publicPlayerPerformance(
 
 // XS_SYNC_MY_CARDS_HISTORY_BATCH_V1
 export async function syncMyCardsHistoryBatch(deviceId: string, cards: any[]) {
+  /* XS_HISTORY_BATCH_CLOUDRUN_V1 */
+  const XS_HISTORY_BATCH_BASE_V1 = "https://xiascor-backend-tssdy62zqa-ez.a.run.app";
+  /* XS_HISTORY_BATCH_CLOUDRUN_V1_END */
   try {
     const BASE_URL =
       process.env.EXPO_PUBLIC_BASE_URL ??
@@ -651,7 +654,7 @@ export async function syncMyCardsHistoryBatch(deviceId: string, cards: any[]) {
     if (!slugs.length) return { ok: false, error: "no_slugs" };
 
     const url =
-      `${BASE_URL}/history/sync-my-cards-scores` +
+      `${XS_HISTORY_BATCH_BASE_V1}/history/sync-my-cards-scores` +
       `?deviceId=${encodeURIComponent(deviceId)}` +
       `&last=100&concurrency=2` +
       `&slugs=${encodeURIComponent(slugs.join(","))}`;
@@ -669,3 +672,4 @@ export async function syncMyCardsHistoryBatch(deviceId: string, cards: any[]) {
     return { ok: false, error: String(e?.message || e) };
   }
 }
+

@@ -550,10 +550,9 @@ const onSync = useCallback(async () => {
           (await AsyncStorage.getItem("xs_device_id")) ||
           deviceId;
 
-        const xsHistoryDeviceId =
-          xsBaseUrl.includes("192.168.") || xsBaseUrl.includes("127.0.0.1") || xsBaseUrl.includes("localhost")
-            ? "dev_test_123"
-            : xsStoredHistoryDeviceId;
+        /* XS_HISTORY_BATCH_REAL_DEVICEID_V2 */
+        const xsHistoryDeviceId = String(xsStoredHistoryDeviceId || deviceId || "").trim();
+        /* XS_HISTORY_BATCH_REAL_DEVICEID_V2_END */
 
         console.log("[history batch] deviceId=", xsHistoryDeviceId);
 
@@ -679,6 +678,8 @@ const bonus = xsBonusPctFromPower((item as any)?.power);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
+
 
 
 

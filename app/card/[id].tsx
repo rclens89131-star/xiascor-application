@@ -21,13 +21,14 @@ function asNum(v: any): number | null {
 }
 
 function avgOf(arr: any[]): number | null {
-  if (!Array.isArray(arr) || arr.length === 0) return null;
+  /* XS_DNT_ZERO_NOT_COUNTED_V1 */
+  if (!Array.isArray(arr)) return null;
   const nums = arr
-    .map((x) => (typeof x === "number" ? x : Number(x)))
-    .filter((n) => Number.isFinite(n));
-  if (nums.length === 0) return null;
-  const sum = nums.reduce((a, b) => a + b, 0);
-  return Number((sum / nums.length).toFixed(1));
+    .map((x: any) => Number(x?.scoreSorare ?? x?.score ?? x))
+    .filter((n: number) => Number.isFinite(n) && n > 0);
+  if (!nums.length) return null;
+  return Math.round(nums.reduce((a: number, b: number) => a + b, 0) / nums.length);
+  /* XS_DNT_ZERO_NOT_COUNTED_V1_END */
 }
 
 /* XS_SCORE_COLOR_L5_L15_L40_V1 */
@@ -449,6 +450,7 @@ return (
     </ScrollView>
   );
 }
+
 
 
 

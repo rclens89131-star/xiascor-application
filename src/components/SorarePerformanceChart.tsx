@@ -44,7 +44,7 @@ export default function SorarePerformanceChart({
       <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 10 }}>
         {values.map((raw, idx) => {
           const v = xsClamp(Number(raw || 0), 0, 100);
-          const h = 24 + Math.round((v / max) * 136); // 14..100 approx
+          const h = v <= 0 ? 34 : 24 + Math.round((v / max) * 136); // 14..100 approx
           const bg = xsScoreColor(v);
 
           const logo = opponentLogoUrls?.[idx] ?? null;
@@ -55,7 +55,7 @@ export default function SorarePerformanceChart({
               {/* Bar */}
               <View style={{ height: 160, justifyContent: "flex-end", width: "100%" }}>
                 <View style={{ height: h, borderRadius: 8, backgroundColor: bg, width: "100%", justifyContent: "center" }}>
-                  <Text style={{ color: "#0b0b0b", fontWeight: "900", textAlign: "center", fontSize: 12 }}>{Math.round(v)}</Text>
+                  <Text style={{ color: "#0b0b0b", fontWeight: "900", textAlign: "center", fontSize: 12 }}>{v <= 0 ? "DNT" : Math.round(v)}</Text>
                 </View>
               </View>
 
@@ -85,5 +85,7 @@ export default function SorarePerformanceChart({
     </View>
   );
 }
+
+
 
 
