@@ -24,6 +24,8 @@ export default function FifaRadarChart(props: {
   values?: RadarValue[];
   confidence?: number | null;
   matches?: number | null;
+  positionUsed?: string | null;
+  profile?: string | null;
   subtitle?: string;
 }) {
   const values =
@@ -46,12 +48,15 @@ export default function FifaRadarChart(props: {
   const accent = colorFromValue(avg);
   const hasMatches = typeof props.matches === "number" && Number.isFinite(props.matches);
   const hasConfidence = typeof props.confidence === "number" && Number.isFinite(props.confidence);
+  const headingBits = [props.positionUsed, props.profile]
+    .map((v) => String(v || "").trim())
+    .filter(Boolean);
+  if (hasMatches) headingBits.push(`${Math.max(0, Math.round(props.matches || 0))} matchs`);
+  if (hasConfidence) headingBits.push(`Confiance ${Math.round(clamp((props.confidence || 0) * 100))}%`);
   const subtitle =
     props.subtitle ||
-    (hasMatches && hasConfidence
-      ? `Basé sur ${Math.max(0, Math.round(props.matches || 0))} matchs · Confiance ${Math.round(
-          clamp((props.confidence || 0) * 100)
-        )}%`
+    (headingBits.length
+      ? headingBits.join(" · ")
       : "Basé sur l'historique disponible");
 
   return (

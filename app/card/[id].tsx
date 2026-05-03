@@ -61,11 +61,159 @@ function xsRadarRateV1<T>(values: T[], predicate: (value: T) => boolean): number
   return values.filter(predicate).length / values.length;
 }
 
+/* XS_FIFA_RADAR_POSITION_WEIGHTS_V1 */
+type XsRadarPositionV1 = "GK" | "DEF" | "MID" | "FW" | "GEN";
+
+function xsRadarPositionFromTokenV1(token: any): XsRadarPositionV1 {
+  const raw = Array.isArray(token) ? token[0] : token;
+  const s = String(raw ?? "").trim().toLowerCase();
+  if (!s || s === "—" || s === "-" || s === "unk" || s === "unknown") return "GEN";
+  if (s === "gk" || s.includes("goalkeeper") || s.includes("goal")) return "GK";
+  if (s === "def" || s === "df" || s.includes("defender") || s.includes("def")) return "DEF";
+  if (s === "mid" || s === "mf" || s.includes("midfielder") || s.includes("mid")) return "MID";
+  if (s === "fw" || s === "fwd" || s.includes("forward") || s.includes("striker") || s.includes("att")) return "FW";
+  return "GEN";
+}
+
+function xsRadarNormalizePositionV1(source: any): XsRadarPositionV1 {
+  const vals = [
+    source?.positionRaw,
+    source?.position,
+    source?.playerPosition,
+    source?.anyPosition,
+    source?.card?.positionRaw,
+    source?.card?.position,
+    source?.card?.playerPosition,
+    source?.card?.anyPosition,
+    source?.player?.position,
+    source?.player?.anyPosition,
+    source?.card?.player?.position,
+    source?.card?.player?.anyPosition,
+    source?.anyPlayer?.position,
+    source?.anyPlayer?.anyPosition,
+    source?.card?.anyPlayer?.position,
+    source?.card?.anyPlayer?.anyPosition,
+    source?.perf?.position,
+  ];
+
+  for (const v of vals) {
+    const pos = xsRadarPositionFromTokenV1(v);
+    if (pos !== "GEN") return pos;
+  }
+  return "GEN";
+}
+
+function xsRadarDetailsStatTotalV1(details: any, keys: string[]): number | null {
+  const wanted = keys.map((k) => k.toLowerCase());
+  let total = 0;
+  let found = false;
+
+  function add(v: any) {
+    const n = xsRadarNumV1(v);
+    if (n == null) return;
+    total += n;
+    found = true;
+  }
+
+  function matchesLabel(node: any) {
+    const label = String(
+      node?.stat ?? node?.category ?? node?.name ?? node?.label ?? ""
+    ).toLowerCase();
+    if ((wanted.includes("goal") || wanted.includes("goals")) && label.includes("assist")) return false;
+    return wanted.some((k) => label.includes(k));
+  }
+
+  function visit(node: any, depth: number) {
+    if (!node || depth > 5) return;
+    if (Array.isArray(node)) {
+      node.forEach((x) => visit(x, depth + 1));
+      return;
+    }
+    if (typeof node !== "object") return;
+
+    for (const k of Object.keys(node)) {
+      if (wanted.includes(k.toLowerCase())) add(node[k]);
+    }
+
+    if (matchesLabel(node)) add(node.statValue ?? node.value ?? node.count);
+
+    for (const k of Object.keys(node)) visit(node[k], depth + 1);
+  }
+
+  visit(details, 0);
+  return found ? total : null;
+}
+
+function xsRadarCountMetricV1(total: number | null, matches: number, strongPerMatch: number): number | null {
+  if (total == null || !matches) return null;
+  return xsRadarClampV1((total / Math.max(1, matches * strongPerMatch)) * 100);
+}
+
+function xsRadarTotalRowsStatV1(rows: any[], key: string): number | null {
+  const hasStat = rows.some((row: any) => row && row[key] != null);
+  if (!hasStat) return null;
+  return rows.reduce((sum: number, row: any) => sum + (row?.[key] ?? 0), 0);
+}
+
+function xsRadarGoalMetricV1(totalGoals: number | null, matches: number, positionUsed: XsRadarPositionV1): number | null {
+  if (totalGoals == null || !matches) return null;
+  const perMatch = totalGoals / Math.max(1, matches);
+  const multiplier =
+    positionUsed === "GK" ? 1200 :
+    positionUsed === "DEF" ? 360 :
+    positionUsed === "MID" ? 230 :
+    positionUsed === "FW" ? 155 :
+    220;
+  const exceptionalBonus = totalGoals > 0 && positionUsed === "GK" ? 15 : 0;
+  return xsRadarClampV1(perMatch * multiplier + exceptionalBonus);
+}
+
+function xsRadarProfileV1(
+  positionUsed: XsRadarPositionV1,
+  m: {
+    attack: number;
+    creation: number;
+    defense: number;
+    reliability: number;
+    regularity: number;
+    form: number;
+    impact: number;
+    goalMetric: number;
+    highScoreRate: number;
+  }
+): string {
+  if (positionUsed === "GK") {
+    if (m.reliability < 50 || m.regularity < 50) return "risky_keeper";
+    if (m.impact >= 70 || m.goalMetric >= 65) return "shot_stopper";
+    return "reliable_keeper";
+  }
+  if (positionUsed === "DEF") {
+    if (m.attack >= 62 && m.goalMetric >= 45) return "set_piece_threat";
+    if (m.creation >= 65) return "ball_playing_defender";
+    return "defensive_anchor";
+  }
+  if (positionUsed === "MID") {
+    if (m.attack >= 70) return "attacking_midfielder";
+    if (m.creation >= 68) return "playmaker";
+    if (m.defense >= 66 && m.creation < 62) return "ball_winner";
+    return "box_to_box";
+  }
+  if (positionUsed === "FW") {
+    if (m.attack >= 70) return "finisher";
+    if (m.creation >= 65) return "creator_forward";
+    if (m.form >= 70 || m.highScoreRate >= 0.45) return "explosive_attacker";
+    return "boom_or_bust";
+  }
+  return m.creation >= m.attack ? "balanced_creator" : "balanced_attacker";
+}
+/* XS_FIFA_RADAR_POSITION_WEIGHTS_V1_END */
+
 function xsBuildFifaRadarValuesFromHistoryV1(
   historyChart: any[],
   fallbackAvg: { avg5?: number | null; avg15?: number | null; avg40?: number | null },
-  position: string
+  positionSource: any
 ) {
+  const positionUsed = xsRadarNormalizePositionV1(positionSource);
   const fallbackScore =
     xsRadarAvgV1([fallbackAvg?.avg5, fallbackAvg?.avg15, fallbackAvg?.avg40]) ?? 50;
 
@@ -82,12 +230,20 @@ function xsBuildFifaRadarValuesFromHistoryV1(
       minutes: xsRadarNumV1(row?.minutes),
       decisiveScore: xsRadarNumV1(row?.decisiveScore),
       allAroundScore: xsRadarNumV1(row?.allAroundScore),
+      goals: xsRadarDetailsStatTotalV1(row?.detailsV1, ["goals", "goal"]),
+      assists: xsRadarDetailsStatTotalV1(row?.detailsV1, ["goalAssist", "assist"]),
+      saves: xsRadarDetailsStatTotalV1(row?.detailsV1, ["saves", "save"]),
+      cleanSheets: xsRadarDetailsStatTotalV1(row?.detailsV1, ["cleanSheet", "clean sheet"]),
+      tackles: xsRadarDetailsStatTotalV1(row?.detailsV1, ["wonTackle", "tackle"]),
+      interceptions: xsRadarDetailsStatTotalV1(row?.detailsV1, ["interceptionWon", "interception"]),
+      duels: xsRadarDetailsStatTotalV1(row?.detailsV1, ["duelWon", "duel"]),
     }))
     .filter((row: any) => row.score != null);
 
   const scores = rows.map((row: any) => xsRadarClampV1(row.score));
   const matches = scores.length;
-  const confidence = Math.min(1, matches / 20);
+  const confidenceBase = Math.min(1, matches / 20);
+  const confidence = positionUsed === "GEN" ? confidenceBase * 0.9 : confidenceBase;
   const fallbackValues = [
     { label: "Forme", value: fallbackScore },
     { label: "Régularité", value: fallbackScore },
@@ -100,7 +256,24 @@ function xsBuildFifaRadarValuesFromHistoryV1(
   ];
 
   if (!matches) {
-    return { confidence, matches, position, values: fallbackValues };
+    return {
+      confidence,
+      matches,
+      positionUsed,
+      profile: positionUsed === "GEN" ? "balanced_attacker" : xsRadarProfileV1(positionUsed, {
+        attack: fallbackScore,
+        creation: fallbackScore,
+        defense: fallbackScore,
+        reliability: fallbackScore,
+        regularity: fallbackScore,
+        form: fallbackScore,
+        impact: fallbackScore,
+        goalMetric: fallbackScore,
+        highScoreRate: 0,
+      }),
+      meta: { source: "fallback", positionUsed },
+      values: fallbackValues,
+    };
   }
 
   const l5 = xsRadarAvgV1(scores.slice(0, 5)) ?? fallbackAvg?.avg5 ?? fallbackScore;
@@ -126,15 +299,29 @@ function xsBuildFifaRadarValuesFromHistoryV1(
   const avgAllAround = xsRadarAvgV1(allAroundScores);
   const normalizedAllAround = avgAllAround == null ? avgScore : xsRadarClampV1(50 + avgAllAround);
   const highAllAroundRate = xsRadarRateV1(allAroundScores, (score) => score >= 15);
+  const totalGoals = xsRadarAvgV1(rows.map((row: any) => row.goals)) == null
+    ? null
+    : rows.reduce((sum: number, row: any) => sum + (row.goals ?? 0), 0);
+  const totalAssists = xsRadarAvgV1(rows.map((row: any) => row.assists)) == null
+    ? null
+    : rows.reduce((sum: number, row: any) => sum + (row.assists ?? 0), 0);
+  const goalMetricFromDetails = xsRadarGoalMetricV1(totalGoals, matches, positionUsed);
+  const goalMetric = goalMetricFromDetails ?? avgDecisive;
+  const assistMetric = xsRadarCountMetricV1(totalAssists, matches, positionUsed === "FW" ? 0.25 : 0.18) ?? normalizedAllAround;
+  const defenseDetailMetric =
+    xsRadarAvgV1([
+      xsRadarCountMetricV1(xsRadarTotalRowsStatV1(rows, "saves"), matches, 3),
+      xsRadarCountMetricV1(xsRadarTotalRowsStatV1(rows, "cleanSheets"), matches, 0.45),
+      xsRadarCountMetricV1(xsRadarTotalRowsStatV1(rows, "tackles"), matches, 2.5),
+      xsRadarCountMetricV1(xsRadarTotalRowsStatV1(rows, "interceptions"), matches, 1.8),
+      xsRadarCountMetricV1(xsRadarTotalRowsStatV1(rows, "duels"), matches, 5),
+    ]) ?? normalizedAllAround;
 
   const regularity = xsRadarClampV1(100 - stdDev * 2.2 - badScoreRate * 20);
   const gameTime =
     minutesAvg == null
       ? xsRadarClampV1(fallbackScore)
       : xsRadarClampV1((minutesAvg / 90) * 70 + startLikeRate * 30);
-  const impact = xsRadarClampV1(avgScore * 0.45 + avgDecisive * 0.35 + normalizedAllAround * 0.2);
-  const attack = xsRadarClampV1(highScoreRate * 40 + avgDecisive * 0.45 + form * 0.15);
-  const creation = xsRadarClampV1(normalizedAllAround * 0.65 + regularity * 0.2 + highAllAroundRate * 15);
   const reliability = xsRadarClampV1(
     100 -
       lowMinuteRate * 35 -
@@ -142,12 +329,67 @@ function xsBuildFifaRadarValuesFromHistoryV1(
       missingMinutesRate * 15 -
       stdDev * 0.8
   );
-  const defense = xsRadarClampV1(regularity * 0.45 + reliability * 0.35 + normalizedAllAround * 0.2);
+
+  const goalWeightByPosition: Record<XsRadarPositionV1, number> = {
+    GK: 0.05,
+    DEF: 0.25,
+    MID: 0.40,
+    FW: 0.60,
+    GEN: 0.35,
+  };
+  const goalWeight = goalWeightByPosition[positionUsed];
+  const highScoreMetric = highScoreRate * 100;
+
+  let impact = xsRadarClampV1(avgScore * 0.45 + avgDecisive * 0.35 + normalizedAllAround * 0.2);
+  let attack = xsRadarClampV1(highScoreRate * 40 + avgDecisive * 0.45 + form * 0.15);
+  let creation = xsRadarClampV1(normalizedAllAround * 0.65 + regularity * 0.2 + highAllAroundRate * 15);
+  let defense = xsRadarClampV1(regularity * 0.45 + reliability * 0.35 + normalizedAllAround * 0.2);
+
+  if (positionUsed === "GK") {
+    impact = xsRadarClampV1(avgScore * 0.35 + avgDecisive * 0.15 + normalizedAllAround * 0.2 + gameTime * 0.3);
+    attack = xsRadarClampV1(12 + goalMetric * goalWeight + avgDecisive * 0.15 + highScoreMetric * 0.1);
+    creation = xsRadarClampV1(normalizedAllAround * 0.3 + regularity * 0.25 + gameTime * 0.2 + assistMetric * 0.1);
+    defense = xsRadarClampV1(reliability * 0.3 + regularity * 0.25 + gameTime * 0.2 + defenseDetailMetric * 0.25);
+  } else if (positionUsed === "DEF") {
+    impact = xsRadarClampV1(avgScore * 0.3 + avgDecisive * 0.2 + normalizedAllAround * 0.3 + gameTime * 0.2);
+    attack = xsRadarClampV1(goalMetric * goalWeight + avgDecisive * 0.35 + highScoreMetric * 0.25 + form * 0.15);
+    creation = xsRadarClampV1(normalizedAllAround * 0.45 + regularity * 0.2 + gameTime * 0.15 + assistMetric * 0.1 + highAllAroundRate * 10);
+    defense = xsRadarClampV1(regularity * 0.3 + reliability * 0.25 + normalizedAllAround * 0.2 + gameTime * 0.1 + defenseDetailMetric * 0.15);
+  } else if (positionUsed === "MID") {
+    impact = xsRadarClampV1(avgScore * 0.25 + avgDecisive * 0.25 + normalizedAllAround * 0.35 + gameTime * 0.15);
+    attack = xsRadarClampV1(goalMetric * goalWeight + avgDecisive * 0.3 + highScoreMetric * 0.15 + form * 0.15);
+    creation = xsRadarClampV1(normalizedAllAround * 0.52 + avgDecisive * 0.18 + assistMetric * 0.15 + regularity * 0.1 + highAllAroundRate * 5);
+    defense = xsRadarClampV1(regularity * 0.28 + reliability * 0.24 + normalizedAllAround * 0.24 + gameTime * 0.1 + defenseDetailMetric * 0.14);
+  } else if (positionUsed === "FW") {
+    impact = xsRadarClampV1(avgScore * 0.25 + avgDecisive * 0.4 + normalizedAllAround * 0.2 + gameTime * 0.15);
+    attack = xsRadarClampV1(goalMetric * goalWeight + avgDecisive * 0.25 + highScoreMetric * 0.1 + form * 0.05);
+    creation = xsRadarClampV1(normalizedAllAround * 0.3 + avgDecisive * 0.3 + assistMetric * 0.2 + highScoreMetric * 0.1 + form * 0.1);
+    defense = xsRadarClampV1(regularity * 0.25 + reliability * 0.3 + normalizedAllAround * 0.2 + gameTime * 0.2 + defenseDetailMetric * 0.05);
+  }
+
+  const profile = xsRadarProfileV1(positionUsed, {
+    attack,
+    creation,
+    defense,
+    reliability,
+    regularity,
+    form,
+    impact,
+    goalMetric,
+    highScoreRate,
+  });
 
   return {
     confidence,
     matches,
-    position,
+    positionUsed,
+    profile,
+    meta: {
+      positionUsed,
+      goalWeight,
+      goalsSource: goalMetricFromDetails == null ? "decisiveScore_proxy" : "detailsV1",
+      hasDetailedGoals: goalMetricFromDetails != null,
+    },
     values: [
       { label: "Forme", value: form },
       { label: "Régularité", value: regularity },
@@ -455,9 +697,18 @@ const avg5 = avgOf(series.l5) ?? asNum((card as any)?.l5) ?? asNum((perf as any)
       xsBuildFifaRadarValuesFromHistoryV1(
         historyChart,
         { avg5, avg15, avg40 },
-        position
+        {
+          positionRaw: (card as any)?.positionRaw,
+          position,
+          playerPosition: (card as any)?.playerPosition,
+          anyPosition: (card as any)?.anyPosition,
+          card,
+          player: (card as any)?.player,
+          anyPlayer: (card as any)?.anyPlayer,
+          perf,
+        }
       ),
-    [historyChart, avg5, avg15, avg40, position]
+    [historyChart, avg5, avg15, avg40, position, card, perf]
   );
 
   function pill(label: "L5" | "L15" | "ALL") {
@@ -575,6 +826,8 @@ return (
         values={xsFifaRadar.values}
         confidence={xsFifaRadar.confidence}
         matches={xsFifaRadar.matches}
+        positionUsed={xsFifaRadar.positionUsed}
+        profile={xsFifaRadar.profile}
       />
       {/* XS_FIFA_RADAR_CARD_DETAIL_V1_END */}
 
