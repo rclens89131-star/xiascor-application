@@ -22,23 +22,37 @@ function colorFromValue(v: number) {
 export default function FifaRadarChart(props: {
   title?: string;
   values?: RadarValue[];
+  confidence?: number | null;
+  matches?: number | null;
+  subtitle?: string;
 }) {
   const values =
     props.values && props.values.length
       ? props.values
       : [
+          { label: "Forme", value: 50 },
+          { label: "Régularité", value: 50 },
+          { label: "Temps de jeu", value: 50 },
+          { label: "Impact", value: 50 },
           { label: "Attaque", value: 50 },
-          { label: "Passes", value: 50 },
-          { label: "Possession", value: 50 },
+          { label: "Création", value: 50 },
           { label: "Défense", value: 50 },
-          { label: "Duels", value: 50 },
-          { label: "Discipline", value: 50 },
+          { label: "Fiabilité", value: 50 },
         ];
 
   const avg =
     values.reduce((a, b) => a + clamp(b.value), 0) / Math.max(1, values.length);
 
   const accent = colorFromValue(avg);
+  const hasMatches = typeof props.matches === "number" && Number.isFinite(props.matches);
+  const hasConfidence = typeof props.confidence === "number" && Number.isFinite(props.confidence);
+  const subtitle =
+    props.subtitle ||
+    (hasMatches && hasConfidence
+      ? `Basé sur ${Math.max(0, Math.round(props.matches || 0))} matchs · Confiance ${Math.round(
+          clamp((props.confidence || 0) * 100)
+        )}%`
+      : "Basé sur l'historique disponible");
 
   return (
     <View
@@ -57,9 +71,11 @@ export default function FifaRadarChart(props: {
           <Text style={{ color: "white", fontSize: 18, fontWeight: "900" }}>
             {props.title || "Radar FIFA"}
           </Text>
+          {/* XS_FIFA_RADAR_REAL_STATS_V1 */}
           <Text style={{ color: "#9CA3AF", fontSize: 12, marginTop: 3 }}>
-            Graphique 2 — version native, stats détaillées bientôt branchées
+            {subtitle}
           </Text>
+          {/* XS_FIFA_RADAR_REAL_STATS_V1_END */}
         </View>
 
         <View

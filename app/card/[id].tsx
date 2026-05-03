@@ -32,6 +32,136 @@ function avgOf(arr: any[]): number | null {
   /* XS_DNT_ZERO_NOT_COUNTED_V1_END */
 }
 
+/* XS_FIFA_RADAR_REAL_STATS_V1 */
+function xsRadarClampV1(v: number): number {
+  if (!Number.isFinite(v)) return 0;
+  return Math.max(0, Math.min(100, v));
+}
+
+function xsRadarNumV1(v: any): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function xsRadarAvgV1(values: Array<number | null | undefined>): number | null {
+  const nums = values.filter((n): n is number => typeof n === "number" && Number.isFinite(n));
+  if (!nums.length) return null;
+  return nums.reduce((sum, n) => sum + n, 0) / nums.length;
+}
+
+function xsRadarStdDevV1(values: number[]): number {
+  if (!values.length) return 0;
+  const avg = xsRadarAvgV1(values) ?? 0;
+  const variance = values.reduce((sum, n) => sum + Math.pow(n - avg, 2), 0) / values.length;
+  return Math.sqrt(variance);
+}
+
+function xsRadarRateV1<T>(values: T[], predicate: (value: T) => boolean): number {
+  if (!values.length) return 0;
+  return values.filter(predicate).length / values.length;
+}
+
+function xsBuildFifaRadarValuesFromHistoryV1(
+  historyChart: any[],
+  fallbackAvg: { avg5?: number | null; avg15?: number | null; avg40?: number | null },
+  position: string
+) {
+  const fallbackScore =
+    xsRadarAvgV1([fallbackAvg?.avg5, fallbackAvg?.avg15, fallbackAvg?.avg40]) ?? 50;
+
+  const rows = (Array.isArray(historyChart) ? historyChart : [])
+    .slice()
+    .sort((a: any, b: any) => {
+      const da = new Date(a?.matchDate || a?.date || 0).getTime();
+      const db = new Date(b?.matchDate || b?.date || 0).getTime();
+      return db - da;
+    })
+    .slice(0, 40)
+    .map((row: any) => ({
+      score: xsRadarNumV1(row?.scoreSorare ?? row?.score ?? row?.totalScore),
+      minutes: xsRadarNumV1(row?.minutes),
+      decisiveScore: xsRadarNumV1(row?.decisiveScore),
+      allAroundScore: xsRadarNumV1(row?.allAroundScore),
+    }))
+    .filter((row: any) => row.score != null);
+
+  const scores = rows.map((row: any) => xsRadarClampV1(row.score));
+  const matches = scores.length;
+  const confidence = Math.min(1, matches / 20);
+  const fallbackValues = [
+    { label: "Forme", value: fallbackScore },
+    { label: "Régularité", value: fallbackScore },
+    { label: "Temps de jeu", value: fallbackScore },
+    { label: "Impact", value: fallbackScore },
+    { label: "Attaque", value: fallbackScore },
+    { label: "Création", value: fallbackScore },
+    { label: "Défense", value: fallbackScore },
+    { label: "Fiabilité", value: fallbackScore },
+  ];
+
+  if (!matches) {
+    return { confidence, matches, position, values: fallbackValues };
+  }
+
+  const l5 = xsRadarAvgV1(scores.slice(0, 5)) ?? fallbackAvg?.avg5 ?? fallbackScore;
+  const l15 = xsRadarAvgV1(scores.slice(0, 15)) ?? fallbackAvg?.avg15 ?? fallbackScore;
+  const l40 = xsRadarAvgV1(scores.slice(0, 40)) ?? fallbackAvg?.avg40 ?? fallbackScore;
+  const form = xsRadarClampV1(l5 * 0.5 + l15 * 0.3 + l40 * 0.2);
+
+  const stdDev = xsRadarStdDevV1(scores);
+  const badScoreRate = xsRadarRateV1(scores, (score) => score < 30);
+  const highScoreRate = xsRadarRateV1(scores, (score) => score >= 60);
+
+  const minuteRows = rows.filter((row: any) => row.minutes != null && row.minutes >= 0);
+  const minutesAvg = xsRadarAvgV1(minuteRows.map((row: any) => row.minutes));
+  const lowMinuteRate = xsRadarRateV1(minuteRows, (row: any) => row.minutes < 30);
+  const startLikeRate = xsRadarRateV1(minuteRows, (row: any) => row.minutes >= 60);
+  const missingMinutesRate = matches ? (matches - minuteRows.length) / matches : 0;
+
+  const avgScore = xsRadarAvgV1(scores) ?? fallbackScore;
+  const avgDecisive = xsRadarAvgV1(rows.map((row: any) => row.decisiveScore)) ?? avgScore;
+  const allAroundScores = rows
+    .map((row: any) => row.allAroundScore)
+    .filter((n: any): n is number => typeof n === "number" && Number.isFinite(n));
+  const avgAllAround = xsRadarAvgV1(allAroundScores);
+  const normalizedAllAround = avgAllAround == null ? avgScore : xsRadarClampV1(50 + avgAllAround);
+  const highAllAroundRate = xsRadarRateV1(allAroundScores, (score) => score >= 15);
+
+  const regularity = xsRadarClampV1(100 - stdDev * 2.2 - badScoreRate * 20);
+  const gameTime =
+    minutesAvg == null
+      ? xsRadarClampV1(fallbackScore)
+      : xsRadarClampV1((minutesAvg / 90) * 70 + startLikeRate * 30);
+  const impact = xsRadarClampV1(avgScore * 0.45 + avgDecisive * 0.35 + normalizedAllAround * 0.2);
+  const attack = xsRadarClampV1(highScoreRate * 40 + avgDecisive * 0.45 + form * 0.15);
+  const creation = xsRadarClampV1(normalizedAllAround * 0.65 + regularity * 0.2 + highAllAroundRate * 15);
+  const reliability = xsRadarClampV1(
+    100 -
+      lowMinuteRate * 35 -
+      badScoreRate * 35 -
+      missingMinutesRate * 15 -
+      stdDev * 0.8
+  );
+  const defense = xsRadarClampV1(regularity * 0.45 + reliability * 0.35 + normalizedAllAround * 0.2);
+
+  return {
+    confidence,
+    matches,
+    position,
+    values: [
+      { label: "Forme", value: form },
+      { label: "Régularité", value: regularity },
+      { label: "Temps de jeu", value: gameTime },
+      { label: "Impact", value: impact },
+      { label: "Attaque", value: attack },
+      { label: "Création", value: creation },
+      { label: "Défense", value: defense },
+      { label: "Fiabilité", value: reliability },
+    ],
+  };
+}
+/* XS_FIFA_RADAR_REAL_STATS_V1_END */
+
 /* XS_SCORE_COLOR_L5_L15_L40_V1 */
 function xsScoreColorL5L15L40(score: number | null): string {
   if (typeof score !== "number" || !Number.isFinite(score)) return "#9CA3AF";
@@ -320,6 +450,15 @@ return () => { cancelled = true; };
 const avg5 = avgOf(series.l5) ?? asNum((card as any)?.l5) ?? asNum((perf as any)?.l5);
   const avg15 = avgOf(series.l15) ?? asNum((card as any)?.l15) ?? asNum((perf as any)?.l15);
   const avg40 = avgOf(series.l40) ?? asNum((card as any)?.l40) ?? asNum((perf as any)?.l40);
+  const xsFifaRadar = useMemo(
+    () =>
+      xsBuildFifaRadarValuesFromHistoryV1(
+        historyChart,
+        { avg5, avg15, avg40 },
+        position
+      ),
+    [historyChart, avg5, avg15, avg40, position]
+  );
 
   function pill(label: "L5" | "L15" | "ALL") {
     const active = activeSeries === label;
@@ -433,14 +572,9 @@ return (
       {/* XS_FIFA_RADAR_CARD_DETAIL_V1 */}
       <FifaRadarChart
         title="Radar FIFA"
-        values={[
-          { label: "Attaque", value: Math.round(avg5 ?? 50) },
-          { label: "Passes", value: Math.round(avg15 ?? 50) },
-          { label: "Possession", value: Math.round(avg40 ?? 50) },
-          { label: "Défense", value: Math.round(avg15 ?? 50) },
-          { label: "Duels", value: Math.round(avg5 ?? 50) },
-          { label: "Discipline", value: 70 },
-        ]}
+        values={xsFifaRadar.values}
+        confidence={xsFifaRadar.confidence}
+        matches={xsFifaRadar.matches}
       />
       {/* XS_FIFA_RADAR_CARD_DETAIL_V1_END */}
 
