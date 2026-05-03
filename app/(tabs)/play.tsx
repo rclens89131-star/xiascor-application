@@ -86,6 +86,11 @@ function cardKey(item: any): string {
     item?.position ??
     item?.playerPosition ??
     item?.anyPosition ??
+    item?.anyPlayer?.positionRaw ??
+    item?.anyPlayer?.position ??
+    item?.anyPlayer?.playerPosition ??
+    item?.anyPlayer?.anyPosition ??
+    (Array.isArray(item?.anyPlayer?.anyPositions) ? item.anyPlayer.anyPositions[0] : null) ??
     item?.card?.positionRaw ??
     item?.card?.position ??
     item?.card?.playerPosition ??
@@ -277,6 +282,11 @@ function cardPosCode(item: any): PosCode { return xsPosCodeFromAny(item); }
       item?.card?.anyPosition,
       item?.player?.position,
       item?.player?.anyPosition,
+      item?.anyPlayer?.positionRaw,
+      item?.anyPlayer?.position,
+      item?.anyPlayer?.playerPosition,
+      item?.anyPlayer?.anyPosition,
+      Array.isArray(item?.anyPlayer?.anyPositions) ? item.anyPlayer.anyPositions[0] : null,
       item?.playerPositionRaw,
     ];
 
@@ -459,8 +469,8 @@ function xsTextHay(card: any): string {
 function xsPickerListForSlot(slot: Slot) {
   const all = (gallery as any[]) ?? [];
   const strict = all.filter((it) => isCardCompatibleWithSlot(slot, cardPosCode(it), allowGkInFlex));
-  const isFallback = all.length > 0 && strict.length === 0;
-  const base = isFallback ? all : strict;
+  const isFallback = false;
+  const base = strict;
 
   const q = xsPickerQ.trim().toLowerCase();
   const filtered = q ? base.filter((it) => xsTextHay(it).includes(q)) : base;
@@ -1053,6 +1063,7 @@ try { showToast(`TAP PICKER ${xsPickerSlot}`); } catch {}
 </SafeAreaView>
   );
 }
+
 
 
 
