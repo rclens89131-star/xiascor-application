@@ -6,6 +6,7 @@ import { theme } from "../../src/theme";
 import { xsCardNavGet } from "../_lib/cardNavCache";
 import { publicPlayerPerformance } from "../../src/scoutApi";
 import SorarePerformanceChart from "../../src/components/SorarePerformanceChart";
+import FifaRadarChart from "../../src/components/FifaRadarChart";
 
 function pickStr(v: any): string {
   return typeof v === "string" && v.trim() ? v.trim() : "—";
@@ -429,6 +430,20 @@ return (
           </Text>
         </View>
       </View>
+      {/* XS_FIFA_RADAR_CARD_DETAIL_V1 */}
+      <FifaRadarChart
+        title="Radar FIFA"
+        values={[
+          { label: "Attaque", value: Math.round(avg5 ?? 50) },
+          { label: "Passes", value: Math.round(avg15 ?? 50) },
+          { label: "Possession", value: Math.round(avg40 ?? 50) },
+          { label: "Défense", value: Math.round(avg15 ?? 50) },
+          { label: "Duels", value: Math.round(avg5 ?? 50) },
+          { label: "Discipline", value: 70 },
+        ]}
+      />
+      {/* XS_FIFA_RADAR_CARD_DETAIL_V1_END */}
+
 
       <View style={{ borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, padding: 14, gap: 6 }}>
         <Text style={{ color: theme.text, fontSize: 16, fontWeight: "900" }}>Debug utile minimal</Text>
@@ -450,6 +465,7 @@ return (
     </ScrollView>
   );
 }
+
 
 
 
