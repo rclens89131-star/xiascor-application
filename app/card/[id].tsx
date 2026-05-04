@@ -63,6 +63,7 @@ function xsRadarRateV1<T>(values: T[], predicate: (value: T) => boolean): number
 
 /* XS_FIFA_RADAR_POSITION_WEIGHTS_V1 */
 type XsRadarPositionV1 = "GK" | "DEF" | "MID" | "FW" | "GEN";
+type XsRadarRangeV1 = "L5" | "L15" | "L40";
 
 /* XS_FIX_MYCARDS_POSITION_DEVICEID_AND_SYNC_V1 */
 /* XS_FIX_POSITION_FROM_MYCARDS_CACHE_V1 */
@@ -458,12 +459,21 @@ function xsRadarValuesByPositionV1(positionUsed: XsRadarPositionV1, m: XsRadarMe
 }
 /* XS_FIFA_RADAR_BY_POSITION_V1_END */
 
+/* XS_FIFA_RADAR_RANGE_SWITCH_V1 */
+function xsRadarLimitForRangeV1(range: XsRadarRangeV1): number {
+  if (range === "L5") return 5;
+  if (range === "L40") return 40;
+  return 15;
+}
+
 function xsBuildFifaRadarValuesFromHistoryV1(
   historyChart: any[],
   fallbackAvg: { avg5?: number | null; avg15?: number | null; avg40?: number | null },
-  positionSource: any
+  positionSource: any,
+  range: XsRadarRangeV1 = "L15"
 ) {
   const positionUsed = xsRadarNormalizePositionV1(positionSource);
+  const rangeLimit = xsRadarLimitForRangeV1(range);
   const fallbackScore =
     xsRadarAvgV1([fallbackAvg?.avg5, fallbackAvg?.avg15, fallbackAvg?.avg40]) ?? 50;
 
@@ -474,7 +484,7 @@ function xsBuildFifaRadarValuesFromHistoryV1(
       const db = new Date(b?.matchDate || b?.date || 0).getTime();
       return db - da;
     })
-    .slice(0, 40)
+    .slice(0, rangeLimit)
     .map((row: any) => ({
       score: xsRadarNumV1(row?.scoreSorare ?? row?.score ?? row?.totalScore),
       minutes: xsRadarNumV1(row?.minutes),
@@ -525,7 +535,7 @@ function xsBuildFifaRadarValuesFromHistoryV1(
         goalMetric: fallbackScore,
         highScoreRate: 0,
       }),
-      meta: { source: "fallback", positionUsed },
+      meta: { source: "fallback", positionUsed, range },
       values: xsRadarValuesByPositionV1(positionUsed, fallbackMetrics),
     };
   }
@@ -661,6 +671,8 @@ function xsBuildFifaRadarValuesFromHistoryV1(
     meta: {
       positionUsed,
       radarPositionLabel: xsRadarChartPositionLabelV1(positionUsed),
+      range,
+      rangeLimit,
       goalWeight,
       weightsSource: "XS_FIFA_RADAR_BY_POSITION_V1",
       goalsSource: goalMetricFromDetails == null ? "decisiveScore_proxy" : "detailsV1",
@@ -717,6 +729,7 @@ export default function CardDetailScreen() {
   const [state, setState] = useState<"idle" | "loading" | "ok" | "err">("idle");
   const [error, setError] = useState("");
   const [activeSeries, setActiveSeries] = useState<"L5" | "L15" | "ALL">("L5");
+  const [radarRange, setRadarRange] = useState<XsRadarRangeV1>("L15");
 
   useEffect(() => {
     let cancelled = false;
@@ -984,9 +997,10 @@ const avg5 = avgOf(series.l5) ?? asNum((card as any)?.l5) ?? asNum((perf as any)
           player: (card as any)?.player,
           anyPlayer: (card as any)?.anyPlayer,
           perf,
-        }
+        },
+        radarRange
       ),
-    [historyChart, avg5, avg15, avg40, resolvedPosition, positionRawParam, card, perf]
+    [historyChart, avg5, avg15, avg40, resolvedPosition, positionRawParam, card, perf, radarRange]
   );
 
   function pill(label: "L5" | "L15" | "ALL") {
@@ -1112,6 +1126,8 @@ return (
         matches={xsFifaRadar.matches}
         positionUsed={xsRadarChartPositionLabelV1(xsFifaRadar.positionUsed)}
         profile={xsFifaRadar.profile}
+        range={radarRange}
+        onRangeChange={setRadarRange}
       />
       {/* XS_FIFA_RADAR_CARD_DETAIL_V1_END */}
 

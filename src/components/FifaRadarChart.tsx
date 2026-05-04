@@ -6,6 +6,8 @@ type RadarValue = {
   value: number;
 };
 
+type RadarRange = "L5" | "L15" | "L40";
+
 function clamp(v: number) {
   if (!Number.isFinite(v)) return 0;
   return Math.max(0, Math.min(100, v));
@@ -27,6 +29,8 @@ export default function FifaRadarChart(props: {
   matches?: number | null;
   positionUsed?: string | null;
   profile?: string | null;
+  range?: RadarRange;
+  onRangeChange?: (range: RadarRange) => void;
   subtitle?: string;
 }) {
   const values =
@@ -64,6 +68,8 @@ export default function FifaRadarChart(props: {
     (headingBits.length
       ? headingBits.join(" · ")
       : "Basé sur l'historique disponible");
+  const activeRange: RadarRange = props.range || "L15";
+  const ranges: RadarRange[] = ["L5", "L15", "L40"];
 
   return (
     <View
@@ -106,6 +112,37 @@ export default function FifaRadarChart(props: {
           </Text>
         </View>
       </View>
+
+      {/* XS_FIFA_RADAR_RANGE_SWITCH_V1 */}
+      {props.onRangeChange ? (
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          {ranges.map((range) => {
+            const active = range === activeRange;
+            return (
+              <Text
+                key={range}
+                onPress={() => props.onRangeChange?.(range)}
+                style={{
+                  flex: 1,
+                  textAlign: "center",
+                  paddingVertical: 8,
+                  borderRadius: 999,
+                  overflow: "hidden",
+                  color: active ? "#08111F" : "#CBD5E1",
+                  backgroundColor: active ? accent : "rgba(255,255,255,0.06)",
+                  borderWidth: 1,
+                  borderColor: active ? accent : "#2A2F3A",
+                  fontSize: 12,
+                  fontWeight: "900",
+                }}
+              >
+                {range}
+              </Text>
+            );
+          })}
+        </View>
+      ) : null}
+      {/* XS_FIFA_RADAR_RANGE_SWITCH_V1_END */}
 
       <View style={{ gap: 10 }}>
         {values.map((v) => {
