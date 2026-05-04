@@ -383,6 +383,16 @@ type XsRadarMetricsByPositionV1 = {
   saves: number;
   cleanSheets: number;
   duels: number;
+  matches?: number;
+  range?: XsRadarRangeV1;
+  confidence?: number;
+};
+
+type XsRadarAutoProfileToneV1 = "safe" | "upside" | "risk" | "balanced";
+type XsRadarAutoProfileV1 = {
+  label: string;
+  tone: XsRadarAutoProfileToneV1;
+  reason: string;
 };
 
 function xsRadarChartPositionLabelV1(positionUsed: XsRadarPositionV1): "GK" | "DEF" | "MID" | "FWD" | "GEN" {
@@ -459,6 +469,66 @@ function xsRadarValuesByPositionV1(positionUsed: XsRadarPositionV1, m: XsRadarMe
 }
 /* XS_FIFA_RADAR_BY_POSITION_V1_END */
 
+/* XS_FIFA_RADAR_AUTO_PROFILE_V1 */
+function xsRadarAutoProfileLabelV1(
+  positionUsed: XsRadarPositionV1,
+  metrics: XsRadarMetricsByPositionV1,
+  profile: string
+): XsRadarAutoProfileV1 {
+  const range = metrics.range || "L15";
+  const matches = Math.max(0, Math.round(Number(metrics.matches || 0)));
+  const windowText = `fenêtre ${range}`;
+
+  if (matches < 3 || (metrics.confidence != null && metrics.confidence < 0.2)) {
+    return {
+      label: "Profil en construction",
+      tone: "balanced",
+      reason: "Pas encore assez de matchs fiables.",
+    };
+  }
+
+  if (positionUsed === "GK") {
+    if (metrics.gameTime < 45) return { label: "Gardien à risque", tone: "risk", reason: `Temps de jeu faible sur la ${windowText}.` };
+    if (metrics.regularity < 45) return { label: "Gardien irrégulier", tone: "risk", reason: `Régularité fragile sur la ${windowText}.` };
+    if (metrics.saves >= 65 && metrics.cleanSheets >= 60 && metrics.reliability >= 65) {
+      return { label: "Mur défensif", tone: "safe", reason: `Arrêts élevés, clean sheets solides et fiabilité forte sur la ${windowText}.` };
+    }
+    if (metrics.saves >= 65 && metrics.cleanSheets < 55) return { label: "Shot stopper", tone: "upside", reason: `Gros volume d'arrêts malgré peu de clean sheets sur la ${windowText}.` };
+    if (metrics.reliability >= 65 && metrics.regularity >= 60) return { label: "Gardien fiable", tone: "safe", reason: `Fiabilité et régularité solides sur la ${windowText}.` };
+    return { label: "Gardien équilibré", tone: "balanced", reason: `Profil stable sans pic majeur sur la ${windowText}.` };
+  }
+
+  if (positionUsed === "DEF") {
+    if (metrics.regularity < 45) return { label: "Défenseur irrégulier", tone: "risk", reason: `Régularité basse sur la ${windowText}.` };
+    if (metrics.defense >= 65 && metrics.duels >= 60) return { label: "Stoppeur", tone: "safe", reason: `Défense élevée et duels forts sur la ${windowText}.` };
+    if (metrics.reliability >= 65 && metrics.regularity >= 65) return { label: "Défenseur sûr", tone: "safe", reason: `Fiabilité et régularité fortes sur la ${windowText}.` };
+    if (metrics.impact >= 65 && metrics.defense >= 50) return { label: "Défenseur impactant", tone: "upside", reason: `Impact fort avec base défensive correcte sur la ${windowText}.` };
+    return { label: "Défenseur équilibré", tone: "balanced", reason: `Profil défensif stable sur la ${windowText}.` };
+  }
+
+  if (positionUsed === "MID") {
+    if (metrics.regularity < 45) return { label: "Milieu irrégulier", tone: "risk", reason: `Régularité basse sur la ${windowText}.` };
+    if (metrics.creation >= 65 && metrics.impact >= 60) return { label: "Créateur", tone: "upside", reason: `Création élevée et impact fort sur la ${windowText}.` };
+    if (metrics.defense >= 60 && metrics.regularity >= 60) return { label: "Milieu complet", tone: "safe", reason: `Défense et régularité solides sur la ${windowText}.` };
+    if (metrics.impact >= 65 && metrics.creation >= 50) return { label: "Box-to-box", tone: "upside", reason: `Impact fort avec création correcte sur la ${windowText}.` };
+    return { label: "Milieu équilibré", tone: "balanced", reason: `Profil polyvalent sur la ${windowText}.` };
+  }
+
+  if (positionUsed === "FW") {
+    if (metrics.gameTime < 45) return { label: "Attaquant à risque", tone: "risk", reason: `Temps de jeu faible sur la ${windowText}.` };
+    if (metrics.form >= 65 && metrics.regularity < 55) return { label: "High risk / high reward", tone: "risk", reason: `Forme haute mais régularité instable sur la ${windowText}.` };
+    if (metrics.attack >= 65 && metrics.impact >= 60) return { label: "Finisseur", tone: "upside", reason: `Attaque élevée et impact fort sur la ${windowText}.` };
+    if (metrics.creation >= 65 && metrics.attack >= 50) return { label: "Attaquant créateur", tone: "upside", reason: `Création forte avec menace offensive correcte sur la ${windowText}.` };
+    return { label: "Attaquant équilibré", tone: "balanced", reason: `Profil offensif stable sur la ${windowText}.` };
+  }
+
+  if (profile && profile.includes("risk")) {
+    return { label: "Profil à surveiller", tone: "risk", reason: `Signaux de volatilité sur la ${windowText}.` };
+  }
+  return { label: "Profil polyvalent", tone: "balanced", reason: `Lecture générale basée sur les métriques disponibles sur la ${windowText}.` };
+}
+/* XS_FIFA_RADAR_AUTO_PROFILE_V1_END */
+
 /* XS_FIFA_RADAR_RANGE_SWITCH_V1 */
 function xsRadarLimitForRangeV1(range: XsRadarRangeV1): number {
   if (range === "L5") return 5;
@@ -516,25 +586,30 @@ function xsBuildFifaRadarValuesFromHistoryV1(
     saves: fallbackScore,
     cleanSheets: fallbackScore,
     duels: fallbackScore,
+    matches,
+    range,
+    confidence,
   };
 
   if (!matches) {
+    const fallbackProfile = positionUsed === "GEN" ? "balanced_attacker" : xsRadarProfileV1(positionUsed, {
+      attack: fallbackScore,
+      creation: fallbackScore,
+      defense: fallbackScore,
+      reliability: fallbackScore,
+      regularity: fallbackScore,
+      form: fallbackScore,
+      impact: fallbackScore,
+      goalMetric: fallbackScore,
+      highScoreRate: 0,
+    });
     return {
       confidence,
       matches,
       positionUsed,
       overall: xsRadarWeightedOverallByPositionV1(positionUsed, fallbackMetrics),
-      profile: positionUsed === "GEN" ? "balanced_attacker" : xsRadarProfileV1(positionUsed, {
-        attack: fallbackScore,
-        creation: fallbackScore,
-        defense: fallbackScore,
-        reliability: fallbackScore,
-        regularity: fallbackScore,
-        form: fallbackScore,
-        impact: fallbackScore,
-        goalMetric: fallbackScore,
-        highScoreRate: 0,
-      }),
+      profile: fallbackProfile,
+      autoProfile: xsRadarAutoProfileLabelV1(positionUsed, fallbackMetrics, fallbackProfile),
       meta: { source: "fallback", positionUsed, range },
       values: xsRadarValuesByPositionV1(positionUsed, fallbackMetrics),
     };
@@ -648,6 +723,9 @@ function xsBuildFifaRadarValuesFromHistoryV1(
     saves: savesDetailMetric ?? xsRadarClampV1(defense * 0.45 + impact * 0.3 + regularity * 0.25),
     cleanSheets: cleanSheetsDetailMetric ?? xsRadarClampV1(defense * 0.4 + reliability * 0.35 + gameTime * 0.25),
     duels: duelsDetailMetric ?? xsRadarAvgV1([tacklesDetailMetric, interceptionsDetailMetric, defense, normalizedAllAround]) ?? defense,
+    matches,
+    range,
+    confidence,
   };
 
   const profile = xsRadarProfileV1(positionUsed, {
@@ -668,6 +746,7 @@ function xsBuildFifaRadarValuesFromHistoryV1(
     positionUsed,
     overall: xsRadarWeightedOverallByPositionV1(positionUsed, positionMetrics),
     profile,
+    autoProfile: xsRadarAutoProfileLabelV1(positionUsed, positionMetrics, profile),
     meta: {
       positionUsed,
       radarPositionLabel: xsRadarChartPositionLabelV1(positionUsed),
@@ -1128,6 +1207,7 @@ return (
         profile={xsFifaRadar.profile}
         range={radarRange}
         onRangeChange={setRadarRange}
+        autoProfile={xsFifaRadar.autoProfile}
       />
       {/* XS_FIFA_RADAR_CARD_DETAIL_V1_END */}
 

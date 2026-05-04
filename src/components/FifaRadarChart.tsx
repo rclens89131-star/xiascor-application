@@ -7,6 +7,11 @@ type RadarValue = {
 };
 
 type RadarRange = "L5" | "L15" | "L40";
+type RadarAutoProfile = {
+  label: string;
+  tone: "safe" | "upside" | "risk" | "balanced";
+  reason: string;
+};
 
 function clamp(v: number) {
   if (!Number.isFinite(v)) return 0;
@@ -21,6 +26,13 @@ function colorFromValue(v: number) {
   return "#EF4444";
 }
 
+function autoProfileToneStyle(tone: RadarAutoProfile["tone"]) {
+  if (tone === "safe") return { fg: "#22C55E", bg: "rgba(34,197,94,0.12)", border: "rgba(34,197,94,0.38)" };
+  if (tone === "upside") return { fg: "#38BDF8", bg: "rgba(56,189,248,0.12)", border: "rgba(56,189,248,0.38)" };
+  if (tone === "risk") return { fg: "#FB923C", bg: "rgba(251,146,60,0.13)", border: "rgba(251,146,60,0.42)" };
+  return { fg: "#FACC15", bg: "rgba(250,204,21,0.10)", border: "rgba(250,204,21,0.32)" };
+}
+
 export default function FifaRadarChart(props: {
   title?: string;
   values?: RadarValue[];
@@ -31,6 +43,7 @@ export default function FifaRadarChart(props: {
   profile?: string | null;
   range?: RadarRange;
   onRangeChange?: (range: RadarRange) => void;
+  autoProfile?: RadarAutoProfile | null;
   subtitle?: string;
 }) {
   const values =
@@ -70,6 +83,13 @@ export default function FifaRadarChart(props: {
       : "Basé sur l'historique disponible");
   const activeRange: RadarRange = props.range || "L15";
   const ranges: RadarRange[] = ["L5", "L15", "L40"];
+  const autoProfile =
+    props.autoProfile || {
+      label: "Profil en construction",
+      tone: "balanced" as const,
+      reason: "Pas encore assez de matchs fiables.",
+    };
+  const autoProfileTone = autoProfileToneStyle(autoProfile.tone);
 
   return (
     <View
@@ -143,6 +163,43 @@ export default function FifaRadarChart(props: {
         </View>
       ) : null}
       {/* XS_FIFA_RADAR_RANGE_SWITCH_V1_END */}
+
+      {/* XS_FIFA_RADAR_AUTO_PROFILE_V1 */}
+      <View
+        style={{
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: autoProfileTone.border,
+          backgroundColor: autoProfileTone.bg,
+          padding: 10,
+          gap: 5,
+        }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <Text style={{ color: "#E5E7EB", fontSize: 13, fontWeight: "900" }}>
+            Profil : {autoProfile.label}
+          </Text>
+          <Text
+            style={{
+              color: autoProfileTone.fg,
+              borderColor: autoProfileTone.border,
+              borderWidth: 1,
+              borderRadius: 999,
+              paddingHorizontal: 8,
+              paddingVertical: 3,
+              overflow: "hidden",
+              fontSize: 11,
+              fontWeight: "900",
+            }}
+          >
+            {autoProfile.tone}
+          </Text>
+        </View>
+        <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
+          Raison : {autoProfile.reason}
+        </Text>
+      </View>
+      {/* XS_FIFA_RADAR_AUTO_PROFILE_V1_END */}
 
       <View style={{ gap: 10 }}>
         {values.map((v) => {
