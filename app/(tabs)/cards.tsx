@@ -5,11 +5,12 @@
 /* XS_MYCARDS_REMOVE_UNDER_META_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
+import { xsCardNavSet } from "../_lib/cardNavCache";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PerfL5Widget from "../../src/components/PerfL5Widget";
 import { ActivityIndicator, FlatList, Image, Pressable, SafeAreaView, Text, View, useWindowDimensions, Dimensions, Alert } from "react-native";
 import { theme } from "../../src/theme";
-import { myCardsList, myCardsSync, publicPlayerPerformance, syncMyCardsHistoryBatch, type PageInfo } from "../../src/scoutApi";
+import { myCardsList, myCardsSync, publicPlayerPerformance, type PageInfo } from "../../src/scoutApi";
 /* XS_MYCARDS_UI_META_V1_BEGIN */
 /* XS_CARDS_GRID_GROW_V1
    Objectif:
@@ -46,6 +47,7 @@ import { SorareCardTile } from "../../src/components/SorareCardTile"; // XS_SORA
 const DEVICE_ID_KEY = "XS_DEVICE_ID_V1";
 const JWT_DEVICE_ID_KEY = "XS_JWT_DEVICE_ID_V1";
 const OAUTH_DEVICE_ID_KEY = "xs_device_id";
+const XS_ENABLE_HISTORY_BATCH_AFTER_SYNC_V1 = false; /* XS_FIX_MYCARDS_POSITION_DEVICEID_AND_SYNC_V1 */
 
 /* XS_MYCARDS_LOCAL_ASYNC_CACHE_SAFE_V1_BEGIN
    Cache local téléphone pour éviter écran vide si Cloud Run/cache backend est temporairement indisponible.
@@ -364,6 +366,14 @@ const xsL5Mini =
             "";
 
           const navId = String(id || playerSlug || "");
+          const position = String((card as any)?.position || "").trim();
+          const positionRaw = String(
+            (card as any)?.positionRaw ||
+            (Array.isArray((card as any)?.anyPositions) ? (card as any).anyPositions[0] : "") ||
+            (Array.isArray((card as any)?.anyPlayer?.anyPositions) ? (card as any).anyPlayer.anyPositions[0] : "") ||
+            (Array.isArray((card as any)?.player?.anyPositions) ? (card as any).player.anyPositions[0] : "") ||
+            ""
+          ).trim();
 
           if (!navId) {
             // Debug visible via logs; évite le "tap silencieux"
@@ -373,9 +383,15 @@ const xsL5Mini =
               keys: card ? Object.keys(card as any) : [],
             });
           } else {
+            try { xsCardNavSet(navId, card); } catch {}
             router.push({
               pathname: "/card/[id]",
-              params: { id: navId, playerSlug: String(playerSlug || "") },
+              params: {
+                id: navId,
+                playerSlug: String(playerSlug || ""),
+                position,
+                positionRaw,
+              },
             });
           }
 /* XS_FIX_CARD_CLICK_NAV_V1_END */
@@ -537,28 +553,8 @@ const onSync = useCallback(async () => {
       setItems(syncCards);
       setPageInfo((res as any)?.pageInfo);
 
-      const xsHistorySlugsDebug = Array.from(new Set(
-        (syncCards || [])
-          .map((c: any) => c?.playerSlug || c?.player?.slug || c?.anyPlayer?.slug)
-          .filter(Boolean)
-      ));
-      console.log("[history batch] trigger cards=", syncCards.length, "slugs=", xsHistorySlugsDebug.length, xsHistorySlugsDebug.slice(0, 20));
-
-      if (syncCards.length) {
-        const xsBaseUrl = String(process.env.EXPO_PUBLIC_BASE_URL || "");
-        const xsStoredHistoryDeviceId =
-          (await AsyncStorage.getItem("xs_device_id")) ||
-          deviceId;
-
-        /* XS_HISTORY_BATCH_REAL_DEVICEID_V2 */
-        const xsHistoryDeviceId = String(xsStoredHistoryDeviceId || deviceId || "").trim();
-        /* XS_HISTORY_BATCH_REAL_DEVICEID_V2_END */
-
-        console.log("[history batch] deviceId=", xsHistoryDeviceId);
-
-        syncMyCardsHistoryBatch(xsHistoryDeviceId, syncCards)
-          .then((r: any) => console.log("[history batch] done=", r))
-          .catch((e: any) => console.log("[history batch] async error=", e?.message || e));
+      if (!XS_ENABLE_HISTORY_BATCH_AFTER_SYNC_V1) {
+        console.log("[history batch] skipped auto after sync", { cards: syncCards.length });
       }
     } catch (e: any) {
       setError(e?.message || "Erreur synchronisation");

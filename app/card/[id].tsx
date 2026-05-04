@@ -64,15 +64,115 @@ function xsRadarRateV1<T>(values: T[], predicate: (value: T) => boolean): number
 /* XS_FIFA_RADAR_POSITION_WEIGHTS_V1 */
 type XsRadarPositionV1 = "GK" | "DEF" | "MID" | "FW" | "GEN";
 
-function xsRadarPositionFromTokenV1(token: any): XsRadarPositionV1 {
-  const raw = Array.isArray(token) ? token[0] : token;
-  const s = String(raw ?? "").trim().toLowerCase();
+/* XS_FIX_MYCARDS_POSITION_DEVICEID_AND_SYNC_V1 */
+/* XS_FIX_POSITION_FROM_MYCARDS_CACHE_V1 */
+const XS_POSITION_CACHE_TTL_MS_V1 = 24 * 60 * 60 * 1000;
+const XS_POSITION_CACHE_V1 = new Map<string, { position: XsRadarPositionV1; raw?: string; at: number }>();
+
+function xsNormalizePositionCodeV1(raw: any): XsRadarPositionV1 {
+  const token = Array.isArray(raw) ? raw[0] : raw;
+  const s = String(token ?? "").trim().toLowerCase();
   if (!s || s === "—" || s === "-" || s === "unk" || s === "unknown") return "GEN";
-  if (s === "gk" || s.includes("goalkeeper") || s.includes("goal")) return "GK";
-  if (s === "def" || s === "df" || s.includes("defender") || s.includes("def")) return "DEF";
+  if (s === "gk" || s.includes("goalkeeper") || s.includes("keeper")) return "GK";
+  if (s === "def" || s === "df" || s.includes("defender") || s.includes("defence") || s.includes("defense")) return "DEF";
   if (s === "mid" || s === "mf" || s.includes("midfielder") || s.includes("mid")) return "MID";
-  if (s === "fw" || s === "fwd" || s.includes("forward") || s.includes("striker") || s.includes("att")) return "FW";
+  if (s === "fw" || s === "fwd" || s.includes("forward") || s.includes("striker") || s.includes("attacker")) return "FW";
   return "GEN";
+}
+
+function xsPickMyCardsPositionRawV1(card: any): any {
+  const values = [
+    card?.position,
+    card?.positionRaw,
+    card?.anyPosition,
+    Array.isArray(card?.anyPositions) ? card.anyPositions[0] : null,
+    card?.anyPlayer?.position,
+    card?.anyPlayer?.positionRaw,
+    card?.anyPlayer?.anyPosition,
+    Array.isArray(card?.anyPlayer?.anyPositions) ? card.anyPlayer.anyPositions[0] : null,
+    card?.player?.position,
+    card?.player?.positionRaw,
+    card?.player?.anyPosition,
+    Array.isArray(card?.player?.anyPositions) ? card.player.anyPositions[0] : null,
+  ];
+  return values.find((v) => String(v ?? "").trim().length > 0) ?? null;
+}
+
+async function xsReadPositionDeviceIdV1(): Promise<string> {
+  for (const key of ["xs_device_id", "XS_JWT_DEVICE_ID_V1", "XS_DEVICE_ID_V1", "xs_device_id_v1"]) {
+    try {
+      const value = String((await AsyncStorage.getItem(key)) || "").trim();
+      if (value) return value;
+    } catch {}
+  }
+  return "";
+}
+
+function xsMyCardsPlayerSlugV1(card: any): string {
+  return String(
+    card?.playerSlug ||
+    card?.anyPlayer?.slug ||
+    card?.player?.slug ||
+    ""
+  ).trim().toLowerCase();
+}
+
+function xsPositionFallbackBaseUrlV1(): string {
+  return String(
+    process.env.EXPO_PUBLIC_AUTH_BASE_URL ||
+    process.env.EXPO_PUBLIC_BASE_URL ||
+    XS_HISTORY_CHART_CLOUDRUN_V2
+  ).replace(/\/+$/, "");
+}
+
+async function xsFetchPlayerPositionCachedV1(slug: string): Promise<{ position: XsRadarPositionV1; raw?: string; source?: string }> {
+  const key = String(slug || "").trim().toLowerCase();
+  if (!key) return { position: "GEN", source: "missing_slug" };
+
+  const now = Date.now();
+  const cached = XS_POSITION_CACHE_V1.get(key);
+  if (cached && now - cached.at < XS_POSITION_CACHE_TTL_MS_V1) {
+    return { position: cached.position, raw: cached.raw, source: "memory" };
+  }
+
+  try {
+    const deviceId = await xsReadPositionDeviceIdV1();
+    const base = xsPositionFallbackBaseUrlV1();
+    try {
+      console.log("[position fallback] baseUrl=", base);
+      console.log("[position fallback] deviceId=", deviceId || "—");
+      console.log("[position fallback] playerSlug=", key);
+    } catch {}
+    if (!deviceId) return { position: "GEN", source: "missing_device_id" };
+
+    const url = `${base}/my-cards?deviceId=${encodeURIComponent(deviceId)}&first=200`;
+    const resp = await fetch(url, { headers: { accept: "application/json" } });
+    const json = await resp.json().catch(() => null);
+    const cards = Array.isArray(json?.cards) ? json.cards : (Array.isArray(json?.items) ? json.items : []);
+    const match = cards.find((card: any) => xsMyCardsPlayerSlugV1(card) === key) || null;
+    const rawValue = xsPickMyCardsPositionRawV1(match);
+    const raw = rawValue != null ? String(rawValue) : undefined;
+    const position = xsNormalizePositionCodeV1(raw);
+    try {
+      console.log("[position fallback] cardsCount=", cards.length);
+      console.log("[position fallback] match=", match ? xsMyCardsPlayerSlugV1(match) : null);
+      if (!match) console.log("[position fallback] firstSlugs=", cards.slice(0, 10).map((card: any) => xsMyCardsPlayerSlugV1(card)).filter(Boolean));
+      console.log("[position fallback] resolved=", position, raw || "");
+    } catch {}
+    if (position !== "GEN") {
+      const result = { position, raw, at: now };
+      XS_POSITION_CACHE_V1.set(key, result);
+    }
+    return { position, raw, source: match ? "my-cards" : "my-cards_miss" };
+  } catch {
+    try { console.log("[position fallback] resolved=", "GEN", "network_error"); } catch {}
+    return { position: "GEN", source: "network_error" };
+  }
+}
+/* XS_FIX_POSITION_FROM_MYCARDS_CACHE_V1_END */
+
+function xsRadarPositionFromTokenV1(token: any): XsRadarPositionV1 {
+  return xsNormalizePositionCodeV1(token);
 }
 
 function xsRadarNormalizePositionV1(source: any): XsRadarPositionV1 {
@@ -81,18 +181,24 @@ function xsRadarNormalizePositionV1(source: any): XsRadarPositionV1 {
     source?.position,
     source?.playerPosition,
     source?.anyPosition,
+    source?.anyPositions,
     source?.card?.positionRaw,
     source?.card?.position,
     source?.card?.playerPosition,
     source?.card?.anyPosition,
+    source?.card?.anyPositions,
     source?.player?.position,
     source?.player?.anyPosition,
+    source?.player?.anyPositions,
     source?.card?.player?.position,
     source?.card?.player?.anyPosition,
+    source?.card?.player?.anyPositions,
     source?.anyPlayer?.position,
     source?.anyPlayer?.anyPosition,
+    source?.anyPlayer?.anyPositions,
     source?.card?.anyPlayer?.position,
     source?.card?.anyPlayer?.anyPosition,
+    source?.card?.anyPlayer?.anyPositions,
     source?.perf?.position,
   ];
 
@@ -102,6 +208,45 @@ function xsRadarNormalizePositionV1(source: any): XsRadarPositionV1 {
   }
   return "GEN";
 }
+
+/* XS_FIX_CARD_POSITION_AND_SYNC_V1 */
+function xsCardParamStringV1(value: any): string {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return String(raw ?? "").trim();
+}
+
+function xsCardDetailPositionV1(input: {
+  positionParam?: any;
+  positionRawParam?: any;
+  card?: any;
+  perf?: any;
+}): XsRadarPositionV1 {
+  const card = input.card || null;
+  const perf = input.perf || null;
+  const values = [
+    input.positionParam,
+    input.positionRawParam,
+    card?.position,
+    card?.positionRaw,
+    card?.anyPlayer?.anyPositions,
+    card?.player?.anyPositions,
+    perf?.position,
+  ];
+
+  for (const value of values) {
+    const pos = xsRadarPositionFromTokenV1(value);
+    if (pos !== "GEN") return pos;
+  }
+  return "GEN";
+}
+
+function xsDisplayPositionLabelV1(position: any): "GK" | "DEF" | "MIL" | "ATT" | "GEN" {
+  const pos = xsNormalizePositionCodeV1(position);
+  if (pos === "MID") return "MIL";
+  if (pos === "FW") return "ATT";
+  return pos;
+}
+/* XS_FIX_CARD_POSITION_AND_SYNC_V1_END */
 
 function xsRadarDetailsStatTotalV1(details: any, keys: string[]): number | null {
   const wanted = keys.map((k) => k.toLowerCase());
@@ -424,6 +569,8 @@ export default function CardDetailScreen() {
   const params = useLocalSearchParams();
   const id = String((params as any)?.id ?? "").trim();
   const playerSlugParam = String((params as any)?.playerSlug ?? "").trim();
+  const positionParam = xsCardParamStringV1((params as any)?.position);
+  const positionRawParam = xsCardParamStringV1((params as any)?.positionRaw);
 
   const card = useMemo(() => {
     if (!id) return null;
@@ -527,52 +674,59 @@ return () => { cancelled = true; };
 
   const playerName = pickStr((card as any)?.anyPlayer?.displayName ?? (card as any)?.player?.displayName ?? perf?.playerName);
   const teamName = pickStr((card as any)?.anyTeam?.name ?? (card as any)?.player?.activeClub?.name ?? perf?.activeClub?.name);
-  const position = pickStr((card as any)?.position ?? perf?.position);
+  const position = xsCardDetailPositionV1({
+    positionParam,
+    positionRawParam,
+    card,
+    perf,
+  });
+  const [resolvedPosition, setResolvedPosition] = useState<XsRadarPositionV1>(position);
+  const [positionDebug, setPositionDebug] = useState<{ source: string; raw?: string | null }>({
+    source: position === "GEN" ? "initial_gen" : "params/cache",
+    raw: positionRawParam || (card as any)?.positionRaw || null,
+  });
+  const positionDisplay = xsDisplayPositionLabelV1(resolvedPosition);
   const seasonYear = pickStr((card as any)?.seasonYear);
   const rarity = pickStr((card as any)?.rarityTyped ?? (card as any)?.rarity);
   const serial = (card as any)?.serialNumber != null ? "#" + String((card as any).serialNumber) : "—";
 
-  /* XS_CARD_HISTORY_AUTO_SYNC_V1 */
   useEffect(() => {
-    if (!playerSlug) return;
-
     let cancelled = false;
 
-    (async () => {
-      try {
-        const base = XS_HISTORY_SYNC_CLOUDRUN_V1.replace(/\/+$/, "");
-        const syncUrl = `${base}/history/sync-player-scores`;
-        const chartUrl = `${base}/history/player-chart/${encodeURIComponent(playerSlug)}?limit=500`;
+    if (position !== "GEN") {
+      setResolvedPosition(position);
+      setPositionDebug({
+        source: positionParam || positionRawParam ? "params" : "params/cache",
+        raw: positionRawParam || (card as any)?.positionRaw || null,
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
 
-        console.log("[card history sync] start", { playerSlug, last: 100 });
+    if (!playerSlug) {
+      setResolvedPosition("GEN");
+      setPositionDebug({ source: "missing_slug", raw: null });
+      return () => {
+        cancelled = true;
+      };
+    }
 
-        await fetch(syncUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ slug: playerSlug, last: 100 }),
-        });
-
-        const refreshed = await fetch(chartUrl);
-        const refreshedJson = await refreshed.json().catch(() => null);
-        const refreshedItems = Array.isArray((refreshedJson as any)?.items) ? (refreshedJson as any).items : [];
-
-        if (!cancelled && refreshedItems.length > 0) {
-          setHistoryChart(refreshedItems);
-        }
-
-        if (!cancelled) {
-          console.log("[card history sync] ok", { playerSlug, count: refreshedItems.length });
-        }
-      } catch (e: any) {
-        if (!cancelled) {
-          console.log("[card history sync] error", { playerSlug, message: e?.message || String(e) });
-        }
-      }
-    })();
+    xsFetchPlayerPositionCachedV1(playerSlug).then((result) => {
+      if (cancelled) return;
+      setResolvedPosition(result.position !== "GEN" ? result.position : "GEN");
+      setPositionDebug({ source: result.source || "my-cards", raw: result.raw || null });
+    });
 
     return () => {
       cancelled = true;
     };
+  }, [playerSlug, position, positionParam, positionRawParam, card]);
+
+  /* XS_CARD_HISTORY_AUTO_SYNC_V1 */
+  useEffect(() => {
+    // XS_FIX_CARD_POSITION_AND_SYNC_V1: history sync is launched from Mes cartes, not on each card open.
+    return;
   }, [playerSlug]);
   /* XS_CARD_HISTORY_AUTO_SYNC_V1_END */
 
@@ -698,17 +852,18 @@ const avg5 = avgOf(series.l5) ?? asNum((card as any)?.l5) ?? asNum((perf as any)
         historyChart,
         { avg5, avg15, avg40 },
         {
-          positionRaw: (card as any)?.positionRaw,
-          position,
+          positionRaw: positionRawParam || (card as any)?.positionRaw,
+          position: resolvedPosition,
           playerPosition: (card as any)?.playerPosition,
           anyPosition: (card as any)?.anyPosition,
+          anyPositions: (card as any)?.anyPositions,
           card,
           player: (card as any)?.player,
           anyPlayer: (card as any)?.anyPlayer,
           perf,
         }
       ),
-    [historyChart, avg5, avg15, avg40, position, card, perf]
+    [historyChart, avg5, avg15, avg40, resolvedPosition, positionRawParam, card, perf]
   );
 
   function pill(label: "L5" | "L15" | "ALL") {
@@ -743,7 +898,7 @@ return (
 
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
           <View style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.stroke }}>
-            <Text style={{ color: theme.text, fontWeight: "700" }}>Position: {position}</Text>
+        <Text style={{ color: theme.text, fontWeight: "700" }}>Position: {positionDisplay}</Text>
           </View>
           <View style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.stroke }}>
             <Text style={{ color: theme.text, fontWeight: "700" }}>Rareté: {rarity}</Text>
@@ -755,6 +910,11 @@ return (
             <Text style={{ color: theme.text, fontWeight: "700" }}>Serial: {serial}</Text>
           </View>
         </View>
+        {positionDebug.source ? (
+          <Text style={{ color: theme.muted, fontSize: 11, marginTop: 6 }}>
+            position source: {positionDebug.source}{positionDebug.raw ? ` · ${positionDebug.raw}` : ""}
+          </Text>
+        ) : null}
       </View>
 
       <View style={{ borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, padding: 14 }}>
