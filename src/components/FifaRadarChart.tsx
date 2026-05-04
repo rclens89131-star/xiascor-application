@@ -22,6 +22,7 @@ function colorFromValue(v: number) {
 export default function FifaRadarChart(props: {
   title?: string;
   values?: RadarValue[];
+  overall?: number | null;
   confidence?: number | null;
   matches?: number | null;
   positionUsed?: string | null;
@@ -42,7 +43,12 @@ export default function FifaRadarChart(props: {
           { label: "Fiabilité", value: 50 },
         ];
 
+  const weightedOverall =
+    typeof props.overall === "number" && Number.isFinite(props.overall)
+      ? clamp(props.overall)
+      : null;
   const avg =
+    weightedOverall ??
     values.reduce((a, b) => a + clamp(b.value), 0) / Math.max(1, values.length);
 
   const accent = colorFromValue(avg);
