@@ -165,6 +165,35 @@ function homeAwayLabel(homeAway: RadarMatchContext["homeAway"]) {
   return "inconnu";
 }
 
+/* XS_RADAR_PREMIUM_DECISION_CARD_V1 */
+function premiumDecisionVerdictV1(label: string, tone: RadarDecisionV2["finalTone"]) {
+  if (tone === "strongPlay") return "TITULAIRE";
+  if (tone === "play") return "À ALIGNER";
+  if (tone === "joker") return "DIFFÉRENTIEL";
+  if (tone === "risk") return "RISQUÉ";
+  if (tone === "avoid") return "À ÉVITER";
+  if (/titulaire/i.test(label)) return "TITULAIRE";
+  if (/aligner/i.test(label)) return "À ALIGNER";
+  if (/risqu/i.test(label)) return "RISQUÉ";
+  if (/éviter|eviter/i.test(label)) return "À ÉVITER";
+  return "BORDERLINE";
+}
+
+function premiumDecisionIconV1(tone: RadarDecisionV2["finalTone"]) {
+  if (tone === "strongPlay") return "★";
+  if (tone === "play") return "✓";
+  if (tone === "joker") return "◆";
+  if (tone === "avoid") return "×";
+  if (tone === "risk") return "!";
+  return "?";
+}
+
+function safeTextV1(value: unknown) {
+  const text = String(value || "").trim();
+  return text || "—";
+}
+/* XS_RADAR_PREMIUM_DECISION_CARD_V1_END */
+
 export default function FifaRadarChart(props: {
   title?: string;
   values?: RadarValue[];
@@ -298,6 +327,40 @@ export default function FifaRadarChart(props: {
       reason: "Comparaison provisoire en attente de données radar suffisantes.",
     };
   const positionPercentileTone = positionPercentileToneStyle(positionPercentile.tier);
+  const premiumTone = decisionV2Tone;
+  const premiumVerdict = premiumDecisionVerdictV1(decisionV2.finalLabel, decisionV2.finalTone);
+  const premiumIcon = premiumDecisionIconV1(decisionV2.finalTone);
+  const premiumScore = Math.round(clamp(coachDecision.score));
+  const decisionBullets = (decisionV2.bullets || [])
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+  const riskPattern = /risque|faible|irrég|irreg|difficile|rotation|baisse|extérieur|exterieur|variable|prudence/i;
+  const whyItems = [
+    ...decisionBullets.filter((item) => !riskPattern.test(item)),
+    ...(coachDecision.reasons || []).filter((item) => !riskPattern.test(String(item || ""))),
+  ]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+    .filter((item, index, list) => list.indexOf(item) === index)
+    .slice(0, 3);
+  const displayedWhy = whyItems.length
+    ? whyItems
+    : [safeTextV1(decisionV2.summary || recommendation.reason)];
+  const riskItems = [
+    ...decisionBullets.filter((item) => riskPattern.test(item)),
+    ...(confidenceEnhanced.score < 50 ? ["Confiance faible, prudence"] : []),
+    ...(volatility === "high" ? ["Scores très irréguliers"] : []),
+    ...(volatility === "medium" ? ["Scores variables"] : []),
+    ...(matchContext.difficulty === "hard" ? ["Contexte match difficile"] : []),
+    ...(matchContext.homeAway === "away" && volatility !== "stable" ? ["Extérieur avec stabilité à surveiller"] : []),
+  ]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+    .filter((item, index, list) => list.indexOf(item) === index)
+    .slice(0, 3);
+  const displayedRisks = riskItems.length ? riskItems : ["—"];
+  const confidenceScore = Math.round(clamp(confidenceEnhanced.score));
+  const matchDateLabel = safeTextV1(matchContext.matchDate);
 
   return (
     <View
@@ -372,240 +435,134 @@ export default function FifaRadarChart(props: {
       ) : null}
       {/* XS_FIFA_RADAR_RANGE_SWITCH_V1_END */}
 
-      {/* XS_RADAR_DECISION_ENGINE_V1 */}
+      {/* XS_RADAR_PREMIUM_DECISION_CARD_V1 */}
       <View
         style={{
-          borderRadius: 12,
-          borderWidth: 1,
-          borderColor: coachTone.border,
-          backgroundColor: coachTone.bg,
-          padding: 11,
-          gap: 7,
+          borderRadius: 18,
+          borderWidth: 1.5,
+          borderColor: premiumTone.border,
+          backgroundColor: "#0B0F14",
+          padding: 14,
+          gap: 14,
+          shadowColor: premiumTone.fg,
+          shadowOpacity: 0.16,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: 8 },
         }}
       >
-        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-          <Text style={{ color: "#E5E7EB", fontSize: 14, fontWeight: "900" }}>
-            Score Coach : {Math.round(clamp(coachDecision.score))}
-          </Text>
-          <Text style={{ color: coachTone.fg, fontSize: 14, fontWeight: "900" }}>
-            Décision : {coachDecision.decision}
-          </Text>
-        </View>
-        <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
-          Radar ajusté : {Math.round(clamp(coachDecision.adjustedOverall))} / brut {Math.round(clamp(coachDecision.rawOverall))}
-          {coachDecision.matchBonus ? ` · Bonus match ${coachDecision.matchBonus > 0 ? "+" : ""}${coachDecision.matchBonus}` : ""}
-        </Text>
-        {/* XS_RADAR_ADVANCED_DECISION_V1 */}
-        <View
-          style={{
-            padding: 10,
-            borderRadius: 12,
-            backgroundColor: "rgba(255,255,255,0.05)",
-            gap: 5,
-          }}
-        >
-          <Text style={{ color: "#E5E7EB", fontWeight: "900", fontSize: 12 }}>
-            Forme : {trend === "up" ? "📈 En hausse" : trend === "down" ? "📉 En baisse" : "➖ Stable"}
-          </Text>
-          <Text style={{ color: "#E5E7EB", fontSize: 12 }}>
-            Risque : {volatility === "high" ? "🎰 Très irrégulier" : volatility === "medium" ? "⚠️ Variable" : volatility === "unknown" ? "➖ Inconnu" : "🔒 Stable"}
-          </Text>
-          <Text style={{ color: "#E5E7EB", fontSize: 12 }}>
-            Plafond : 🎯 {Math.round(clamp(ceiling))}
-          </Text>
-        </View>
-        {/* XS_RADAR_ADVANCED_DECISION_V1_END */}
-        <View style={{ gap: 3 }}>
-          <Text style={{ color: "#E5E7EB", fontSize: 12, fontWeight: "900" }}>Raison :</Text>
-          {(coachDecision.reasons && coachDecision.reasons.length ? coachDecision.reasons : [coachDecision.reason])
-            .slice(0, 4)
-            .map((reason, index) => (
-              <Text key={`coach-reason-${index}`} style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
-                • {reason}
+        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+          <View style={{ flexDirection: "row", gap: 11, alignItems: "center", flex: 1 }}>
+            <View
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: premiumTone.border,
+                backgroundColor: premiumTone.bg,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text style={{ color: premiumTone.fg, fontSize: 22, fontWeight: "900" }}>
+                {premiumIcon}
               </Text>
-            ))}
-        </View>
-      </View>
-      {/* XS_RADAR_DECISION_ENGINE_V1_END */}
-
-      {/* XS_RADAR_DECISION_ENGINE_V2 */}
-      <View
-        style={{
-          borderRadius: 12,
-          borderWidth: 1,
-          borderColor: decisionV2Tone.border,
-          backgroundColor: decisionV2Tone.bg,
-          padding: 11,
-          gap: 7,
-        }}
-      >
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <Text style={{ color: decisionV2Tone.fg, fontSize: 14, fontWeight: "900" }}>
-            Décision V2 : {decisionV2.finalTone === "strongPlay" ? "🔥 " : ""}{decisionV2.finalLabel}
-          </Text>
-          <Text
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: "#94A3B8", fontSize: 11, fontWeight: "900", letterSpacing: 0 }}>
+                DÉCISION COACH
+              </Text>
+              <Text style={{ color: premiumTone.fg, fontSize: 26, fontWeight: "900", marginTop: 2 }}>
+                {premiumVerdict}
+              </Text>
+              <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17, marginTop: 2 }}>
+                Style : {safeTextV1(decisionV2.playStyle)} · Profil : {safeTextV1(autoProfile.label)}
+              </Text>
+            </View>
+          </View>
+          <View
             style={{
-              color: decisionV2Tone.fg,
-              borderColor: decisionV2Tone.border,
+              minWidth: 70,
+              borderRadius: 14,
               borderWidth: 1,
-              borderRadius: 999,
-              paddingHorizontal: 8,
-              paddingVertical: 3,
-              overflow: "hidden",
-              fontSize: 11,
-              fontWeight: "900",
+              borderColor: premiumTone.border,
+              backgroundColor: premiumTone.bg,
+              paddingHorizontal: 10,
+              paddingVertical: 8,
+              alignItems: "center",
             }}
           >
-            Style : {decisionV2.playStyle}
-          </Text>
-        </View>
-        <Text style={{ color: "#E5E7EB", fontSize: 12, lineHeight: 17 }}>
-          Résumé : {decisionV2.summary}
-        </Text>
-        <View style={{ gap: 3 }}>
-          <Text style={{ color: "#E5E7EB", fontSize: 12, fontWeight: "900" }}>Raisons :</Text>
-          {(decisionV2.bullets && decisionV2.bullets.length ? decisionV2.bullets : ["Données encore limitées"])
-            .slice(0, 3)
-            .map((bullet, index) => (
-              <Text key={`decision-v2-${index}`} style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
-                - {bullet}
-              </Text>
-            ))}
-        </View>
-      </View>
-      {/* XS_RADAR_DECISION_ENGINE_V2_END */}
-
-      {/* XS_FIFA_RADAR_AUTO_PROFILE_V1 */}
-      <View
-        style={{
-          borderRadius: 12,
-          borderWidth: 1,
-          borderColor: autoProfileTone.border,
-          backgroundColor: autoProfileTone.bg,
-          padding: 10,
-          gap: 5,
-        }}
-      >
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <Text style={{ color: "#E5E7EB", fontSize: 13, fontWeight: "900" }}>
-            Profil : {autoProfile.label}
-          </Text>
-          <Text
-            style={{
-              color: autoProfileTone.fg,
-              borderColor: autoProfileTone.border,
-              borderWidth: 1,
-              borderRadius: 999,
-              paddingHorizontal: 8,
-              paddingVertical: 3,
-              overflow: "hidden",
-              fontSize: 11,
-              fontWeight: "900",
-            }}
-          >
-            {autoProfile.tone}
-          </Text>
-        </View>
-        <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
-          Raison : {autoProfile.reason}
-        </Text>
-      </View>
-      {/* XS_FIFA_RADAR_AUTO_PROFILE_V1_END */}
-
-      <View style={{ gap: 8 }}>
-        <View
-          style={{
-            borderRadius: 12,
-            borderWidth: 1,
-            borderColor: confidenceTone.border,
-            backgroundColor: confidenceTone.bg,
-            padding: 10,
-            gap: 5,
-          }}
-        >
-          <Text style={{ color: "#E5E7EB", fontSize: 13, fontWeight: "900" }}>
-            Confiance : {confidenceEnhanced.label} ({Math.round(clamp(confidenceEnhanced.score))})
-          </Text>
-          <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
-            Raison : {confidenceEnhanced.reason}
-          </Text>
-        </View>
-
-        <View
-          style={{
-            borderRadius: 12,
-            borderWidth: 1,
-            borderColor: recommendationTone.border,
-            backgroundColor: recommendationTone.bg,
-            padding: 10,
-            gap: 5,
-          }}
-        >
-          <Text style={{ color: recommendationTone.fg, fontSize: 13, fontWeight: "900" }}>
-            Recommandation : {recommendation.label}
-          </Text>
-          <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
-            Raison : {recommendation.reason}
-          </Text>
-        </View>
-
-        {/* XS_CARD_MATCH_CONTEXT_RECO_V1 */}
-        <View
-          style={{
-            borderRadius: 12,
-            borderWidth: 1,
-            borderColor: matchTone.border,
-            backgroundColor: matchTone.bg,
-            padding: 10,
-            gap: 5,
-          }}
-        >
-          <Text style={{ color: matchTone.fg, fontSize: 13, fontWeight: "900" }}>
-            Contexte match : {matchContext.opponentName || "prochain adversaire non disponible"}
-          </Text>
-          <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
-            Adversaire : {matchContext.opponentName || "—"} · Domicile/extérieur : {homeAwayLabel(matchContext.homeAway)}
-          </Text>
-          <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
-            Difficulté : {matchDifficultyLabel(matchContext.difficulty)}
-            {typeof matchContext.difficultyScore === "number" ? ` (${Math.round(clamp(matchContext.difficultyScore))})` : ""}
-          </Text>
-          {matchContext.competition || matchContext.matchDate ? (
-            <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
-              {matchContext.competition ? `Compétition : ${matchContext.competition}` : ""}
-              {matchContext.competition && matchContext.matchDate ? " · " : ""}
-              {matchContext.matchDate ? `Date : ${matchContext.matchDate}` : ""}
+            <Text style={{ color: premiumTone.fg, fontSize: 22, fontWeight: "900" }}>
+              {premiumScore}
             </Text>
-          ) : null}
-          <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
-            Raison : {matchContext.reason}
-          </Text>
+            <Text style={{ color: "#CBD5E1", fontSize: 11, fontWeight: "800" }}>
+              /100
+            </Text>
+          </View>
         </View>
-        {/* XS_CARD_MATCH_CONTEXT_RECO_V1_END */}
 
-        {/* XS_RADAR_POSITION_PERCENTILE_V1 */}
-        <View
-          style={{
-            borderRadius: 12,
-            borderWidth: 1,
-            borderColor: positionPercentileTone.border,
-            backgroundColor: positionPercentileTone.bg,
-            padding: 10,
-            gap: 5,
-          }}
-        >
-          <Text style={{ color: positionPercentileTone.fg, fontSize: 13, fontWeight: "900" }}>
-            Comparaison poste : {positionPercentile.percentileLabel}
-          </Text>
-          <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
-            Écart : {positionPercentile.deltaLabel}
-          </Text>
-          <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
-            Raison : {positionPercentile.reason} Comparaison provisoire sans base marché globale.
+        <Text style={{ color: "#E5E7EB", fontSize: 12, lineHeight: 18 }}>
+          {safeTextV1(decisionV2.summary || recommendation.reason)}
+        </Text>
+
+        <View style={{ borderTopWidth: 1, borderTopColor: "rgba(148,163,184,0.16)", paddingTop: 11, gap: 6 }}>
+          <Text style={{ color: "#F8FAFC", fontSize: 12, fontWeight: "900" }}>POURQUOI ?</Text>
+          {displayedWhy.map((reason, index) => (
+            <Text key={`premium-why-${index}`} style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
+              • {reason}
+            </Text>
+          ))}
+        </View>
+
+        <View style={{ borderTopWidth: 1, borderTopColor: "rgba(148,163,184,0.16)", paddingTop: 11, gap: 6 }}>
+          <Text style={{ color: "#F8FAFC", fontSize: 12, fontWeight: "900" }}>RISQUES</Text>
+          {displayedRisks.map((risk, index) => (
+            <Text key={`premium-risk-${index}`} style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
+              • {risk}
+            </Text>
+          ))}
+          <Text style={{ color: "#94A3B8", fontSize: 11, lineHeight: 15 }}>
+            Tendance : {trend === "up" ? "en hausse" : trend === "down" ? "en baisse" : "stable"} · Volatilité : {volatility === "unknown" ? "—" : volatility} · Plafond : {Math.round(clamp(ceiling))}
           </Text>
         </View>
-        {/* XS_RADAR_POSITION_PERCENTILE_V1_END */}
+
+        <View style={{ borderTopWidth: 1, borderTopColor: "rgba(148,163,184,0.16)", paddingTop: 11, gap: 7 }}>
+          <Text style={{ color: "#F8FAFC", fontSize: 12, fontWeight: "900" }}>CONTEXTE MATCH</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            <Text style={{ color: "#CBD5E1", fontSize: 12 }}>Adversaire : {safeTextV1(matchContext.opponentName)}</Text>
+            <Text style={{ color: "#CBD5E1", fontSize: 12 }}>Lieu : {homeAwayLabel(matchContext.homeAway)}</Text>
+            <Text style={{ color: "#CBD5E1", fontSize: 12 }}>Difficulté : {matchDifficultyLabel(matchContext.difficulty)}</Text>
+          </View>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            <Text style={{ color: "#CBD5E1", fontSize: 12 }}>Compétition : {safeTextV1(matchContext.competition)}</Text>
+            <Text style={{ color: "#CBD5E1", fontSize: 12 }}>Date : {matchDateLabel}</Text>
+          </View>
+          <Text style={{ color: "#94A3B8", fontSize: 11, lineHeight: 15 }}>
+            {safeTextV1(matchContext.reason)}
+          </Text>
+        </View>
+
+        <View style={{ borderTopWidth: 1, borderTopColor: "rgba(148,163,184,0.16)", paddingTop: 11, gap: 6 }}>
+          <Text style={{ color: "#F8FAFC", fontSize: 12, fontWeight: "900" }}>COMPARAISON POSTE</Text>
+          <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
+            {safeTextV1(positionPercentile.percentileLabel)} · {safeTextV1(positionPercentile.deltaLabel)}
+          </Text>
+          <Text style={{ color: "#94A3B8", fontSize: 11, lineHeight: 15 }}>
+            {safeTextV1(positionPercentile.reason)} Comparaison locale provisoire sans base marché globale.
+          </Text>
+        </View>
+
+        <View style={{ borderTopWidth: 1, borderTopColor: "rgba(148,163,184,0.16)", paddingTop: 11, gap: 6 }}>
+          <Text style={{ color: "#F8FAFC", fontSize: 12, fontWeight: "900" }}>CONFIANCE</Text>
+          <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
+            {confidenceEnhanced.label} ({confidenceScore}/100) · {hasMatches ? `${Math.max(0, Math.round(props.matches || 0))} matchs` : "—"} · Fenêtre {activeRange}
+          </Text>
+          <Text style={{ color: "#94A3B8", fontSize: 11, lineHeight: 15 }}>
+            {safeTextV1(confidenceEnhanced.reason)}
+          </Text>
+        </View>
       </View>
+      {/* XS_RADAR_PREMIUM_DECISION_CARD_V1_END */}
 
       <View style={{ gap: 10 }}>
         {values.map((v) => {
