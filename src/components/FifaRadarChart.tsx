@@ -23,6 +23,15 @@ type RadarRecommendation = {
   tone: "play" | "avoid" | "watch" | "risky";
   reason: string;
 };
+type RadarMatchContext = {
+  opponentName: string | null;
+  competition: string | null;
+  homeAway: "home" | "away" | "unknown";
+  matchDate: string | null;
+  difficulty: "easy" | "medium" | "hard" | "unknown";
+  difficultyScore: number | null;
+  reason: string;
+};
 
 function clamp(v: number) {
   if (!Number.isFinite(v)) return 0;
@@ -57,6 +66,26 @@ function recommendationToneStyle(tone: RadarRecommendation["tone"]) {
   return { fg: "#FACC15", bg: "rgba(250,204,21,0.10)", border: "rgba(250,204,21,0.32)" };
 }
 
+function matchDifficultyToneStyle(difficulty: RadarMatchContext["difficulty"]) {
+  if (difficulty === "easy") return { fg: "#22C55E", bg: "rgba(34,197,94,0.10)", border: "rgba(34,197,94,0.34)" };
+  if (difficulty === "hard") return { fg: "#FB923C", bg: "rgba(251,146,60,0.12)", border: "rgba(251,146,60,0.40)" };
+  if (difficulty === "medium") return { fg: "#FACC15", bg: "rgba(250,204,21,0.10)", border: "rgba(250,204,21,0.32)" };
+  return { fg: "#9CA3AF", bg: "rgba(156,163,175,0.10)", border: "rgba(156,163,175,0.28)" };
+}
+
+function matchDifficultyLabel(difficulty: RadarMatchContext["difficulty"]) {
+  if (difficulty === "easy") return "facile";
+  if (difficulty === "medium") return "moyenne";
+  if (difficulty === "hard") return "difficile";
+  return "inconnue";
+}
+
+function homeAwayLabel(homeAway: RadarMatchContext["homeAway"]) {
+  if (homeAway === "home") return "domicile";
+  if (homeAway === "away") return "extérieur";
+  return "inconnu";
+}
+
 export default function FifaRadarChart(props: {
   title?: string;
   values?: RadarValue[];
@@ -70,6 +99,7 @@ export default function FifaRadarChart(props: {
   autoProfile?: RadarAutoProfile | null;
   confidenceEnhanced?: RadarConfidenceEnhanced | null;
   recommendation?: RadarRecommendation | null;
+  matchContext?: RadarMatchContext | null;
   subtitle?: string;
 }) {
   const values =
@@ -131,6 +161,17 @@ export default function FifaRadarChart(props: {
       reason: "Pas encore assez de matchs fiables.",
     };
   const recommendationTone = recommendationToneStyle(recommendation.tone);
+  const matchContext =
+    props.matchContext || {
+      opponentName: null,
+      competition: null,
+      homeAway: "unknown" as const,
+      matchDate: null,
+      difficulty: "unknown" as const,
+      difficultyScore: null,
+      reason: "Prochain adversaire non disponible.",
+    };
+  const matchTone = matchDifficultyToneStyle(matchContext.difficulty);
 
   return (
     <View
@@ -278,6 +319,40 @@ export default function FifaRadarChart(props: {
             Raison : {recommendation.reason}
           </Text>
         </View>
+
+        {/* XS_CARD_MATCH_CONTEXT_RECO_V1 */}
+        <View
+          style={{
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: matchTone.border,
+            backgroundColor: matchTone.bg,
+            padding: 10,
+            gap: 5,
+          }}
+        >
+          <Text style={{ color: matchTone.fg, fontSize: 13, fontWeight: "900" }}>
+            Contexte match : {matchContext.opponentName || "prochain adversaire non disponible"}
+          </Text>
+          <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
+            Adversaire : {matchContext.opponentName || "—"} · Domicile/extérieur : {homeAwayLabel(matchContext.homeAway)}
+          </Text>
+          <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
+            Difficulté : {matchDifficultyLabel(matchContext.difficulty)}
+            {typeof matchContext.difficultyScore === "number" ? ` (${Math.round(clamp(matchContext.difficultyScore))})` : ""}
+          </Text>
+          {matchContext.competition || matchContext.matchDate ? (
+            <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
+              {matchContext.competition ? `Compétition : ${matchContext.competition}` : ""}
+              {matchContext.competition && matchContext.matchDate ? " · " : ""}
+              {matchContext.matchDate ? `Date : ${matchContext.matchDate}` : ""}
+            </Text>
+          ) : null}
+          <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
+            Raison : {matchContext.reason}
+          </Text>
+        </View>
+        {/* XS_CARD_MATCH_CONTEXT_RECO_V1_END */}
       </View>
 
       <View style={{ gap: 10 }}>
