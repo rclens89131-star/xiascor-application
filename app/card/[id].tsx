@@ -386,12 +386,26 @@ type XsRadarMetricsByPositionV1 = {
   matches?: number;
   range?: XsRadarRangeV1;
   confidence?: number;
+  detailedStats?: boolean;
 };
 
 type XsRadarAutoProfileToneV1 = "safe" | "upside" | "risk" | "balanced";
 type XsRadarAutoProfileV1 = {
   label: string;
   tone: XsRadarAutoProfileToneV1;
+  reason: string;
+};
+
+type XsRadarConfidenceEnhancedV1 = {
+  score: number;
+  label: "Faible" | "Moyen" | "Élevé";
+  color: "red" | "orange" | "green";
+  reason: string;
+};
+
+type XsRadarRecommendationV1 = {
+  label: string;
+  tone: "play" | "avoid" | "watch" | "risky";
   reason: string;
 };
 
@@ -529,6 +543,78 @@ function xsRadarAutoProfileLabelV1(
 }
 /* XS_FIFA_RADAR_AUTO_PROFILE_V1_END */
 
+/* XS_FIFA_RADAR_CONFIDENCE_RECO_V1 */
+function xsRadarConfidenceEnhancedV1(metrics: XsRadarMetricsByPositionV1): XsRadarConfidenceEnhancedV1 {
+  const matches = Math.max(0, Math.round(Number(metrics.matches || 0)));
+  const range = metrics.range || "L15";
+  const hasDetailedStats = metrics.detailedStats === true;
+  const volumeScore = matches < 5 ? 35 : matches <= 15 ? 62 : 82;
+  const existingScore =
+    typeof metrics.confidence === "number" && Number.isFinite(metrics.confidence)
+      ? xsRadarClampV1(metrics.confidence * 100)
+      : volumeScore;
+  let score = volumeScore * 0.65 + existingScore * 0.35;
+  const reasons = [
+    `${matches} match${matches > 1 ? "s" : ""} utilisé${matches > 1 ? "s" : ""}`,
+  ];
+
+  if (range === "L5") {
+    score -= 10;
+    reasons.push("fenêtre L5 plus volatile");
+  } else if (range === "L40") {
+    score += 10;
+    reasons.push("fenêtre L40 plus stable");
+  } else {
+    reasons.push("fenêtre L15 équilibrée");
+  }
+
+  if (!hasDetailedStats) {
+    score -= 10;
+    reasons.push("stats détaillées partiellement en proxy");
+  } else {
+    reasons.push("stats détaillées disponibles");
+  }
+
+  const finalScore = Math.round(xsRadarClampV1(score));
+  if (finalScore < 45) {
+    return { score: finalScore, label: "Faible", color: "red", reason: reasons.join(" · ") };
+  }
+  if (finalScore < 70) {
+    return { score: finalScore, label: "Moyen", color: "orange", reason: reasons.join(" · ") };
+  }
+  return { score: finalScore, label: "Élevé", color: "green", reason: reasons.join(" · ") };
+}
+
+function xsRadarRecommendationV1(
+  positionUsed: XsRadarPositionV1,
+  metrics: XsRadarMetricsByPositionV1,
+  autoProfile: XsRadarAutoProfileV1,
+  confidence: XsRadarConfidenceEnhancedV1
+): XsRadarRecommendationV1 {
+  if (confidence.label === "Faible") {
+    return { label: "À surveiller", tone: "watch", reason: `Confiance faible: ${confidence.reason}.` };
+  }
+  if (metrics.gameTime < 45) {
+    return { label: "Risque rotation", tone: "risky", reason: "Temps de jeu faible sur la fenêtre sélectionnée." };
+  }
+  if (metrics.regularity < 45) {
+    return { label: "Joueur irrégulier", tone: "risky", reason: "Régularité basse sur la fenêtre sélectionnée." };
+  }
+  if (autoProfile.tone === "risk" || /risk|risque|irrégulier/i.test(autoProfile.label)) {
+    return { label: "Pari risqué", tone: "risky", reason: autoProfile.reason };
+  }
+  if (positionUsed === "FW" && metrics.attack >= 65 && metrics.impact >= 60) {
+    return { label: "À aligner", tone: "play", reason: "Attaque élevée et impact fort sur la fenêtre sélectionnée." };
+  }
+  if ((positionUsed === "DEF" || positionUsed === "GK") && metrics.defense >= 60 && metrics.regularity >= 60) {
+    return { label: "Bon choix", tone: "play", reason: "Base défensive et régularité solides." };
+  }
+  if (metrics.reliability < 45) {
+    return { label: "À éviter", tone: "avoid", reason: "Fiabilité trop fragile sur la fenêtre sélectionnée." };
+  }
+  return { label: "À surveiller", tone: "watch", reason: "Profil exploitable, mais sans signal suffisamment fort pour une recommandation agressive." };
+}
+
 /* XS_FIFA_RADAR_RANGE_SWITCH_V1 */
 function xsRadarLimitForRangeV1(range: XsRadarRangeV1): number {
   if (range === "L5") return 5;
@@ -589,6 +675,7 @@ function xsBuildFifaRadarValuesFromHistoryV1(
     matches,
     range,
     confidence,
+    detailedStats: false,
   };
 
   if (!matches) {
@@ -603,13 +690,17 @@ function xsBuildFifaRadarValuesFromHistoryV1(
       goalMetric: fallbackScore,
       highScoreRate: 0,
     });
+    const fallbackAutoProfile = xsRadarAutoProfileLabelV1(positionUsed, fallbackMetrics, fallbackProfile);
+    const fallbackConfidenceEnhanced = xsRadarConfidenceEnhancedV1(fallbackMetrics);
     return {
       confidence,
       matches,
       positionUsed,
       overall: xsRadarWeightedOverallByPositionV1(positionUsed, fallbackMetrics),
       profile: fallbackProfile,
-      autoProfile: xsRadarAutoProfileLabelV1(positionUsed, fallbackMetrics, fallbackProfile),
+      autoProfile: fallbackAutoProfile,
+      confidenceEnhanced: fallbackConfidenceEnhanced,
+      recommendation: xsRadarRecommendationV1(positionUsed, fallbackMetrics, fallbackAutoProfile, fallbackConfidenceEnhanced),
       meta: { source: "fallback", positionUsed, range },
       values: xsRadarValuesByPositionV1(positionUsed, fallbackMetrics),
     };
@@ -660,6 +751,15 @@ function xsBuildFifaRadarValuesFromHistoryV1(
       interceptionsDetailMetric,
       duelsDetailMetric,
     ]) ?? normalizedAllAround;
+  const hasDetailedStats = Boolean(
+    goalMetricFromDetails != null ||
+    totalAssists != null ||
+    savesDetailMetric != null ||
+    cleanSheetsDetailMetric != null ||
+    duelsDetailMetric != null ||
+    tacklesDetailMetric != null ||
+    interceptionsDetailMetric != null
+  );
 
   const regularity = xsRadarClampV1(100 - stdDev * 2.2 - badScoreRate * 20);
   const gameTime =
@@ -726,6 +826,7 @@ function xsBuildFifaRadarValuesFromHistoryV1(
     matches,
     range,
     confidence,
+    detailedStats: hasDetailedStats,
   };
 
   const profile = xsRadarProfileV1(positionUsed, {
@@ -739,6 +840,9 @@ function xsBuildFifaRadarValuesFromHistoryV1(
     goalMetric,
     highScoreRate,
   });
+  const autoProfile = xsRadarAutoProfileLabelV1(positionUsed, positionMetrics, profile);
+  const confidenceEnhanced = xsRadarConfidenceEnhancedV1(positionMetrics);
+  const recommendation = xsRadarRecommendationV1(positionUsed, positionMetrics, autoProfile, confidenceEnhanced);
 
   return {
     confidence,
@@ -746,7 +850,9 @@ function xsBuildFifaRadarValuesFromHistoryV1(
     positionUsed,
     overall: xsRadarWeightedOverallByPositionV1(positionUsed, positionMetrics),
     profile,
-    autoProfile: xsRadarAutoProfileLabelV1(positionUsed, positionMetrics, profile),
+    autoProfile,
+    confidenceEnhanced,
+    recommendation,
     meta: {
       positionUsed,
       radarPositionLabel: xsRadarChartPositionLabelV1(positionUsed),
@@ -756,6 +862,7 @@ function xsBuildFifaRadarValuesFromHistoryV1(
       weightsSource: "XS_FIFA_RADAR_BY_POSITION_V1",
       goalsSource: goalMetricFromDetails == null ? "decisiveScore_proxy" : "detailsV1",
       hasDetailedGoals: goalMetricFromDetails != null,
+      hasDetailedStats,
     },
     values: xsRadarValuesByPositionV1(positionUsed, positionMetrics),
   };
@@ -1208,6 +1315,8 @@ return (
         range={radarRange}
         onRangeChange={setRadarRange}
         autoProfile={xsFifaRadar.autoProfile}
+        confidenceEnhanced={xsFifaRadar.confidenceEnhanced}
+        recommendation={xsFifaRadar.recommendation}
       />
       {/* XS_FIFA_RADAR_CARD_DETAIL_V1_END */}
 

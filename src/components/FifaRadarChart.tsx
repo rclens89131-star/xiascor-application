@@ -12,6 +12,17 @@ type RadarAutoProfile = {
   tone: "safe" | "upside" | "risk" | "balanced";
   reason: string;
 };
+type RadarConfidenceEnhanced = {
+  score: number;
+  label: "Faible" | "Moyen" | "Élevé";
+  color: "red" | "orange" | "green";
+  reason: string;
+};
+type RadarRecommendation = {
+  label: string;
+  tone: "play" | "avoid" | "watch" | "risky";
+  reason: string;
+};
 
 function clamp(v: number) {
   if (!Number.isFinite(v)) return 0;
@@ -33,6 +44,19 @@ function autoProfileToneStyle(tone: RadarAutoProfile["tone"]) {
   return { fg: "#FACC15", bg: "rgba(250,204,21,0.10)", border: "rgba(250,204,21,0.32)" };
 }
 
+function confidenceColorStyle(color: RadarConfidenceEnhanced["color"]) {
+  if (color === "green") return { fg: "#22C55E", bg: "rgba(34,197,94,0.10)", border: "rgba(34,197,94,0.34)" };
+  if (color === "orange") return { fg: "#FB923C", bg: "rgba(251,146,60,0.11)", border: "rgba(251,146,60,0.36)" };
+  return { fg: "#EF4444", bg: "rgba(239,68,68,0.11)", border: "rgba(239,68,68,0.36)" };
+}
+
+function recommendationToneStyle(tone: RadarRecommendation["tone"]) {
+  if (tone === "play") return { fg: "#22C55E", bg: "rgba(34,197,94,0.10)", border: "rgba(34,197,94,0.34)" };
+  if (tone === "avoid") return { fg: "#EF4444", bg: "rgba(239,68,68,0.11)", border: "rgba(239,68,68,0.36)" };
+  if (tone === "risky") return { fg: "#FB923C", bg: "rgba(251,146,60,0.11)", border: "rgba(251,146,60,0.36)" };
+  return { fg: "#FACC15", bg: "rgba(250,204,21,0.10)", border: "rgba(250,204,21,0.32)" };
+}
+
 export default function FifaRadarChart(props: {
   title?: string;
   values?: RadarValue[];
@@ -44,6 +68,8 @@ export default function FifaRadarChart(props: {
   range?: RadarRange;
   onRangeChange?: (range: RadarRange) => void;
   autoProfile?: RadarAutoProfile | null;
+  confidenceEnhanced?: RadarConfidenceEnhanced | null;
+  recommendation?: RadarRecommendation | null;
   subtitle?: string;
 }) {
   const values =
@@ -90,6 +116,21 @@ export default function FifaRadarChart(props: {
       reason: "Pas encore assez de matchs fiables.",
     };
   const autoProfileTone = autoProfileToneStyle(autoProfile.tone);
+  const confidenceEnhanced =
+    props.confidenceEnhanced || {
+      score: 0,
+      label: "Faible" as const,
+      color: "red" as const,
+      reason: "Pas encore assez de matchs fiables.",
+    };
+  const confidenceTone = confidenceColorStyle(confidenceEnhanced.color);
+  const recommendation =
+    props.recommendation || {
+      label: "À surveiller",
+      tone: "watch" as const,
+      reason: "Pas encore assez de matchs fiables.",
+    };
+  const recommendationTone = recommendationToneStyle(recommendation.tone);
 
   return (
     <View
@@ -200,6 +241,44 @@ export default function FifaRadarChart(props: {
         </Text>
       </View>
       {/* XS_FIFA_RADAR_AUTO_PROFILE_V1_END */}
+
+      <View style={{ gap: 8 }}>
+        <View
+          style={{
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: confidenceTone.border,
+            backgroundColor: confidenceTone.bg,
+            padding: 10,
+            gap: 5,
+          }}
+        >
+          <Text style={{ color: "#E5E7EB", fontSize: 13, fontWeight: "900" }}>
+            Confiance : {confidenceEnhanced.label} ({Math.round(clamp(confidenceEnhanced.score))})
+          </Text>
+          <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
+            Raison : {confidenceEnhanced.reason}
+          </Text>
+        </View>
+
+        <View
+          style={{
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: recommendationTone.border,
+            backgroundColor: recommendationTone.bg,
+            padding: 10,
+            gap: 5,
+          }}
+        >
+          <Text style={{ color: recommendationTone.fg, fontSize: 13, fontWeight: "900" }}>
+            Recommandation : {recommendation.label}
+          </Text>
+          <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
+            Raison : {recommendation.reason}
+          </Text>
+        </View>
+      </View>
 
       <View style={{ gap: 10 }}>
         {values.map((v) => {
