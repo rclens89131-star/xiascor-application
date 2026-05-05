@@ -64,6 +64,8 @@ function xsRadarRateV1<T>(values: T[], predicate: (value: T) => boolean): number
 /* XS_FIFA_RADAR_POSITION_WEIGHTS_V1 */
 type XsRadarPositionV1 = "GK" | "DEF" | "MID" | "FW" | "GEN";
 type XsRadarRangeV1 = "L5" | "L15" | "L40";
+type XsRadarTrendV1 = "up" | "down" | "stable";
+type XsRadarVolatilityV1 = "stable" | "medium" | "high" | "unknown";
 
 /* XS_FIX_MYCARDS_POSITION_DEVICEID_AND_SYNC_V1 */
 /* XS_FIX_POSITION_FROM_MYCARDS_CACHE_V1 */
@@ -390,7 +392,11 @@ type XsRadarMetricsByPositionV1 = {
   l5?: number;
   l15?: number;
   l40?: number;
+  confidenceScore?: number;
   overall?: number;
+  coachAdjustedOverall?: number;
+  coachScore?: number;
+  scoreSeries?: number[];
 };
 
 type XsRadarAutoProfileToneV1 = "safe" | "upside" | "risk" | "balanced";
@@ -411,6 +417,28 @@ type XsRadarRecommendationV1 = {
   label: string;
   tone: "play" | "avoid" | "watch" | "risky";
   reason: string;
+};
+
+type XsRadarCoachDecisionV1 = {
+  score: number;
+  decision: "Titulaire" | "Borderline" | "Risqué" | "À éviter";
+  tone: "play" | "watch" | "risky" | "avoid";
+  adjustedOverall: number;
+  rawOverall: number;
+  matchBonus: number;
+  trend: XsRadarTrendV1;
+  volatility: XsRadarVolatilityV1;
+  ceiling: number;
+  reasons: string[];
+  reason: string;
+};
+
+type XsRadarDecisionV2 = {
+  finalLabel: string;
+  finalTone: "strongPlay" | "play" | "borderline" | "joker" | "risk" | "avoid";
+  playStyle: string;
+  summary: string;
+  bullets: string[];
 };
 
 type XsRadarPositionPercentileV1 = {
@@ -465,7 +493,7 @@ function xsRadarPositionPercentileV1(
   positionUsed: XsRadarPositionV1,
   metrics: XsRadarMetricsByPositionV1
 ): XsRadarPositionPercentileV1 {
-  const overall = Math.round(xsRadarClampV1(metrics.overall ?? xsRadarWeightedOverallByPositionV1(positionUsed, metrics)));
+  const overall = Math.round(xsRadarClampV1(metrics.coachAdjustedOverall ?? metrics.overall ?? xsRadarWeightedOverallByPositionV1(positionUsed, metrics)));
   const group = xsRadarPositionGroupLabelV1(positionUsed);
   const range = metrics.range || "L15";
   const delta = overall - 55;
@@ -478,41 +506,41 @@ function xsRadarPositionPercentileV1(
 
   if (overall >= 75) {
     return {
-      percentileLabel: `Top 10% des ${group}`,
+      percentileLabel: `Top local des ${group}`,
       deltaLabel,
       tier: "elite",
-      reason: `Comparaison provisoire: overall radar ${overall} sur ${range}, au-dessus du seuil elite local.`,
+      reason: `Repère local provisoire: score ajusté ${overall} sur ${range}, sans percentile marché global.`,
     };
   }
   if (overall >= 65) {
     return {
-      percentileLabel: `Top 25% des ${group}`,
+      percentileLabel: `Profil fort local des ${group}`,
       deltaLabel,
       tier: "strong",
-      reason: `Comparaison provisoire: overall radar ${overall} sur ${range}, profil fort pour son poste.`,
+      reason: `Repère local provisoire: score ajusté ${overall} sur ${range}, profil fort pour son poste.`,
     };
   }
   if (overall >= 55) {
     return {
-      percentileLabel: `Au-dessus de la moyenne des ${group}`,
+      percentileLabel: `Au-dessus du repère local des ${group}`,
       deltaLabel,
       tier: "strong",
-      reason: `Comparaison provisoire: overall radar ${overall} sur ${range}, au-dessus du seuil moyen.`,
+      reason: `Repère local provisoire: score ajusté ${overall} sur ${range}, au-dessus du seuil moyen.`,
     };
   }
   if (overall >= 45) {
     return {
-      percentileLabel: `Profil moyen des ${group}`,
+      percentileLabel: `Profil local moyen des ${group}`,
       deltaLabel,
       tier: "average",
-      reason: `Comparaison provisoire: overall radar ${overall} sur ${range}, proche du profil moyen.`,
+      reason: `Repère local provisoire: score ajusté ${overall} sur ${range}, proche du profil moyen.`,
     };
   }
   return {
-    percentileLabel: `Sous la moyenne des ${group}`,
+    percentileLabel: `Sous le repère local des ${group}`,
     deltaLabel,
     tier: "weak",
-    reason: `Comparaison provisoire: overall radar ${overall} sur ${range}, sous le seuil moyen.`,
+    reason: `Repère local provisoire: score ajusté ${overall} sur ${range}, sous le seuil moyen.`,
   };
 }
 /* XS_RADAR_POSITION_PERCENTILE_V1_END */
@@ -877,6 +905,386 @@ function xsIsRealMatchContextUsefulV1(context: XsCardMatchContextV1 | null | und
 }
 /* XS_CARD_REAL_MATCH_CONTEXT_V1_END */
 
+/* XS_RADAR_DECISION_ENGINE_V1 */
+function xsRadarMatchBonusV1(matchContext?: XsCardMatchContextV1 | null): { bonus: number; reason: string } {
+  if (!matchContext || matchContext.difficulty === "unknown") {
+    return { bonus: 0, reason: "Contexte match neutre." };
+  }
+
+  let bonus = 0;
+  const bits: string[] = [];
+  if (matchContext.difficulty === "easy") {
+    bonus += 5;
+    bits.push("match favorable");
+  } else if (matchContext.difficulty === "hard") {
+    bonus -= 5;
+    bits.push("match difficile");
+  } else {
+    bits.push("match moyen");
+  }
+
+  if (matchContext.homeAway === "home") {
+    bonus += 3;
+    bits.push("domicile");
+  } else if (matchContext.homeAway === "away") {
+    bonus -= 3;
+    bits.push("extérieur");
+  }
+
+  if (matchContext.homeAway === "home" && matchContext.difficulty === "easy") bonus += 2;
+  if (matchContext.homeAway === "away" && matchContext.difficulty === "hard") bonus -= 2;
+
+  return {
+    bonus: Math.max(-10, Math.min(10, bonus)),
+    reason: bits.length ? bits.join(" + ") : "Contexte match neutre.",
+  };
+}
+
+function xsRadarCoachToneV1(score: number): XsRadarCoachDecisionV1["tone"] {
+  if (score >= 75) return "play";
+  if (score >= 60) return "watch";
+  if (score >= 45) return "risky";
+  return "avoid";
+}
+
+function xsRadarCoachLabelV1(score: number): XsRadarCoachDecisionV1["decision"] {
+  if (score >= 75) return "Titulaire";
+  if (score >= 60) return "Borderline";
+  if (score >= 45) return "Risqué";
+  return "À éviter";
+}
+
+/* XS_RADAR_ADVANCED_DECISION_V1 */
+function xsRadarTrendV1(scores: number[]): XsRadarTrendV1 {
+  if (!scores || scores.length < 3) return "stable";
+
+  const recent = scores.slice(0, 3);
+  const older = scores.slice(3, 6);
+  if (!older.length) return "stable";
+
+  const avgRecent = recent.reduce((a, b) => a + b, 0) / recent.length;
+  const avgOlder = older.reduce((a, b) => a + b, 0) / older.length;
+
+  if (avgRecent - avgOlder > 5) return "up";
+  if (avgOlder - avgRecent > 5) return "down";
+  return "stable";
+}
+
+function xsRadarVolatilityV1(scores: number[]): XsRadarVolatilityV1 {
+  if (!scores || scores.length < 3) return "unknown";
+
+  const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+  const variance = scores.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / scores.length;
+  const std = Math.sqrt(variance);
+
+  if (std < 8) return "stable";
+  if (std < 15) return "medium";
+  return "high";
+}
+
+function xsRadarCeilingV1(scores: number[]): number {
+  if (!scores || !scores.length) return 0;
+  return Math.round(xsRadarClampV1(Math.max(...scores)));
+}
+
+function xsRadarAdvancedDecisionBonusV1(
+  trend: XsRadarTrendV1,
+  volatility: XsRadarVolatilityV1,
+  ceiling: number
+): { trendBonus: number; volatilityPenalty: number; ceilingBonus: number } {
+  let trendBonus = 0;
+  if (trend === "up") trendBonus = 5;
+  if (trend === "down") trendBonus = -5;
+
+  let volatilityPenalty = 0;
+  if (volatility === "high") volatilityPenalty = -8;
+  if (volatility === "medium") volatilityPenalty = -3;
+
+  let ceilingBonus = 0;
+  if (ceiling >= 80) ceilingBonus = 6;
+  else if (ceiling >= 70) ceilingBonus = 3;
+
+  return { trendBonus, volatilityPenalty, ceilingBonus };
+}
+/* XS_RADAR_ADVANCED_DECISION_V1_END */
+
+function xsRadarCoachDecisionV1(
+  positionUsed: XsRadarPositionV1,
+  metrics: XsRadarMetricsByPositionV1,
+  confidence: XsRadarConfidenceEnhancedV1,
+  matchContext?: XsCardMatchContextV1 | null
+): XsRadarCoachDecisionV1 {
+  const rawOverall = xsRadarClampV1(metrics.overall ?? xsRadarWeightedOverallByPositionV1(positionUsed, metrics));
+  const confidenceScore = xsRadarClampV1(confidence.score);
+  const adjustedOverall = confidenceScore < 50 ? xsRadarClampV1(rawOverall * 0.85) : rawOverall;
+  const formSignal = xsRadarClampV1(metrics.l5 ?? metrics.form);
+  const regularity = xsRadarClampV1(metrics.regularity);
+  const match = xsRadarMatchBonusV1(matchContext);
+  const scoreSeries = (Array.isArray(metrics.scoreSeries) ? metrics.scoreSeries : [])
+    .map((score) => xsRadarNumV1(score))
+    .filter((score): score is number => typeof score === "number" && Number.isFinite(score))
+    .map((score) => xsRadarClampV1(score))
+    .slice(0, 15);
+  const trend = xsRadarTrendV1(scoreSeries);
+  const volatility = xsRadarVolatilityV1(scoreSeries);
+  const ceiling = xsRadarCeilingV1(scoreSeries);
+  const advanced = xsRadarAdvancedDecisionBonusV1(trend, volatility, ceiling);
+  const baseScore =
+    adjustedOverall * 0.4 +
+      formSignal * 0.2 +
+      regularity * 0.15 +
+      confidenceScore * 0.15 +
+      match.bonus;
+  const score = Math.round(xsRadarClampV1(
+    baseScore +
+      advanced.trendBonus +
+      advanced.ceilingBonus +
+      advanced.volatilityPenalty
+  ));
+
+  const reasons: string[] = [];
+  if (formSignal >= 60) reasons.push("Bonne forme L5");
+  else if (formSignal < 45) reasons.push("Forme L5 fragile");
+  else reasons.push("Forme L5 correcte");
+
+  if (regularity >= 60) reasons.push("Régularité solide");
+  else if (regularity < 45) reasons.push("Régularité fragile");
+
+  if (confidenceScore < 50) reasons.push("Confiance faible, radar réduit");
+  else if (confidenceScore >= 70) reasons.push("Confiance élevée");
+
+  if (match.bonus > 0) reasons.push(`Contexte favorable: ${match.reason}`);
+  else if (match.bonus < 0) reasons.push(`Contexte pénalisant: ${match.reason}`);
+  else reasons.push(match.reason);
+
+  if (trend === "up") reasons.push("Trend en hausse");
+  else if (trend === "down") reasons.push("Trend en baisse");
+  else reasons.push("Trend stable");
+
+  if (volatility === "high") reasons.push("Volatilité élevée");
+  else if (volatility === "medium") reasons.push("Volatilité moyenne");
+  else if (volatility === "stable") reasons.push("Volatilité stable");
+
+  if (ceiling >= 80) reasons.push(`Plafond très haut (${ceiling})`);
+  else if (ceiling >= 70) reasons.push(`Plafond intéressant (${ceiling})`);
+
+  const decision = xsRadarCoachLabelV1(score);
+  return {
+    score,
+    decision,
+    tone: xsRadarCoachToneV1(score),
+    adjustedOverall: Math.round(adjustedOverall),
+    rawOverall: Math.round(rawOverall),
+    matchBonus: match.bonus,
+    trend,
+    volatility,
+    ceiling,
+    reasons,
+    reason: reasons.join(" · "),
+  };
+}
+
+function xsRadarRecommendationFromCoachV1(
+  coachDecision: XsRadarCoachDecisionV1,
+  baseRecommendation: XsRadarRecommendationV1,
+  matchContext?: XsCardMatchContextV1 | null
+): XsRadarRecommendationV1 {
+  const opponentText = matchContext?.opponentName ? ` contre ${matchContext.opponentName}` : "";
+  return {
+    label: coachDecision.decision,
+    tone: coachDecision.tone,
+    reason: `${coachDecision.decision} : score coach ${coachDecision.score}${opponentText}. ${coachDecision.reason || baseRecommendation.reason}`,
+  };
+}
+/* XS_RADAR_DECISION_ENGINE_V1_END */
+
+/* XS_RADAR_DECISION_ENGINE_V2 */
+function xsRadarDecisionToneToRecommendationToneV2(tone: XsRadarDecisionV2["finalTone"]): XsRadarRecommendationV1["tone"] {
+  if (tone === "strongPlay" || tone === "play" || tone === "joker") return "play";
+  if (tone === "avoid") return "avoid";
+  if (tone === "risk") return "risky";
+  return "watch";
+}
+
+function xsRadarDecisionV2PushBullet(bullets: string[], value: string) {
+  const text = String(value || "").trim();
+  if (text && bullets.length < 3) bullets.push(text);
+}
+
+function xsRadarDecisionDowngradeV2(decision: XsRadarDecisionV2): XsRadarDecisionV2 {
+  const map: Record<XsRadarDecisionV2["finalTone"], XsRadarDecisionV2> = {
+    strongPlay: {
+      finalLabel: "À aligner",
+      finalTone: "play",
+      playStyle: decision.playStyle === "Safe pick" ? "Stable starter" : decision.playStyle,
+      summary: decision.summary.replace(/^Titulaire évident\s*:\s*/i, "À aligner : "),
+      bullets: decision.bullets.slice(),
+    },
+    play: {
+      finalLabel: "Borderline",
+      finalTone: "borderline",
+      playStyle: "Watchlist",
+      summary: "Borderline : bon profil mais contexte difficile.",
+      bullets: decision.bullets.slice(),
+    },
+    joker: {
+      finalLabel: "Pari risqué",
+      finalTone: "risk",
+      playStyle: "Boom/Bust",
+      summary: "Pari risqué : profil explosif mais contexte difficile.",
+      bullets: decision.bullets.slice(),
+    },
+    borderline: {
+      finalLabel: "Pari risqué",
+      finalTone: "risk",
+      playStyle: "Watchlist",
+      summary: "Pari risqué : contexte difficile pour un profil déjà limite.",
+      bullets: decision.bullets.slice(),
+    },
+    risk: {
+      finalLabel: "À éviter",
+      finalTone: "avoid",
+      playStyle: "Watchlist",
+      summary: "À éviter : risque renforcé par le contexte.",
+      bullets: decision.bullets.slice(),
+    },
+    avoid: decision,
+  };
+  return map[decision.finalTone] || decision;
+}
+
+function xsRadarDecisionEngineV2(
+  positionUsed: XsRadarPositionV1,
+  metrics: XsRadarMetricsByPositionV1,
+  coachDecision: XsRadarCoachDecisionV1,
+  matchContext?: XsCardMatchContextV1 | null
+): XsRadarDecisionV2 {
+  const scoreCoach = xsRadarClampV1(coachDecision?.score ?? metrics.coachScore ?? 0);
+  const confidence = xsRadarClampV1(
+    metrics.confidenceScore ??
+      (typeof metrics.confidence === "number" ? metrics.confidence * 100 : 0)
+  );
+  const trend = coachDecision?.trend || "stable";
+  const volatility = coachDecision?.volatility || "unknown";
+  const ceiling = xsRadarClampV1(coachDecision?.ceiling ?? 0);
+  const gameTime = xsRadarClampV1(metrics.gameTime);
+  const regularity = xsRadarClampV1(metrics.regularity);
+  const hardMatch = matchContext?.difficulty === "hard";
+  const easyHome = matchContext?.difficulty === "easy" && matchContext?.homeAway === "home";
+  const homeText = matchContext?.homeAway === "home" ? " à domicile" : "";
+  const positionText = positionUsed === "FW" ? "offensif" : positionUsed === "GK" ? "gardien" : positionUsed === "DEF" ? "défensif" : "profil";
+
+  let result: XsRadarDecisionV2;
+  const bullets: string[] = [];
+
+  if (gameTime < 40 || scoreCoach < 45 || (trend === "down" && volatility === "high")) {
+    xsRadarDecisionV2PushBullet(bullets, gameTime < 40 ? "Temps de jeu trop faible" : "Score coach insuffisant");
+    if (trend === "down" && volatility === "high") xsRadarDecisionV2PushBullet(bullets, "Forme en baisse + scores irréguliers");
+    xsRadarDecisionV2PushBullet(bullets, confidence < 45 ? "Confiance faible, prudence" : "Décision prudente");
+    result = {
+      finalLabel: "À éviter",
+      finalTone: "avoid",
+      playStyle: gameTime < 40 ? "Rotation risk" : "Watchlist",
+      summary: "À éviter : signaux trop négatifs pour l'aligner sereinement.",
+      bullets,
+    };
+  } else if (scoreCoach >= 75 && confidence >= 60 && (volatility === "stable" || volatility === "medium") && (trend === "up" || trend === "stable")) {
+    xsRadarDecisionV2PushBullet(bullets, trend === "up" ? "Forme en hausse" : "Forme stable");
+    xsRadarDecisionV2PushBullet(bullets, volatility === "stable" ? "Risque maîtrisé" : "Risque acceptable");
+    xsRadarDecisionV2PushBullet(bullets, easyHome ? "Contexte favorable à domicile" : "Confiance suffisante");
+    result = {
+      finalLabel: "Titulaire évident",
+      finalTone: "strongPlay",
+      playStyle: "Safe pick",
+      summary: `Titulaire évident : score coach fort, ${positionText} fiable et risque contenu.`,
+      bullets,
+    };
+  } else if (scoreCoach >= 65 && confidence >= 50) {
+    xsRadarDecisionV2PushBullet(bullets, "Score coach solide");
+    xsRadarDecisionV2PushBullet(bullets, trend === "up" ? "Forme en hausse" : "Base exploitable");
+    xsRadarDecisionV2PushBullet(bullets, easyHome ? "Contexte favorable à domicile" : "Confiance correcte");
+    result = {
+      finalLabel: "À aligner",
+      finalTone: "play",
+      playStyle: trend === "up" ? "Form player" : "Stable starter",
+      summary: `À aligner : score coach solide${easyHome ? " et contexte favorable" : ""}.`,
+      bullets,
+    };
+  } else if (trend === "up" && ceiling >= 75 && (volatility === "high" || volatility === "medium")) {
+    xsRadarDecisionV2PushBullet(bullets, "Forme en hausse");
+    xsRadarDecisionV2PushBullet(bullets, `Plafond élevé (${Math.round(ceiling)})`);
+    xsRadarDecisionV2PushBullet(bullets, volatility === "high" ? "Risque élevé : scores irréguliers" : "Profil variable");
+    result = {
+      finalLabel: "Différentiel intéressant",
+      finalTone: "joker",
+      playStyle: "Boom/Bust",
+      summary: "Différentiel intéressant : trend positif, plafond haut, mais risque réel.",
+      bullets,
+    };
+  } else if (scoreCoach >= 55 && scoreCoach < 65) {
+    xsRadarDecisionV2PushBullet(bullets, "Score coach intermédiaire");
+    xsRadarDecisionV2PushBullet(bullets, regularity < 50 ? "Régularité limite" : "Profil jouable mais pas dominant");
+    xsRadarDecisionV2PushBullet(bullets, easyHome ? "Contexte favorable à domicile" : "Décision à arbitrer");
+    result = {
+      finalLabel: "Borderline",
+      finalTone: "borderline",
+      playStyle: ceiling >= 75 ? "High ceiling" : "Watchlist",
+      summary: "Borderline : profil utilisable, mais pas assez clair pour être prioritaire.",
+      bullets,
+    };
+  } else if (confidence < 45 || regularity < 45 || volatility === "high") {
+    xsRadarDecisionV2PushBullet(bullets, confidence < 45 ? "Confiance faible, prudence" : "Signal fiable limité");
+    xsRadarDecisionV2PushBullet(bullets, regularity < 45 ? "Régularité fragile" : "Risque élevé : scores irréguliers");
+    xsRadarDecisionV2PushBullet(bullets, ceiling >= 75 ? `Plafond élevé (${Math.round(ceiling)})` : "À réserver aux gros paris");
+    result = {
+      finalLabel: "Pari risqué",
+      finalTone: "risk",
+      playStyle: ceiling >= 75 ? "Boom/Bust" : "Watchlist",
+      summary: "Pari risqué : le profil peut payer, mais les signaux sont instables.",
+      bullets,
+    };
+  } else {
+    xsRadarDecisionV2PushBullet(bullets, "Données encore limitées");
+    xsRadarDecisionV2PushBullet(bullets, "Décision prudente");
+    result = {
+      finalLabel: "À surveiller",
+      finalTone: "borderline",
+      playStyle: "Watchlist",
+      summary: "Données encore limitées, décision prudente.",
+      bullets,
+    };
+  }
+
+  if (hardMatch && !(scoreCoach > 80 && confidence > 70)) {
+    result = xsRadarDecisionDowngradeV2(result);
+    xsRadarDecisionV2PushBullet(result.bullets, "Match difficile : décision abaissée");
+    result.summary = `${result.finalLabel} : contexte difficile${homeText}, décision abaissée d'un cran.`;
+  } else if (easyHome) {
+    xsRadarDecisionV2PushBullet(result.bullets, "Contexte favorable à domicile");
+    if (!/contexte favorable/i.test(result.summary)) {
+      result.summary = `${result.summary.replace(/\.$/, "")}, contexte favorable à domicile.`;
+    }
+  }
+
+  return {
+    ...result,
+    bullets: result.bullets.slice(0, 3),
+  };
+}
+
+function xsRadarRecommendationFromDecisionV2(
+  decisionV2: XsRadarDecisionV2,
+  fallback: XsRadarRecommendationV1
+): XsRadarRecommendationV1 {
+  if (!decisionV2) return fallback;
+  return {
+    label: decisionV2.finalLabel,
+    tone: xsRadarDecisionToneToRecommendationToneV2(decisionV2.finalTone),
+    reason: decisionV2.summary || fallback.reason,
+  };
+}
+/* XS_RADAR_DECISION_ENGINE_V2_END */
+
 function xsRadarRecommendationV1(
   positionUsed: XsRadarPositionV1,
   metrics: XsRadarMetricsByPositionV1,
@@ -1003,6 +1411,9 @@ function xsBuildFifaRadarValuesFromHistoryV1(
     l5: fallbackAvg?.avg5 ?? fallbackScore,
     l15: fallbackAvg?.avg15 ?? fallbackScore,
     l40: fallbackAvg?.avg40 ?? fallbackScore,
+    scoreSeries: [fallbackAvg?.avg5, fallbackAvg?.avg15, fallbackAvg?.avg40]
+      .map((score) => xsRadarNumV1(score))
+      .filter((score): score is number => typeof score === "number" && Number.isFinite(score)),
   };
   fallbackMetrics.overall = xsRadarWeightedOverallByPositionV1(positionUsed, fallbackMetrics);
 
@@ -1020,7 +1431,17 @@ function xsBuildFifaRadarValuesFromHistoryV1(
     });
     const fallbackAutoProfile = xsRadarAutoProfileLabelV1(positionUsed, fallbackMetrics, fallbackProfile);
     const fallbackConfidenceEnhanced = xsRadarConfidenceEnhancedV1(fallbackMetrics);
+    fallbackMetrics.confidenceScore = fallbackConfidenceEnhanced.score;
     const fallbackMatchContext = xsAdjustMatchContextWithMetricsV1(matchContext, fallbackMetrics);
+    const fallbackBaseRecommendation = xsRadarRecommendationV1(positionUsed, fallbackMetrics, fallbackAutoProfile, fallbackConfidenceEnhanced, fallbackMatchContext);
+    const fallbackCoachDecision = xsRadarCoachDecisionV1(positionUsed, fallbackMetrics, fallbackConfidenceEnhanced, fallbackMatchContext);
+    fallbackMetrics.coachAdjustedOverall = fallbackCoachDecision.adjustedOverall;
+    fallbackMetrics.coachScore = fallbackCoachDecision.score;
+    const fallbackDecisionV2 = xsRadarDecisionEngineV2(positionUsed, fallbackMetrics, fallbackCoachDecision, fallbackMatchContext);
+    const fallbackRecommendation = xsRadarRecommendationFromDecisionV2(
+      fallbackDecisionV2,
+      xsRadarRecommendationFromCoachV1(fallbackCoachDecision, fallbackBaseRecommendation, fallbackMatchContext)
+    );
     return {
       confidence,
       matches,
@@ -1029,7 +1450,9 @@ function xsBuildFifaRadarValuesFromHistoryV1(
       profile: fallbackProfile,
       autoProfile: fallbackAutoProfile,
       confidenceEnhanced: fallbackConfidenceEnhanced,
-      recommendation: xsRadarRecommendationV1(positionUsed, fallbackMetrics, fallbackAutoProfile, fallbackConfidenceEnhanced, fallbackMatchContext),
+      coachDecision: fallbackCoachDecision,
+      decisionV2: fallbackDecisionV2,
+      recommendation: fallbackRecommendation,
       matchContext: fallbackMatchContext,
       positionPercentile: xsRadarPositionPercentileV1(positionUsed, fallbackMetrics),
       meta: { source: "fallback", positionUsed, range },
@@ -1164,6 +1587,7 @@ function xsBuildFifaRadarValuesFromHistoryV1(
     l5: trendL5,
     l15: trendL15,
     l40: trendL40,
+    scoreSeries: scores.slice(0, 15),
   };
   positionMetrics.overall = xsRadarWeightedOverallByPositionV1(positionUsed, positionMetrics);
 
@@ -1180,8 +1604,17 @@ function xsBuildFifaRadarValuesFromHistoryV1(
   });
   const autoProfile = xsRadarAutoProfileLabelV1(positionUsed, positionMetrics, profile);
   const confidenceEnhanced = xsRadarConfidenceEnhancedV1(positionMetrics);
+  positionMetrics.confidenceScore = confidenceEnhanced.score;
   const adjustedMatchContext = xsAdjustMatchContextWithMetricsV1(matchContext, positionMetrics);
-  const recommendation = xsRadarRecommendationV1(positionUsed, positionMetrics, autoProfile, confidenceEnhanced, adjustedMatchContext);
+  const baseRecommendation = xsRadarRecommendationV1(positionUsed, positionMetrics, autoProfile, confidenceEnhanced, adjustedMatchContext);
+  const coachDecision = xsRadarCoachDecisionV1(positionUsed, positionMetrics, confidenceEnhanced, adjustedMatchContext);
+  positionMetrics.coachAdjustedOverall = coachDecision.adjustedOverall;
+  positionMetrics.coachScore = coachDecision.score;
+  const decisionV2 = xsRadarDecisionEngineV2(positionUsed, positionMetrics, coachDecision, adjustedMatchContext);
+  const recommendation = xsRadarRecommendationFromDecisionV2(
+    decisionV2,
+    xsRadarRecommendationFromCoachV1(coachDecision, baseRecommendation, adjustedMatchContext)
+  );
   const positionPercentile = xsRadarPositionPercentileV1(positionUsed, positionMetrics);
 
   return {
@@ -1192,6 +1625,8 @@ function xsBuildFifaRadarValuesFromHistoryV1(
     profile,
     autoProfile,
     confidenceEnhanced,
+    coachDecision,
+    decisionV2,
     recommendation,
     matchContext: adjustedMatchContext,
     positionPercentile,
@@ -1691,6 +2126,11 @@ return (
         onRangeChange={setRadarRange}
         autoProfile={xsFifaRadar.autoProfile}
         confidenceEnhanced={xsFifaRadar.confidenceEnhanced}
+        coachDecision={xsFifaRadar.coachDecision}
+        decisionV2={xsFifaRadar.decisionV2}
+        trend={xsFifaRadar.coachDecision?.trend}
+        volatility={xsFifaRadar.coachDecision?.volatility}
+        ceiling={xsFifaRadar.coachDecision?.ceiling}
         recommendation={xsFifaRadar.recommendation}
         matchContext={xsFifaRadar.matchContext}
         positionPercentile={xsFifaRadar.positionPercentile}

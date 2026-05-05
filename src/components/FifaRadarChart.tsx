@@ -7,6 +7,8 @@ type RadarValue = {
 };
 
 type RadarRange = "L5" | "L15" | "L40";
+type RadarTrend = "up" | "down" | "stable";
+type RadarVolatility = "stable" | "medium" | "high" | "unknown";
 type RadarAutoProfile = {
   label: string;
   tone: "safe" | "upside" | "risk" | "balanced";
@@ -22,6 +24,26 @@ type RadarRecommendation = {
   label: string;
   tone: "play" | "avoid" | "watch" | "risky";
   reason: string;
+};
+type RadarCoachDecision = {
+  score: number;
+  decision: "Titulaire" | "Borderline" | "Risqué" | "À éviter";
+  tone: "play" | "watch" | "risky" | "avoid";
+  adjustedOverall: number;
+  rawOverall: number;
+  matchBonus: number;
+  trend?: RadarTrend;
+  volatility?: RadarVolatility;
+  ceiling?: number;
+  reasons: string[];
+  reason: string;
+};
+type RadarDecisionV2 = {
+  finalLabel: string;
+  finalTone: "strongPlay" | "play" | "borderline" | "joker" | "risk" | "avoid";
+  playStyle: string;
+  summary: string;
+  bullets: string[];
 };
 type RadarMatchContext = {
   opponentName: string | null;
@@ -72,6 +94,48 @@ function recommendationToneStyle(tone: RadarRecommendation["tone"]) {
   return { fg: "#FACC15", bg: "rgba(250,204,21,0.10)", border: "rgba(250,204,21,0.32)" };
 }
 
+/* XS_RADAR_DECISION_ENGINE_V1 */
+function coachDecisionToneStyle(tone: RadarCoachDecision["tone"]) {
+  if (tone === "play") return { fg: "#22C55E", bg: "rgba(34,197,94,0.12)", border: "rgba(34,197,94,0.40)" };
+  if (tone === "avoid") return { fg: "#EF4444", bg: "rgba(239,68,68,0.12)", border: "rgba(239,68,68,0.42)" };
+  if (tone === "risky") return { fg: "#FB923C", bg: "rgba(251,146,60,0.13)", border: "rgba(251,146,60,0.42)" };
+  return { fg: "#FACC15", bg: "rgba(250,204,21,0.11)", border: "rgba(250,204,21,0.36)" };
+}
+
+function coachDecisionFromScore(score: number): RadarCoachDecision["decision"] {
+  const n = clamp(score);
+  if (n >= 75) return "Titulaire";
+  if (n >= 60) return "Borderline";
+  if (n >= 45) return "Risqué";
+  return "À éviter";
+}
+
+function coachToneFromScore(score: number): RadarCoachDecision["tone"] {
+  const n = clamp(score);
+  if (n >= 75) return "play";
+  if (n >= 60) return "watch";
+  if (n >= 45) return "risky";
+  return "avoid";
+}
+/* XS_RADAR_DECISION_ENGINE_V1_END */
+
+/* XS_RADAR_DECISION_ENGINE_V2 */
+function decisionV2ToneStyle(tone: RadarDecisionV2["finalTone"]) {
+  if (tone === "strongPlay" || tone === "play") return { fg: "#22C55E", bg: "rgba(34,197,94,0.13)", border: "rgba(34,197,94,0.44)" };
+  if (tone === "joker") return { fg: "#38BDF8", bg: "rgba(56,189,248,0.12)", border: "rgba(56,189,248,0.42)" };
+  if (tone === "avoid") return { fg: "#EF4444", bg: "rgba(239,68,68,0.12)", border: "rgba(239,68,68,0.42)" };
+  if (tone === "risk") return { fg: "#FB923C", bg: "rgba(251,146,60,0.13)", border: "rgba(251,146,60,0.42)" };
+  return { fg: "#FACC15", bg: "rgba(250,204,21,0.11)", border: "rgba(250,204,21,0.36)" };
+}
+
+function decisionV2RecommendationTone(tone: RadarDecisionV2["finalTone"]): RadarRecommendation["tone"] {
+  if (tone === "strongPlay" || tone === "play" || tone === "joker") return "play";
+  if (tone === "avoid") return "avoid";
+  if (tone === "risk") return "risky";
+  return "watch";
+}
+/* XS_RADAR_DECISION_ENGINE_V2_END */
+
 function matchDifficultyToneStyle(difficulty: RadarMatchContext["difficulty"]) {
   if (difficulty === "easy") return { fg: "#22C55E", bg: "rgba(34,197,94,0.10)", border: "rgba(34,197,94,0.34)" };
   if (difficulty === "hard") return { fg: "#FB923C", bg: "rgba(251,146,60,0.12)", border: "rgba(251,146,60,0.40)" };
@@ -113,6 +177,11 @@ export default function FifaRadarChart(props: {
   onRangeChange?: (range: RadarRange) => void;
   autoProfile?: RadarAutoProfile | null;
   confidenceEnhanced?: RadarConfidenceEnhanced | null;
+  coachDecision?: RadarCoachDecision | null;
+  decisionV2?: RadarDecisionV2 | null;
+  trend?: RadarTrend | null;
+  volatility?: RadarVolatility | null;
+  ceiling?: number | null;
   recommendation?: RadarRecommendation | null;
   matchContext?: RadarMatchContext | null;
   positionPercentile?: RadarPositionPercentile | null;
@@ -170,12 +239,45 @@ export default function FifaRadarChart(props: {
       reason: "Pas encore assez de matchs fiables.",
     };
   const confidenceTone = confidenceColorStyle(confidenceEnhanced.color);
+  const coachDecision =
+    props.coachDecision || {
+      score: Math.round(avg),
+      decision: coachDecisionFromScore(avg),
+      tone: coachToneFromScore(avg),
+      adjustedOverall: Math.round(avg),
+      rawOverall: Math.round(avg),
+      matchBonus: 0,
+      trend: "stable" as const,
+      volatility: "unknown" as const,
+      ceiling: 0,
+      reasons: ["Données radar partielles"],
+      reason: "Données radar partielles.",
+    };
+  const coachTone = coachDecisionToneStyle(coachDecision.tone);
+  const trend: RadarTrend = props.trend || coachDecision.trend || "stable";
+  const volatility: RadarVolatility = props.volatility || coachDecision.volatility || "unknown";
+  const ceiling = typeof props.ceiling === "number" && Number.isFinite(props.ceiling)
+    ? props.ceiling
+    : (typeof coachDecision.ceiling === "number" && Number.isFinite(coachDecision.ceiling) ? coachDecision.ceiling : 0);
+  const decisionV2 =
+    props.decisionV2 || {
+      finalLabel: "À surveiller",
+      finalTone: "borderline" as const,
+      playStyle: "Watchlist",
+      summary: "Données encore limitées, décision prudente.",
+      bullets: ["Données encore limitées", "Décision prudente"],
+    };
+  const decisionV2Tone = decisionV2ToneStyle(decisionV2.finalTone);
   const recommendation =
-    props.recommendation || {
+    props.recommendation || (props.decisionV2 ? {
+      label: decisionV2.finalLabel,
+      tone: decisionV2RecommendationTone(decisionV2.finalTone),
+      reason: decisionV2.summary,
+    } : {
       label: "À surveiller",
       tone: "watch" as const,
       reason: "Pas encore assez de matchs fiables.",
-    };
+    });
   const recommendationTone = recommendationToneStyle(recommendation.tone);
   const matchContext =
     props.matchContext || {
@@ -269,6 +371,109 @@ export default function FifaRadarChart(props: {
         </View>
       ) : null}
       {/* XS_FIFA_RADAR_RANGE_SWITCH_V1_END */}
+
+      {/* XS_RADAR_DECISION_ENGINE_V1 */}
+      <View
+        style={{
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: coachTone.border,
+          backgroundColor: coachTone.bg,
+          padding: 11,
+          gap: 7,
+        }}
+      >
+        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+          <Text style={{ color: "#E5E7EB", fontSize: 14, fontWeight: "900" }}>
+            Score Coach : {Math.round(clamp(coachDecision.score))}
+          </Text>
+          <Text style={{ color: coachTone.fg, fontSize: 14, fontWeight: "900" }}>
+            Décision : {coachDecision.decision}
+          </Text>
+        </View>
+        <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
+          Radar ajusté : {Math.round(clamp(coachDecision.adjustedOverall))} / brut {Math.round(clamp(coachDecision.rawOverall))}
+          {coachDecision.matchBonus ? ` · Bonus match ${coachDecision.matchBonus > 0 ? "+" : ""}${coachDecision.matchBonus}` : ""}
+        </Text>
+        {/* XS_RADAR_ADVANCED_DECISION_V1 */}
+        <View
+          style={{
+            padding: 10,
+            borderRadius: 12,
+            backgroundColor: "rgba(255,255,255,0.05)",
+            gap: 5,
+          }}
+        >
+          <Text style={{ color: "#E5E7EB", fontWeight: "900", fontSize: 12 }}>
+            Forme : {trend === "up" ? "📈 En hausse" : trend === "down" ? "📉 En baisse" : "➖ Stable"}
+          </Text>
+          <Text style={{ color: "#E5E7EB", fontSize: 12 }}>
+            Risque : {volatility === "high" ? "🎰 Très irrégulier" : volatility === "medium" ? "⚠️ Variable" : volatility === "unknown" ? "➖ Inconnu" : "🔒 Stable"}
+          </Text>
+          <Text style={{ color: "#E5E7EB", fontSize: 12 }}>
+            Plafond : 🎯 {Math.round(clamp(ceiling))}
+          </Text>
+        </View>
+        {/* XS_RADAR_ADVANCED_DECISION_V1_END */}
+        <View style={{ gap: 3 }}>
+          <Text style={{ color: "#E5E7EB", fontSize: 12, fontWeight: "900" }}>Raison :</Text>
+          {(coachDecision.reasons && coachDecision.reasons.length ? coachDecision.reasons : [coachDecision.reason])
+            .slice(0, 4)
+            .map((reason, index) => (
+              <Text key={`coach-reason-${index}`} style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
+                • {reason}
+              </Text>
+            ))}
+        </View>
+      </View>
+      {/* XS_RADAR_DECISION_ENGINE_V1_END */}
+
+      {/* XS_RADAR_DECISION_ENGINE_V2 */}
+      <View
+        style={{
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: decisionV2Tone.border,
+          backgroundColor: decisionV2Tone.bg,
+          padding: 11,
+          gap: 7,
+        }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <Text style={{ color: decisionV2Tone.fg, fontSize: 14, fontWeight: "900" }}>
+            Décision V2 : {decisionV2.finalTone === "strongPlay" ? "🔥 " : ""}{decisionV2.finalLabel}
+          </Text>
+          <Text
+            style={{
+              color: decisionV2Tone.fg,
+              borderColor: decisionV2Tone.border,
+              borderWidth: 1,
+              borderRadius: 999,
+              paddingHorizontal: 8,
+              paddingVertical: 3,
+              overflow: "hidden",
+              fontSize: 11,
+              fontWeight: "900",
+            }}
+          >
+            Style : {decisionV2.playStyle}
+          </Text>
+        </View>
+        <Text style={{ color: "#E5E7EB", fontSize: 12, lineHeight: 17 }}>
+          Résumé : {decisionV2.summary}
+        </Text>
+        <View style={{ gap: 3 }}>
+          <Text style={{ color: "#E5E7EB", fontSize: 12, fontWeight: "900" }}>Raisons :</Text>
+          {(decisionV2.bullets && decisionV2.bullets.length ? decisionV2.bullets : ["Données encore limitées"])
+            .slice(0, 3)
+            .map((bullet, index) => (
+              <Text key={`decision-v2-${index}`} style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
+                - {bullet}
+              </Text>
+            ))}
+        </View>
+      </View>
+      {/* XS_RADAR_DECISION_ENGINE_V2_END */}
 
       {/* XS_FIFA_RADAR_AUTO_PROFILE_V1 */}
       <View
