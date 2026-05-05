@@ -169,7 +169,7 @@ function homeAwayLabel(homeAway: RadarMatchContext["homeAway"]) {
 function premiumDecisionVerdictV1(label: string, tone: RadarDecisionV2["finalTone"]) {
   if (tone === "strongPlay") return "TITULAIRE";
   if (tone === "play") return "À ALIGNER";
-  if (tone === "joker") return "DIFFÉRENTIEL";
+  if (tone === "joker") return "DIFF.";
   if (tone === "risk") return "RISQUÉ";
   if (tone === "avoid") return "À ÉVITER";
   if (/titulaire/i.test(label)) return "TITULAIRE";
@@ -397,6 +397,37 @@ export default function FifaRadarChart(props: {
       : "";
   const positionDeltaValue = premiumDeltaValueV1(positionPercentile.deltaLabel);
   const statsDetailsLabel = premiumStatsDetailsLabelV1(confidenceEnhanced.reason);
+  const v3WhyItems = [
+    {
+      icon: "↗",
+      title: "Forme en hausse",
+      text: "Bonne dynamique sur les 5 derniers matchs.",
+    },
+    {
+      icon: "⌂",
+      title: "Contexte favorable",
+      text: matchContext.homeAway === "home"
+        ? "Match à domicile contre une équipe à la portée."
+        : "Contexte de match à surveiller.",
+    },
+    {
+      icon: "★",
+      title: `Confiance ${confidenceEnhanced.label.toLowerCase()}`,
+      text: `${confidenceScore}% de confiance sur la fenêtre ${activeRange}.`,
+    },
+  ];
+  const v3RiskTitle = volatility === "high"
+    ? "Très irrégulier"
+    : volatility === "medium"
+      ? "Risque moyen"
+      : "Risque contenu";
+  const v3RiskText = volatility === "high"
+    ? "Scores instables, peut manquer de constance."
+    : volatility === "medium"
+      ? "Quelques variations à surveiller."
+      : "Profil plutôt stable.";
+  const v3ProfileTitle = positionPercentile.percentileLabel || "Profil local";
+  const v3ProfileText = positionPercentile.reason || "Comparaison locale provisoire.";
 
   return (
     <View
@@ -471,373 +502,7 @@ export default function FifaRadarChart(props: {
       ) : null}
       {/* XS_FIFA_RADAR_RANGE_SWITCH_V1_END */}
 
-      {/* XS_RADAR_DECISION_IMAGE_MATCH_V1 */}
-      <View
-        style={{
-          borderRadius: 24,
-          borderWidth: 2,
-          borderColor: premiumTone.border,
-          backgroundColor: "#071017",
-          padding: 16,
-          gap: 16,
-          shadowColor: premiumTone.fg,
-          shadowOpacity: 0.22,
-          shadowRadius: 18,
-          shadowOffset: { width: 0, height: 10 },
-        }}
-      >
-        <View style={{ alignItems: "center", gap: 4 }}>
-          <Text style={{ color: premiumTone.fg, fontSize: 13, fontWeight: "900", letterSpacing: 0 }}>
-            ♣ DÉCISION COACH
-          </Text>
-        </View>
-
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
-          <View
-            style={{
-              width: 76,
-              height: 76,
-              borderRadius: 20,
-              backgroundColor: premiumTone.fg,
-              alignItems: "center",
-              justifyContent: "center",
-              shadowColor: premiumTone.fg,
-              shadowOpacity: 0.35,
-              shadowRadius: 12,
-              shadowOffset: { width: 0, height: 6 },
-            }}
-          >
-            <Text style={{ color: "#FFFFFF", fontSize: 42, fontWeight: "900" }}>
-              {premiumIcon}
-            </Text>
-          </View>
-
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ color: premiumTone.fg, fontSize: 34, fontWeight: "900", letterSpacing: 0 }}>
-              {premiumVerdict}
-            </Text>
-            <Text style={{ color: "#F8FAFC", fontSize: 15, lineHeight: 21, marginTop: 5 }}>
-              {safeTextV1(decisionV2.summary || recommendation.reason)}
-            </Text>
-          </View>
-
-          <View
-            style={{
-              width: 116,
-              borderRadius: 18,
-              borderWidth: 1.5,
-              borderColor: "rgba(148,163,184,0.28)",
-              backgroundColor: "rgba(15,23,42,0.66)",
-              paddingVertical: 13,
-              paddingHorizontal: 9,
-              alignItems: "center",
-            }}
-          >
-            <Text style={{ color: "#F8FAFC", fontSize: 12, fontWeight: "900", letterSpacing: 0 }}>
-              SCORE COACH
-            </Text>
-            <View style={{ flexDirection: "row", alignItems: "flex-end", marginTop: 7 }}>
-              <Text style={{ color: premiumTone.fg, fontSize: 38, fontWeight: "900", lineHeight: 42 }}>
-                {premiumScore}
-              </Text>
-              <Text style={{ color: "#94A3B8", fontSize: 17, fontWeight: "800", marginBottom: 4 }}>
-                /100
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={{ height: 1, backgroundColor: "rgba(148,163,184,0.22)" }} />
-
-        <View style={{ flexDirection: "row", gap: 14 }}>
-          <View style={{ flex: 1, gap: 12 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <View
-                style={{
-                  width: 24,
-                  height: 24,
-                  borderRadius: 999,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: premiumTone.fg,
-                }}
-              >
-                <Text style={{ color: "#071017", fontSize: 14, fontWeight: "900" }}>✓</Text>
-              </View>
-              <Text style={{ color: premiumTone.fg, fontSize: 15, fontWeight: "900" }}>POURQUOI ?</Text>
-            </View>
-
-            {premiumWhy.map((reason, index) => {
-              const icons = ["↗", "⌂", "★"];
-              const descriptions = [
-                safeTextV1(decisionV2.summary),
-                safeTextV1(matchContext.reason),
-                safeTextV1(confidenceEnhanced.reason),
-              ];
-              return (
-                <View key={`premium-why-${index}`} style={{ flexDirection: "row", gap: 10 }}>
-                  <View
-                    style={{
-                      width: 42,
-                      height: 42,
-                      borderRadius: 999,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor: "rgba(34,197,94,0.13)",
-                    }}
-                  >
-                    <Text style={{ color: premiumTone.fg, fontSize: 23, fontWeight: "900" }}>
-                      {icons[index] || "✓"}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Text style={{ color: "#F8FAFC", fontSize: 15, fontWeight: "900" }}>
-                      {reason}
-                    </Text>
-                    <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
-                      {descriptions[index] || "—"}
-                    </Text>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-
-          <View style={{ width: 1, backgroundColor: "rgba(148,163,184,0.18)" }} />
-
-          <View style={{ flex: 1, gap: 12 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <Text style={{ color: "#F59E0B", fontSize: 23, fontWeight: "900" }}>⚠</Text>
-              <Text style={{ color: "#F59E0B", fontSize: 15, fontWeight: "900" }}>RISQUES</Text>
-            </View>
-
-            {premiumRisks.map((risk, index) => (
-              <View key={`premium-risk-${index}`} style={{ flexDirection: "row", gap: 10 }}>
-                <View
-                  style={{
-                    width: 42,
-                    height: 42,
-                    borderRadius: 999,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: "rgba(245,158,11,0.12)",
-                  }}
-                >
-                  <Text style={{ color: "#F59E0B", fontSize: 23, fontWeight: "900" }}>~</Text>
-                </View>
-                <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={{ color: "#F8FAFC", fontSize: 15, fontWeight: "900" }}>
-                    {risk}
-                  </Text>
-                  <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
-                    À surveiller avant validation finale.
-                  </Text>
-                </View>
-              </View>
-            ))}
-
-            <View
-              style={{
-                borderRadius: 14,
-                borderWidth: 1,
-                borderColor: "rgba(148,163,184,0.22)",
-                backgroundColor: "rgba(15,23,42,0.58)",
-                padding: 11,
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 10,
-              }}
-            >
-              <Text style={{ color: "#FB7185", fontSize: 24, fontWeight: "900" }}>◎</Text>
-              <Text style={{ color: "#F8FAFC", fontSize: 13, fontWeight: "900", flex: 1 }}>PLAFOND</Text>
-              <Text style={{ color: "#C084FC", fontSize: 20, fontWeight: "900" }}>
-                {Math.round(clamp(ceiling))}
-              </Text>
-            </View>
-
-            <View
-              style={{
-                borderRadius: 14,
-                borderWidth: 1,
-                borderColor: "rgba(148,163,184,0.22)",
-                backgroundColor: "rgba(15,23,42,0.58)",
-                padding: 11,
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 10,
-              }}
-            >
-              <Text style={{ color: "#60A5FA", fontSize: 24, fontWeight: "900" }}>▮▮▮</Text>
-              <Text style={{ color: "#F8FAFC", fontSize: 13, fontWeight: "900", flex: 1 }}>IRRÉGULARITÉ</Text>
-              <Text style={{ color: "#60A5FA", fontSize: 13, fontWeight: "900" }}>
-                {volatilityLabel}
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        <View
-          style={{
-            borderRadius: 18,
-            borderWidth: 1,
-            borderColor: "rgba(148,163,184,0.20)",
-            backgroundColor: "rgba(15,23,42,0.45)",
-            padding: 14,
-            gap: 12,
-          }}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Text style={{ color: "#60A5FA", fontSize: 19, fontWeight: "900" }}>▦</Text>
-            <Text style={{ color: "#60A5FA", fontSize: 16, fontWeight: "900" }}>CONTEXTE MATCH</Text>
-          </View>
-          <View style={{ flexDirection: "row", gap: 14, alignItems: "center" }}>
-            <View
-              style={{
-                width: 68,
-                height: 68,
-                borderRadius: 14,
-                borderWidth: 1,
-                borderColor: "rgba(96,165,250,0.28)",
-                backgroundColor: "rgba(34,197,94,0.12)",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Text style={{ color: premiumTone.fg, fontSize: 22, fontWeight: "900" }}>
-                {opponentInitials}
-              </Text>
-            </View>
-            <View style={{ flex: 1, gap: 5 }}>
-              <Text style={{ color: "#F8FAFC", fontSize: 17, fontWeight: "900" }}>
-                {safeTextV1(matchContext.opponentName)}
-              </Text>
-              <Text style={{ color: "#CBD5E1", fontSize: 13 }}>
-                ⌂ {homeAwayLabel(matchContext.homeAway)}
-              </Text>
-              <Text style={{ color: "#CBD5E1", fontSize: 13 }}>
-                ♛ {safeTextV1(matchContext.competition)}
-              </Text>
-              <Text style={{ color: "#CBD5E1", fontSize: 13 }}>
-                ▣ {matchDateLabel}
-              </Text>
-            </View>
-            <View style={{ flex: 1, gap: 9 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
-                <Text style={{ color: "#F8FAFC", fontSize: 13, fontWeight: "900" }}>DIFFICULTÉ</Text>
-                <Text
-                  style={{
-                    color: matchTone.fg,
-                    backgroundColor: matchTone.bg,
-                    borderColor: matchTone.border,
-                    borderWidth: 1,
-                    borderRadius: 9,
-                    overflow: "hidden",
-                    paddingHorizontal: 10,
-                    paddingVertical: 5,
-                    fontSize: 12,
-                    fontWeight: "900",
-                  }}
-                >
-                  {matchDifficultyLabel(matchContext.difficulty).toUpperCase()}
-                </Text>
-                <Text style={{ color: "#94A3B8", fontSize: 12, fontWeight: "800" }}>
-                  {difficultyScoreLabel}
-                </Text>
-              </View>
-              <Text style={{ color: "#CBD5E1", fontSize: 13, lineHeight: 18 }}>
-                {safeTextV1(matchContext.reason)}
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        <View
-          style={{
-            borderRadius: 18,
-            borderWidth: 1,
-            borderColor: "rgba(148,163,184,0.20)",
-            backgroundColor: "rgba(15,23,42,0.45)",
-            padding: 14,
-            gap: 12,
-          }}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Text style={{ color: positionPercentileTone.fg, fontSize: 19, fontWeight: "900" }}>♟</Text>
-            <Text style={{ color: positionPercentileTone.fg, fontSize: 16, fontWeight: "900" }}>COMPARAISON POSTE</Text>
-          </View>
-          <View style={{ flexDirection: "row", gap: 16, alignItems: "center" }}>
-            <View style={{ width: 128, alignItems: "center", gap: 7 }}>
-              <View
-                style={{
-                  width: 118,
-                  height: 58,
-                  borderTopLeftRadius: 999,
-                  borderTopRightRadius: 999,
-                  borderWidth: 12,
-                  borderBottomWidth: 0,
-                  borderColor: positionPercentileTone.border,
-                  backgroundColor: "transparent",
-                }}
-              />
-              <Text style={{ color: positionPercentileTone.fg, fontSize: 27, fontWeight: "900", marginTop: -48 }}>
-                {positionDeltaValue}
-              </Text>
-              <Text style={{ color: "#F8FAFC", fontSize: 12, textAlign: "center", fontWeight: "900", marginTop: 4 }}>
-                AU-DESSUS{"\n"}DE LA MOYENNE
-              </Text>
-            </View>
-            <View style={{ width: 1, height: 78, backgroundColor: "rgba(148,163,184,0.20)" }} />
-            <View style={{ flex: 1, gap: 6 }}>
-              <Text style={{ color: "#F8FAFC", fontSize: 16, fontWeight: "900" }}>
-                {safeTextV1(positionPercentile.percentileLabel)}
-              </Text>
-              <Text style={{ color: "#CBD5E1", fontSize: 13, lineHeight: 19 }}>
-                {safeTextV1(positionPercentile.reason)} Comparaison locale provisoire sans base marché globale.
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        <View
-          style={{
-            borderRadius: 18,
-            borderWidth: 1,
-            borderColor: confidenceTone.border,
-            backgroundColor: "rgba(15,23,42,0.58)",
-            padding: 14,
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 13,
-          }}
-        >
-          <View
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 999,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: confidenceTone.bg,
-              borderWidth: 1,
-              borderColor: confidenceTone.border,
-            }}
-          >
-            <Text style={{ color: confidenceTone.fg, fontSize: 24, fontWeight: "900" }}>◇</Text>
-          </View>
-          <View style={{ flex: 1, gap: 4 }}>
-            <Text style={{ color: confidenceTone.fg, fontSize: 16, fontWeight: "900" }}>
-              CONFIANCE : {confidenceEnhanced.label.toUpperCase()} ({confidenceScore}%)
-            </Text>
-            <Text style={{ color: "#CBD5E1", fontSize: 13, lineHeight: 18 }}>
-              {hasMatches ? `${Math.max(0, Math.round(props.matches || 0))} matchs utilisés` : "—"} · Fenêtre {activeRange} · {statsDetailsLabel}
-            </Text>
-          </View>
-        </View>
-      </View>
-      {/* XS_RADAR_DECISION_IMAGE_MATCH_V1_END */}
-
+      {/* XS_MOVE_RADAR_BEFORE_DECISION_V1 */}
       <View style={{ gap: 10 }}>
         {values.map((v) => {
           const n = clamp(v.value);
@@ -875,6 +540,372 @@ export default function FifaRadarChart(props: {
           );
         })}
       </View>
+      {/* XS_MOVE_RADAR_BEFORE_DECISION_V1_END */}
+
+      {/* XS_RADAR_PIXEL_PERFECT_DECISION_V3 */}
+      <View
+        style={{
+          borderRadius: 22,
+          borderWidth: 2,
+          borderColor: premiumTone.border,
+          backgroundColor: "#071017",
+          padding: 12,
+          gap: 10,
+          shadowColor: premiumTone.fg,
+          shadowOpacity: 0.22,
+          shadowRadius: 16,
+          shadowOffset: { width: 0, height: 8 },
+        }}
+      >
+        <View style={{ alignItems: "center", paddingTop: 2, paddingBottom: 2 }}>
+          <Text style={{ color: premiumTone.fg, fontSize: 15, fontWeight: "900", letterSpacing: 0 }}>
+            ♣ DÉCISION COACH
+          </Text>
+        </View>
+
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <View
+            style={{
+              width: 54,
+              height: 54,
+              borderRadius: 16,
+              backgroundColor: premiumTone.fg,
+              alignItems: "center",
+              justifyContent: "center",
+              shadowColor: premiumTone.fg,
+              shadowOpacity: 0.35,
+              shadowRadius: 12,
+              shadowOffset: { width: 0, height: 6 },
+            }}
+          >
+            <Text style={{ color: "#FFFFFF", fontSize: 34, fontWeight: "900" }}>
+              {premiumIcon}
+            </Text>
+          </View>
+
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.68}
+              style={{ color: premiumTone.fg, fontSize: 34, lineHeight: 38, fontWeight: "900", letterSpacing: 0 }}
+            >
+              {premiumVerdict}
+            </Text>
+            <Text numberOfLines={2} style={{ color: "#F8FAFC", fontSize: 13, lineHeight: 17, marginTop: 1 }}>
+              {safeTextV1(decisionV2.summary || recommendation.reason)}
+            </Text>
+          </View>
+
+          <View
+            style={{
+              width: 86,
+              borderRadius: 14,
+              borderWidth: 1.5,
+              borderColor: "rgba(148,163,184,0.28)",
+              backgroundColor: "rgba(15,23,42,0.66)",
+              paddingVertical: 8,
+              paddingHorizontal: 7,
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ color: "#F8FAFC", fontSize: 9, fontWeight: "900", letterSpacing: 0 }}>
+              SCORE COACH
+            </Text>
+            <View style={{ flexDirection: "row", alignItems: "flex-end", marginTop: 4 }}>
+              <Text style={{ color: premiumTone.fg, fontSize: 31, fontWeight: "900", lineHeight: 34 }}>
+                {premiumScore}
+              </Text>
+              <Text style={{ color: "#94A3B8", fontSize: 13, fontWeight: "800", marginBottom: 3 }}>
+                /100
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={{ height: 1, backgroundColor: "rgba(148,163,184,0.18)" }} />
+
+        <View style={{ flexDirection: "row", gap: 9, alignItems: "stretch" }}>
+          <View style={{ flex: 1.08, gap: 7, minWidth: 0 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <View
+                style={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: 999,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: premiumTone.fg,
+                }}
+              >
+                <Text style={{ color: "#071017", fontSize: 12, fontWeight: "900" }}>✓</Text>
+              </View>
+              <Text style={{ color: premiumTone.fg, fontSize: 15, fontWeight: "900" }}>POURQUOI ?</Text>
+            </View>
+
+            {v3WhyItems.map((item, index) => {
+              const icons = ["↗", "⌂", "★"];
+              return (
+                <View key={`premium-why-${index}`} style={{ flexDirection: "row", gap: 7, alignItems: "center" }}>
+                  <View
+                    style={{
+                      width: 30,
+                      height: 30,
+                      borderRadius: 999,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: "rgba(34,197,94,0.13)",
+                    }}
+                  >
+                    <Text style={{ color: premiumTone.fg, fontSize: 16, fontWeight: "900" }}>
+                      {item.icon || icons[index] || "✓"}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} style={{ color: "#F8FAFC", fontSize: 13, fontWeight: "900" }}>
+                      {item.title}
+                    </Text>
+                    <Text numberOfLines={2} style={{ color: "#CBD5E1", fontSize: 11, lineHeight: 14 }}>
+                      {item.text}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+
+          <View style={{ width: 1, backgroundColor: "rgba(148,163,184,0.18)" }} />
+
+          <View style={{ flex: 0.92, gap: 7, minWidth: 0 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Text style={{ color: "#F59E0B", fontSize: 16, fontWeight: "900" }}>⚠</Text>
+              <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={{ color: "#F59E0B", fontSize: 15, fontWeight: "900" }}>RISQUES</Text>
+            </View>
+
+            <View style={{ flexDirection: "row", gap: 7, alignItems: "center" }}>
+              <View
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 999,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "rgba(245,158,11,0.12)",
+                }}
+              >
+                <Text style={{ color: "#F59E0B", fontSize: 16, fontWeight: "900" }}>~</Text>
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.76} style={{ color: "#F8FAFC", fontSize: 13, fontWeight: "900" }}>
+                  {v3RiskTitle}
+                </Text>
+                <Text numberOfLines={2} style={{ color: "#CBD5E1", fontSize: 11, lineHeight: 14 }}>
+                  {v3RiskText}
+                </Text>
+              </View>
+            </View>
+
+            <View
+              style={{
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: "rgba(148,163,184,0.22)",
+                backgroundColor: "rgba(15,23,42,0.58)",
+                paddingHorizontal: 8,
+                paddingVertical: 7,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <Text style={{ color: "#FB7185", fontSize: 17, fontWeight: "900" }}>◎</Text>
+              <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={{ color: "#F8FAFC", fontSize: 11, fontWeight: "900", flex: 1 }}>
+                PLAFOND
+              </Text>
+              <Text style={{ color: "#C084FC", fontSize: 16, fontWeight: "900" }}>
+                {Math.round(clamp(ceiling))}
+              </Text>
+            </View>
+
+            <View
+              style={{
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: "rgba(148,163,184,0.22)",
+                backgroundColor: "rgba(15,23,42,0.58)",
+                paddingHorizontal: 8,
+                paddingVertical: 7,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <Text style={{ color: "#60A5FA", fontSize: 17, fontWeight: "900" }}>▮▮▮</Text>
+              <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62} style={{ color: "#F8FAFC", fontSize: 10, fontWeight: "900", flex: 1 }}>IRRÉGULARITÉ</Text>
+              <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ color: "#60A5FA", fontSize: 11, fontWeight: "900", maxWidth: 58 }}>
+                {volatilityLabel}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View
+          style={{
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: "rgba(148,163,184,0.20)",
+            backgroundColor: "rgba(15,23,42,0.45)",
+            padding: 10,
+            gap: 8,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Text style={{ color: "#60A5FA", fontSize: 15, fontWeight: "900" }}>▦</Text>
+            <Text style={{ color: "#60A5FA", fontSize: 15, fontWeight: "900" }}>CONTEXTE MATCH</Text>
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
+            <View
+              style={{
+                width: 50,
+                height: 58,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: "rgba(96,165,250,0.28)",
+                backgroundColor: "rgba(34,197,94,0.12)",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text style={{ color: premiumTone.fg, fontSize: 22, fontWeight: "900" }}>
+                {opponentInitials}
+              </Text>
+            </View>
+            <View style={{ flex: 1, gap: 3, minWidth: 0 }}>
+              <Text numberOfLines={1} style={{ color: "#F8FAFC", fontSize: 15, fontWeight: "900" }}>
+                {safeTextV1(matchContext.opponentName)}
+              </Text>
+              <Text numberOfLines={1} style={{ color: "#CBD5E1", fontSize: 12 }}>
+                ⌂ {homeAwayLabel(matchContext.homeAway)} · ♛ {safeTextV1(matchContext.competition)}
+              </Text>
+              <Text numberOfLines={1} style={{ color: "#CBD5E1", fontSize: 12 }}>
+                ▣ {matchDateLabel}
+              </Text>
+            </View>
+            <View style={{ flex: 1, gap: 6, minWidth: 0 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.76} style={{ color: "#F8FAFC", fontSize: 12, fontWeight: "900" }}>DIFFICULTÉ</Text>
+                <Text
+                  style={{
+                    color: matchTone.fg,
+                    backgroundColor: matchTone.bg,
+                    borderColor: matchTone.border,
+                    borderWidth: 1,
+                    borderRadius: 9,
+                    overflow: "hidden",
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                    fontSize: 11,
+                    fontWeight: "900",
+                  }}
+                >
+                  {matchDifficultyLabel(matchContext.difficulty).toUpperCase()}
+                </Text>
+                <Text style={{ color: "#94A3B8", fontSize: 11, fontWeight: "800" }}>
+                  {difficultyScoreLabel}
+                </Text>
+              </View>
+              <Text numberOfLines={2} style={{ color: "#CBD5E1", fontSize: 11, lineHeight: 15 }}>
+                {safeTextV1(matchContext.reason)}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View
+          style={{
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: "rgba(148,163,184,0.20)",
+            backgroundColor: "rgba(15,23,42,0.45)",
+            padding: 10,
+            gap: 8,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Text style={{ color: positionPercentileTone.fg, fontSize: 15, fontWeight: "900" }}>♟</Text>
+            <Text style={{ color: positionPercentileTone.fg, fontSize: 15, fontWeight: "900" }}>COMPARAISON POSTE</Text>
+          </View>
+          <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
+            <View style={{ width: 96, alignItems: "center" }}>
+              <View
+                style={{
+                  width: 92,
+                  height: 44,
+                  borderTopLeftRadius: 999,
+                  borderTopRightRadius: 999,
+                  borderWidth: 10,
+                  borderBottomWidth: 0,
+                  borderColor: positionPercentileTone.border,
+                  backgroundColor: "transparent",
+                }}
+              />
+              <Text style={{ color: positionPercentileTone.fg, fontSize: 22, fontWeight: "900", marginTop: -38 }}>
+                {positionDeltaValue}
+              </Text>
+              <Text numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.72} style={{ color: "#F8FAFC", fontSize: 10, lineHeight: 12, textAlign: "center", fontWeight: "900", marginTop: 2 }}>
+                AU-DESSUS{"\n"}DE LA MOYENNE
+              </Text>
+            </View>
+            <View style={{ width: 1, height: 58, backgroundColor: "rgba(148,163,184,0.20)" }} />
+            <View style={{ flex: 1, gap: 4, minWidth: 0 }}>
+              <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} style={{ color: "#F8FAFC", fontSize: 14, fontWeight: "900" }}>
+                {safeTextV1(v3ProfileTitle)}
+              </Text>
+              <Text numberOfLines={2} style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 16 }}>
+                {safeTextV1(v3ProfileText)}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View
+          style={{
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: confidenceTone.border,
+            backgroundColor: "rgba(15,23,42,0.58)",
+            paddingHorizontal: 10,
+            paddingVertical: 9,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <View
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 999,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: confidenceTone.bg,
+              borderWidth: 1,
+              borderColor: confidenceTone.border,
+            }}
+          >
+            <Text style={{ color: confidenceTone.fg, fontSize: 20, fontWeight: "900" }}>◇</Text>
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.76} style={{ color: confidenceTone.fg, fontSize: 15, fontWeight: "900" }}>
+              CONFIANCE : {confidenceEnhanced.label.toUpperCase()} ({confidenceScore}%)
+            </Text>
+            <Text numberOfLines={1} style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 16 }}>
+              {hasMatches ? `${Math.max(0, Math.round(props.matches || 0))} matchs utilisés` : "—"} · Fenêtre {activeRange} · {statsDetailsLabel}
+            </Text>
+          </View>
+        </View>
+      </View>
+      {/* XS_RADAR_PIXEL_PERFECT_DECISION_V3_END */}
 
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
         {values.map((v) => {
