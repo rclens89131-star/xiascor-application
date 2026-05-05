@@ -192,6 +192,32 @@ function safeTextV1(value: unknown) {
   const text = String(value || "").trim();
   return text || "—";
 }
+
+function premiumVolatilityLabelV1(value: RadarVolatility) {
+  if (value === "stable") return "Faible";
+  if (value === "medium") return "Moyenne";
+  if (value === "high") return "Très élevée";
+  return "—";
+}
+
+function premiumOpponentInitialsV1(value: unknown) {
+  const text = String(value || "").trim();
+  if (!text) return "—";
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length >= 2) return `${words[0][0] || ""}${words[1][0] || ""}`.toUpperCase();
+  return text.slice(0, 2).toUpperCase();
+}
+
+function premiumDeltaValueV1(value: unknown) {
+  const match = String(value || "").match(/[+-]?\d+/);
+  return match ? match[0] : "—";
+}
+
+function premiumStatsDetailsLabelV1(reason: string) {
+  if (/détaill|detail|réel|real/i.test(reason)) return "Stats détaillées disponibles";
+  if (/proxy|absent|indispon|non disponible/i.test(reason)) return "Stats détaillées non confirmées";
+  return "Stats détaillées : —";
+}
 /* XS_RADAR_PREMIUM_DECISION_CARD_V1_END */
 
 export default function FifaRadarChart(props: {
@@ -361,6 +387,16 @@ export default function FifaRadarChart(props: {
   const displayedRisks = riskItems.length ? riskItems : ["—"];
   const confidenceScore = Math.round(clamp(confidenceEnhanced.score));
   const matchDateLabel = safeTextV1(matchContext.matchDate);
+  const premiumWhy = displayedWhy.slice(0, 3);
+  const premiumRisks = displayedRisks.slice(0, 2);
+  const volatilityLabel = premiumVolatilityLabelV1(volatility);
+  const opponentInitials = premiumOpponentInitialsV1(matchContext.opponentName);
+  const difficultyScoreLabel =
+    typeof matchContext.difficultyScore === "number" && Number.isFinite(matchContext.difficultyScore)
+      ? `(${Math.round(clamp(matchContext.difficultyScore))}/100)`
+      : "";
+  const positionDeltaValue = premiumDeltaValueV1(positionPercentile.deltaLabel);
+  const statsDetailsLabel = premiumStatsDetailsLabelV1(confidenceEnhanced.reason);
 
   return (
     <View
@@ -435,134 +471,372 @@ export default function FifaRadarChart(props: {
       ) : null}
       {/* XS_FIFA_RADAR_RANGE_SWITCH_V1_END */}
 
-      {/* XS_RADAR_PREMIUM_DECISION_CARD_V1 */}
+      {/* XS_RADAR_DECISION_IMAGE_MATCH_V1 */}
       <View
         style={{
-          borderRadius: 18,
-          borderWidth: 1.5,
+          borderRadius: 24,
+          borderWidth: 2,
           borderColor: premiumTone.border,
-          backgroundColor: "#0B0F14",
-          padding: 14,
-          gap: 14,
+          backgroundColor: "#071017",
+          padding: 16,
+          gap: 16,
           shadowColor: premiumTone.fg,
-          shadowOpacity: 0.16,
-          shadowRadius: 14,
-          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: 0.22,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: 10 },
         }}
       >
-        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-          <View style={{ flexDirection: "row", gap: 11, alignItems: "center", flex: 1 }}>
+        <View style={{ alignItems: "center", gap: 4 }}>
+          <Text style={{ color: premiumTone.fg, fontSize: 13, fontWeight: "900", letterSpacing: 0 }}>
+            ♣ DÉCISION COACH
+          </Text>
+        </View>
+
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+          <View
+            style={{
+              width: 76,
+              height: 76,
+              borderRadius: 20,
+              backgroundColor: premiumTone.fg,
+              alignItems: "center",
+              justifyContent: "center",
+              shadowColor: premiumTone.fg,
+              shadowOpacity: 0.35,
+              shadowRadius: 12,
+              shadowOffset: { width: 0, height: 6 },
+            }}
+          >
+            <Text style={{ color: "#FFFFFF", fontSize: 42, fontWeight: "900" }}>
+              {premiumIcon}
+            </Text>
+          </View>
+
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ color: premiumTone.fg, fontSize: 34, fontWeight: "900", letterSpacing: 0 }}>
+              {premiumVerdict}
+            </Text>
+            <Text style={{ color: "#F8FAFC", fontSize: 15, lineHeight: 21, marginTop: 5 }}>
+              {safeTextV1(decisionV2.summary || recommendation.reason)}
+            </Text>
+          </View>
+
+          <View
+            style={{
+              width: 116,
+              borderRadius: 18,
+              borderWidth: 1.5,
+              borderColor: "rgba(148,163,184,0.28)",
+              backgroundColor: "rgba(15,23,42,0.66)",
+              paddingVertical: 13,
+              paddingHorizontal: 9,
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ color: "#F8FAFC", fontSize: 12, fontWeight: "900", letterSpacing: 0 }}>
+              SCORE COACH
+            </Text>
+            <View style={{ flexDirection: "row", alignItems: "flex-end", marginTop: 7 }}>
+              <Text style={{ color: premiumTone.fg, fontSize: 38, fontWeight: "900", lineHeight: 42 }}>
+                {premiumScore}
+              </Text>
+              <Text style={{ color: "#94A3B8", fontSize: 17, fontWeight: "800", marginBottom: 4 }}>
+                /100
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={{ height: 1, backgroundColor: "rgba(148,163,184,0.22)" }} />
+
+        <View style={{ flexDirection: "row", gap: 14 }}>
+          <View style={{ flex: 1, gap: 12 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <View
+                style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 999,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: premiumTone.fg,
+                }}
+              >
+                <Text style={{ color: "#071017", fontSize: 14, fontWeight: "900" }}>✓</Text>
+              </View>
+              <Text style={{ color: premiumTone.fg, fontSize: 15, fontWeight: "900" }}>POURQUOI ?</Text>
+            </View>
+
+            {premiumWhy.map((reason, index) => {
+              const icons = ["↗", "⌂", "★"];
+              const descriptions = [
+                safeTextV1(decisionV2.summary),
+                safeTextV1(matchContext.reason),
+                safeTextV1(confidenceEnhanced.reason),
+              ];
+              return (
+                <View key={`premium-why-${index}`} style={{ flexDirection: "row", gap: 10 }}>
+                  <View
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 999,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: "rgba(34,197,94,0.13)",
+                    }}
+                  >
+                    <Text style={{ color: premiumTone.fg, fontSize: 23, fontWeight: "900" }}>
+                      {icons[index] || "✓"}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text style={{ color: "#F8FAFC", fontSize: 15, fontWeight: "900" }}>
+                      {reason}
+                    </Text>
+                    <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
+                      {descriptions[index] || "—"}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+
+          <View style={{ width: 1, backgroundColor: "rgba(148,163,184,0.18)" }} />
+
+          <View style={{ flex: 1, gap: 12 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Text style={{ color: "#F59E0B", fontSize: 23, fontWeight: "900" }}>⚠</Text>
+              <Text style={{ color: "#F59E0B", fontSize: 15, fontWeight: "900" }}>RISQUES</Text>
+            </View>
+
+            {premiumRisks.map((risk, index) => (
+              <View key={`premium-risk-${index}`} style={{ flexDirection: "row", gap: 10 }}>
+                <View
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 999,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "rgba(245,158,11,0.12)",
+                  }}
+                >
+                  <Text style={{ color: "#F59E0B", fontSize: 23, fontWeight: "900" }}>~</Text>
+                </View>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={{ color: "#F8FAFC", fontSize: 15, fontWeight: "900" }}>
+                    {risk}
+                  </Text>
+                  <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
+                    À surveiller avant validation finale.
+                  </Text>
+                </View>
+              </View>
+            ))}
+
             <View
               style={{
-                width: 42,
-                height: 42,
-                borderRadius: 999,
+                borderRadius: 14,
                 borderWidth: 1,
-                borderColor: premiumTone.border,
-                backgroundColor: premiumTone.bg,
+                borderColor: "rgba(148,163,184,0.22)",
+                backgroundColor: "rgba(15,23,42,0.58)",
+                padding: 11,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+              }}
+            >
+              <Text style={{ color: "#FB7185", fontSize: 24, fontWeight: "900" }}>◎</Text>
+              <Text style={{ color: "#F8FAFC", fontSize: 13, fontWeight: "900", flex: 1 }}>PLAFOND</Text>
+              <Text style={{ color: "#C084FC", fontSize: 20, fontWeight: "900" }}>
+                {Math.round(clamp(ceiling))}
+              </Text>
+            </View>
+
+            <View
+              style={{
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: "rgba(148,163,184,0.22)",
+                backgroundColor: "rgba(15,23,42,0.58)",
+                padding: 11,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+              }}
+            >
+              <Text style={{ color: "#60A5FA", fontSize: 24, fontWeight: "900" }}>▮▮▮</Text>
+              <Text style={{ color: "#F8FAFC", fontSize: 13, fontWeight: "900", flex: 1 }}>IRRÉGULARITÉ</Text>
+              <Text style={{ color: "#60A5FA", fontSize: 13, fontWeight: "900" }}>
+                {volatilityLabel}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View
+          style={{
+            borderRadius: 18,
+            borderWidth: 1,
+            borderColor: "rgba(148,163,184,0.20)",
+            backgroundColor: "rgba(15,23,42,0.45)",
+            padding: 14,
+            gap: 12,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Text style={{ color: "#60A5FA", fontSize: 19, fontWeight: "900" }}>▦</Text>
+            <Text style={{ color: "#60A5FA", fontSize: 16, fontWeight: "900" }}>CONTEXTE MATCH</Text>
+          </View>
+          <View style={{ flexDirection: "row", gap: 14, alignItems: "center" }}>
+            <View
+              style={{
+                width: 68,
+                height: 68,
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: "rgba(96,165,250,0.28)",
+                backgroundColor: "rgba(34,197,94,0.12)",
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
               <Text style={{ color: premiumTone.fg, fontSize: 22, fontWeight: "900" }}>
-                {premiumIcon}
+                {opponentInitials}
               </Text>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: "#94A3B8", fontSize: 11, fontWeight: "900", letterSpacing: 0 }}>
-                DÉCISION COACH
+            <View style={{ flex: 1, gap: 5 }}>
+              <Text style={{ color: "#F8FAFC", fontSize: 17, fontWeight: "900" }}>
+                {safeTextV1(matchContext.opponentName)}
               </Text>
-              <Text style={{ color: premiumTone.fg, fontSize: 26, fontWeight: "900", marginTop: 2 }}>
-                {premiumVerdict}
+              <Text style={{ color: "#CBD5E1", fontSize: 13 }}>
+                ⌂ {homeAwayLabel(matchContext.homeAway)}
               </Text>
-              <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17, marginTop: 2 }}>
-                Style : {safeTextV1(decisionV2.playStyle)} · Profil : {safeTextV1(autoProfile.label)}
+              <Text style={{ color: "#CBD5E1", fontSize: 13 }}>
+                ♛ {safeTextV1(matchContext.competition)}
+              </Text>
+              <Text style={{ color: "#CBD5E1", fontSize: 13 }}>
+                ▣ {matchDateLabel}
+              </Text>
+            </View>
+            <View style={{ flex: 1, gap: 9 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+                <Text style={{ color: "#F8FAFC", fontSize: 13, fontWeight: "900" }}>DIFFICULTÉ</Text>
+                <Text
+                  style={{
+                    color: matchTone.fg,
+                    backgroundColor: matchTone.bg,
+                    borderColor: matchTone.border,
+                    borderWidth: 1,
+                    borderRadius: 9,
+                    overflow: "hidden",
+                    paddingHorizontal: 10,
+                    paddingVertical: 5,
+                    fontSize: 12,
+                    fontWeight: "900",
+                  }}
+                >
+                  {matchDifficultyLabel(matchContext.difficulty).toUpperCase()}
+                </Text>
+                <Text style={{ color: "#94A3B8", fontSize: 12, fontWeight: "800" }}>
+                  {difficultyScoreLabel}
+                </Text>
+              </View>
+              <Text style={{ color: "#CBD5E1", fontSize: 13, lineHeight: 18 }}>
+                {safeTextV1(matchContext.reason)}
               </Text>
             </View>
           </View>
+        </View>
+
+        <View
+          style={{
+            borderRadius: 18,
+            borderWidth: 1,
+            borderColor: "rgba(148,163,184,0.20)",
+            backgroundColor: "rgba(15,23,42,0.45)",
+            padding: 14,
+            gap: 12,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Text style={{ color: positionPercentileTone.fg, fontSize: 19, fontWeight: "900" }}>♟</Text>
+            <Text style={{ color: positionPercentileTone.fg, fontSize: 16, fontWeight: "900" }}>COMPARAISON POSTE</Text>
+          </View>
+          <View style={{ flexDirection: "row", gap: 16, alignItems: "center" }}>
+            <View style={{ width: 128, alignItems: "center", gap: 7 }}>
+              <View
+                style={{
+                  width: 118,
+                  height: 58,
+                  borderTopLeftRadius: 999,
+                  borderTopRightRadius: 999,
+                  borderWidth: 12,
+                  borderBottomWidth: 0,
+                  borderColor: positionPercentileTone.border,
+                  backgroundColor: "transparent",
+                }}
+              />
+              <Text style={{ color: positionPercentileTone.fg, fontSize: 27, fontWeight: "900", marginTop: -48 }}>
+                {positionDeltaValue}
+              </Text>
+              <Text style={{ color: "#F8FAFC", fontSize: 12, textAlign: "center", fontWeight: "900", marginTop: 4 }}>
+                AU-DESSUS{"\n"}DE LA MOYENNE
+              </Text>
+            </View>
+            <View style={{ width: 1, height: 78, backgroundColor: "rgba(148,163,184,0.20)" }} />
+            <View style={{ flex: 1, gap: 6 }}>
+              <Text style={{ color: "#F8FAFC", fontSize: 16, fontWeight: "900" }}>
+                {safeTextV1(positionPercentile.percentileLabel)}
+              </Text>
+              <Text style={{ color: "#CBD5E1", fontSize: 13, lineHeight: 19 }}>
+                {safeTextV1(positionPercentile.reason)} Comparaison locale provisoire sans base marché globale.
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View
+          style={{
+            borderRadius: 18,
+            borderWidth: 1,
+            borderColor: confidenceTone.border,
+            backgroundColor: "rgba(15,23,42,0.58)",
+            padding: 14,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 13,
+          }}
+        >
           <View
             style={{
-              minWidth: 70,
-              borderRadius: 14,
-              borderWidth: 1,
-              borderColor: premiumTone.border,
-              backgroundColor: premiumTone.bg,
-              paddingHorizontal: 10,
-              paddingVertical: 8,
+              width: 44,
+              height: 44,
+              borderRadius: 999,
               alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: confidenceTone.bg,
+              borderWidth: 1,
+              borderColor: confidenceTone.border,
             }}
           >
-            <Text style={{ color: premiumTone.fg, fontSize: 22, fontWeight: "900" }}>
-              {premiumScore}
+            <Text style={{ color: confidenceTone.fg, fontSize: 24, fontWeight: "900" }}>◇</Text>
+          </View>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={{ color: confidenceTone.fg, fontSize: 16, fontWeight: "900" }}>
+              CONFIANCE : {confidenceEnhanced.label.toUpperCase()} ({confidenceScore}%)
             </Text>
-            <Text style={{ color: "#CBD5E1", fontSize: 11, fontWeight: "800" }}>
-              /100
+            <Text style={{ color: "#CBD5E1", fontSize: 13, lineHeight: 18 }}>
+              {hasMatches ? `${Math.max(0, Math.round(props.matches || 0))} matchs utilisés` : "—"} · Fenêtre {activeRange} · {statsDetailsLabel}
             </Text>
           </View>
-        </View>
-
-        <Text style={{ color: "#E5E7EB", fontSize: 12, lineHeight: 18 }}>
-          {safeTextV1(decisionV2.summary || recommendation.reason)}
-        </Text>
-
-        <View style={{ borderTopWidth: 1, borderTopColor: "rgba(148,163,184,0.16)", paddingTop: 11, gap: 6 }}>
-          <Text style={{ color: "#F8FAFC", fontSize: 12, fontWeight: "900" }}>POURQUOI ?</Text>
-          {displayedWhy.map((reason, index) => (
-            <Text key={`premium-why-${index}`} style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
-              • {reason}
-            </Text>
-          ))}
-        </View>
-
-        <View style={{ borderTopWidth: 1, borderTopColor: "rgba(148,163,184,0.16)", paddingTop: 11, gap: 6 }}>
-          <Text style={{ color: "#F8FAFC", fontSize: 12, fontWeight: "900" }}>RISQUES</Text>
-          {displayedRisks.map((risk, index) => (
-            <Text key={`premium-risk-${index}`} style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
-              • {risk}
-            </Text>
-          ))}
-          <Text style={{ color: "#94A3B8", fontSize: 11, lineHeight: 15 }}>
-            Tendance : {trend === "up" ? "en hausse" : trend === "down" ? "en baisse" : "stable"} · Volatilité : {volatility === "unknown" ? "—" : volatility} · Plafond : {Math.round(clamp(ceiling))}
-          </Text>
-        </View>
-
-        <View style={{ borderTopWidth: 1, borderTopColor: "rgba(148,163,184,0.16)", paddingTop: 11, gap: 7 }}>
-          <Text style={{ color: "#F8FAFC", fontSize: 12, fontWeight: "900" }}>CONTEXTE MATCH</Text>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            <Text style={{ color: "#CBD5E1", fontSize: 12 }}>Adversaire : {safeTextV1(matchContext.opponentName)}</Text>
-            <Text style={{ color: "#CBD5E1", fontSize: 12 }}>Lieu : {homeAwayLabel(matchContext.homeAway)}</Text>
-            <Text style={{ color: "#CBD5E1", fontSize: 12 }}>Difficulté : {matchDifficultyLabel(matchContext.difficulty)}</Text>
-          </View>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            <Text style={{ color: "#CBD5E1", fontSize: 12 }}>Compétition : {safeTextV1(matchContext.competition)}</Text>
-            <Text style={{ color: "#CBD5E1", fontSize: 12 }}>Date : {matchDateLabel}</Text>
-          </View>
-          <Text style={{ color: "#94A3B8", fontSize: 11, lineHeight: 15 }}>
-            {safeTextV1(matchContext.reason)}
-          </Text>
-        </View>
-
-        <View style={{ borderTopWidth: 1, borderTopColor: "rgba(148,163,184,0.16)", paddingTop: 11, gap: 6 }}>
-          <Text style={{ color: "#F8FAFC", fontSize: 12, fontWeight: "900" }}>COMPARAISON POSTE</Text>
-          <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
-            {safeTextV1(positionPercentile.percentileLabel)} · {safeTextV1(positionPercentile.deltaLabel)}
-          </Text>
-          <Text style={{ color: "#94A3B8", fontSize: 11, lineHeight: 15 }}>
-            {safeTextV1(positionPercentile.reason)} Comparaison locale provisoire sans base marché globale.
-          </Text>
-        </View>
-
-        <View style={{ borderTopWidth: 1, borderTopColor: "rgba(148,163,184,0.16)", paddingTop: 11, gap: 6 }}>
-          <Text style={{ color: "#F8FAFC", fontSize: 12, fontWeight: "900" }}>CONFIANCE</Text>
-          <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
-            {confidenceEnhanced.label} ({confidenceScore}/100) · {hasMatches ? `${Math.max(0, Math.round(props.matches || 0))} matchs` : "—"} · Fenêtre {activeRange}
-          </Text>
-          <Text style={{ color: "#94A3B8", fontSize: 11, lineHeight: 15 }}>
-            {safeTextV1(confidenceEnhanced.reason)}
-          </Text>
         </View>
       </View>
-      {/* XS_RADAR_PREMIUM_DECISION_CARD_V1_END */}
+      {/* XS_RADAR_DECISION_IMAGE_MATCH_V1_END */}
 
       <View style={{ gap: 10 }}>
         {values.map((v) => {
