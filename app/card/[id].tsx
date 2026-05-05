@@ -387,6 +387,10 @@ type XsRadarMetricsByPositionV1 = {
   range?: XsRadarRangeV1;
   confidence?: number;
   detailedStats?: boolean;
+  l5?: number;
+  l15?: number;
+  l40?: number;
+  overall?: number;
 };
 
 type XsRadarAutoProfileToneV1 = "safe" | "upside" | "risk" | "balanced";
@@ -409,14 +413,23 @@ type XsRadarRecommendationV1 = {
   reason: string;
 };
 
+type XsRadarPositionPercentileV1 = {
+  percentileLabel: string;
+  deltaLabel: string;
+  tier: "elite" | "strong" | "average" | "weak";
+  reason: string;
+};
+
 type XsCardMatchContextV1 = {
   opponentName: string | null;
+  opponentSlug?: string | null;
   competition: string | null;
   homeAway: "home" | "away" | "unknown";
   matchDate: string | null;
   difficulty: "easy" | "medium" | "hard" | "unknown";
   difficultyScore: number | null;
   reason: string;
+  source?: string | null;
 };
 
 function xsRadarChartPositionLabelV1(positionUsed: XsRadarPositionV1): "GK" | "DEF" | "MID" | "FWD" | "GEN" {
@@ -438,6 +451,71 @@ function xsRadarWeightedOverallByPositionV1(positionUsed: XsRadarPositionV1, m: 
   }
   return xsRadarAvgV1([m.form, m.regularity, m.gameTime, m.impact, m.attack, m.creation, m.defense, m.reliability]) ?? 50;
 }
+
+/* XS_RADAR_POSITION_PERCENTILE_V1 */
+function xsRadarPositionGroupLabelV1(positionUsed: XsRadarPositionV1): string {
+  if (positionUsed === "GK") return "gardiens";
+  if (positionUsed === "DEF") return "défenseurs";
+  if (positionUsed === "MID") return "milieux";
+  if (positionUsed === "FW") return "attaquants";
+  return "joueurs";
+}
+
+function xsRadarPositionPercentileV1(
+  positionUsed: XsRadarPositionV1,
+  metrics: XsRadarMetricsByPositionV1
+): XsRadarPositionPercentileV1 {
+  const overall = Math.round(xsRadarClampV1(metrics.overall ?? xsRadarWeightedOverallByPositionV1(positionUsed, metrics)));
+  const group = xsRadarPositionGroupLabelV1(positionUsed);
+  const range = metrics.range || "L15";
+  const delta = overall - 55;
+  const deltaLabel =
+    delta > 0
+      ? `+${delta} au-dessus du profil moyen`
+      : delta < 0
+        ? `${delta} sous le profil moyen`
+        : "au niveau du profil moyen";
+
+  if (overall >= 75) {
+    return {
+      percentileLabel: `Top 10% des ${group}`,
+      deltaLabel,
+      tier: "elite",
+      reason: `Comparaison provisoire: overall radar ${overall} sur ${range}, au-dessus du seuil elite local.`,
+    };
+  }
+  if (overall >= 65) {
+    return {
+      percentileLabel: `Top 25% des ${group}`,
+      deltaLabel,
+      tier: "strong",
+      reason: `Comparaison provisoire: overall radar ${overall} sur ${range}, profil fort pour son poste.`,
+    };
+  }
+  if (overall >= 55) {
+    return {
+      percentileLabel: `Au-dessus de la moyenne des ${group}`,
+      deltaLabel,
+      tier: "strong",
+      reason: `Comparaison provisoire: overall radar ${overall} sur ${range}, au-dessus du seuil moyen.`,
+    };
+  }
+  if (overall >= 45) {
+    return {
+      percentileLabel: `Profil moyen des ${group}`,
+      deltaLabel,
+      tier: "average",
+      reason: `Comparaison provisoire: overall radar ${overall} sur ${range}, proche du profil moyen.`,
+    };
+  }
+  return {
+    percentileLabel: `Sous la moyenne des ${group}`,
+    deltaLabel,
+    tier: "weak",
+    reason: `Comparaison provisoire: overall radar ${overall} sur ${range}, sous le seuil moyen.`,
+  };
+}
+/* XS_RADAR_POSITION_PERCENTILE_V1_END */
 
 function xsRadarValuesByPositionV1(positionUsed: XsRadarPositionV1, m: XsRadarMetricsByPositionV1) {
   const base = [
@@ -761,6 +839,44 @@ function xsAdjustMatchContextWithMetricsV1(
   };
 }
 
+/* XS_CARD_REAL_MATCH_CONTEXT_V1 */
+function xsNormalizeRealMatchContextV1(value: any): XsCardMatchContextV1 | null {
+  if (!value || value.ok !== true) return null;
+  const homeAwayRaw = String(value.homeAway || "").toLowerCase();
+  const difficultyRaw = String(value.difficulty || "").toLowerCase();
+  const homeAway: XsCardMatchContextV1["homeAway"] =
+    homeAwayRaw === "home" || homeAwayRaw === "away" ? homeAwayRaw : "unknown";
+  const difficulty: XsCardMatchContextV1["difficulty"] =
+    difficultyRaw === "easy" || difficultyRaw === "medium" || difficultyRaw === "hard"
+      ? difficultyRaw
+      : "unknown";
+  return {
+    opponentName: xsMcTextV1(value.opponentName),
+    opponentSlug: xsMcTextV1(value.opponentSlug),
+    competition: xsMcTextV1(value.competition),
+    homeAway,
+    matchDate: xsMcTextV1(value.matchDate),
+    difficulty,
+    difficultyScore: typeof value.difficultyScore === "number" && Number.isFinite(value.difficultyScore)
+      ? xsRadarClampV1(value.difficultyScore)
+      : null,
+    reason: xsMcTextV1(value.reason) || "Prochain adversaire non disponible.",
+    source: xsMcTextV1(value.source),
+  };
+}
+
+function xsIsRealMatchContextUsefulV1(context: XsCardMatchContextV1 | null | undefined): boolean {
+  return Boolean(
+    context &&
+      (context.opponentName ||
+        context.opponentSlug ||
+        context.matchDate ||
+        context.competition ||
+        context.difficulty !== "unknown")
+  );
+}
+/* XS_CARD_REAL_MATCH_CONTEXT_V1_END */
+
 function xsRadarRecommendationV1(
   positionUsed: XsRadarPositionV1,
   metrics: XsRadarMetricsByPositionV1,
@@ -768,38 +884,56 @@ function xsRadarRecommendationV1(
   confidence: XsRadarConfidenceEnhancedV1,
   matchContext?: XsCardMatchContextV1 | null
 ): XsRadarRecommendationV1 {
+  /* XS_RADAR_COACH_RECOMMENDATION_V1 */
   const opponentText = matchContext?.opponentName ? ` contre ${matchContext.opponentName}` : "";
-  if (matchContext?.difficulty === "hard" && confidence.label === "Faible") {
-    return { label: "À surveiller", tone: "watch", reason: `Contexte difficile${opponentText} et données peu fiables.` };
+  const contextOk = matchContext?.difficulty === "easy" || matchContext?.difficulty === "medium";
+  const l5 = typeof metrics.l5 === "number" ? metrics.l5 : metrics.form;
+  const l15 = typeof metrics.l15 === "number" ? metrics.l15 : metrics.form;
+  const l40 = typeof metrics.l40 === "number" ? metrics.l40 : metrics.form;
+
+  if (metrics.gameTime < 35) {
+    return { label: "À éviter", tone: "avoid", reason: `À éviter : temps de jeu trop faible${opponentText} sur la fenêtre sélectionnée.` };
   }
-  if (confidence.label === "Faible") {
-    return { label: "À surveiller", tone: "watch", reason: `Confiance faible${opponentText}: ${confidence.reason}.` };
+  if (metrics.gameTime < 50) {
+    return { label: "Pari risqué", tone: "risky", reason: `Pari risqué : temps de jeu fragile${opponentText}, risque de rotation.` };
+  }
+  if (matchContext?.difficulty === "hard" && confidence.label === "Faible") {
+    return { label: "À surveiller", tone: "watch", reason: `À surveiller : contexte difficile${opponentText} et données peu fiables.` };
   }
   if (matchContext?.homeAway === "away" && metrics.regularity < 50) {
-    return { label: "Pari risqué", tone: "risky", reason: `Extérieur${opponentText} + régularité fragile.` };
+    return { label: "Pari risqué", tone: "risky", reason: `Pari risqué : extérieur${opponentText} et régularité fragile.` };
   }
-  if (matchContext?.difficulty === "easy" && metrics.form >= 55) {
-    return { label: "À aligner", tone: "play", reason: `Bon profil${opponentText} et contexte favorable.` };
+  if (confidence.label === "Faible") {
+    return { label: "À surveiller", tone: "watch", reason: `À surveiller : confiance faible${opponentText}. ${confidence.reason}.` };
   }
-  if (metrics.gameTime < 45) {
-    return { label: "Risque rotation", tone: "risky", reason: `Temps de jeu faible${opponentText} sur la fenêtre sélectionnée.` };
+  if (metrics.form >= 60 && metrics.gameTime >= 65 && contextOk) {
+    return { label: "À aligner", tone: "play", reason: `À aligner : forme solide, temps de jeu élevé et contexte favorable${opponentText}.` };
   }
-  if (metrics.regularity < 45) {
-    return { label: "Joueur irrégulier", tone: "risky", reason: `Régularité basse${opponentText} sur la fenêtre sélectionnée.` };
+  if (positionUsed === "FW" && metrics.attack >= 62 && metrics.impact >= 58) {
+    return { label: "À aligner", tone: "play", reason: `À aligner : attaque élevée et impact fort${opponentText} sur la fenêtre sélectionnée.` };
+  }
+  if (l5 >= 62 && l15 < 58 && l40 < 58 && metrics.gameTime >= 55) {
+    return { label: "Différentiel intéressant", tone: "play", reason: `Différentiel intéressant : L5 fort mais historique L15/L40 encore moyen${opponentText}.` };
+  }
+  if (autoProfile.tone === "safe" && confidence.label === "Élevé") {
+    return { label: "Bon pick secondaire", tone: "play", reason: `Bon pick secondaire : profil sûr, confiance élevée et base stable${opponentText}.` };
   }
   if (autoProfile.tone === "risk" || /risk|risque|irrégulier/i.test(autoProfile.label)) {
-    return { label: "Pari risqué", tone: "risky", reason: autoProfile.reason };
-  }
-  if (positionUsed === "FW" && metrics.attack >= 65 && metrics.impact >= 60) {
-    return { label: "À aligner", tone: "play", reason: `Attaque élevée et impact fort${opponentText} sur la fenêtre sélectionnée.` };
+    return { label: "Pari risqué", tone: "risky", reason: `Pari risqué : ${autoProfile.reason}` };
   }
   if ((positionUsed === "DEF" || positionUsed === "GK") && metrics.defense >= 60 && metrics.regularity >= 60) {
-    return { label: "Bon choix", tone: "play", reason: `Base défensive et régularité solides${opponentText}.` };
+    return { label: "Bon pick secondaire", tone: "play", reason: `Bon pick secondaire : base défensive et régularité solides${opponentText}.` };
+  }
+  if (metrics.regularity < 45) {
+    return { label: "Pari risqué", tone: "risky", reason: `Pari risqué : régularité basse${opponentText} sur la fenêtre sélectionnée.` };
   }
   if (metrics.reliability < 45) {
-    return { label: "À éviter", tone: "avoid", reason: `Fiabilité trop fragile${opponentText} sur la fenêtre sélectionnée.` };
+    return { label: "À éviter", tone: "avoid", reason: `À éviter : fiabilité trop fragile${opponentText} sur la fenêtre sélectionnée.` };
   }
-  return { label: "À surveiller", tone: "watch", reason: `Profil exploitable${opponentText}, mais sans signal suffisamment fort pour une recommandation agressive.` };
+  if ((metrics.overall || 0) >= 62) {
+    return { label: "Bon pick secondaire", tone: "play", reason: `Bon pick secondaire : niveau radar solide${opponentText}, sans signal premium absolu.` };
+  }
+  return { label: "À surveiller", tone: "watch", reason: `À surveiller : profil exploitable${opponentText}, mais signal encore insuffisant pour l'aligner franchement.` };
 }
 
 /* XS_FIFA_RADAR_RANGE_SWITCH_V1 */
@@ -813,10 +947,12 @@ function xsBuildFifaRadarValuesFromHistoryV1(
   historyChart: any[],
   fallbackAvg: { avg5?: number | null; avg15?: number | null; avg40?: number | null },
   positionSource: any,
-  range: XsRadarRangeV1 = "L15"
+  range: XsRadarRangeV1 = "L15",
+  realMatchContext?: XsCardMatchContextV1 | null
 ) {
   const positionUsed = xsRadarNormalizePositionV1(positionSource);
-  const matchContext = xsBuildMatchContextV1(positionSource?.card, positionSource?.perf, historyChart);
+  const localMatchContext = xsBuildMatchContextV1(positionSource?.card, positionSource?.perf, historyChart);
+  const matchContext = xsIsRealMatchContextUsefulV1(realMatchContext) ? realMatchContext as XsCardMatchContextV1 : localMatchContext;
   const rangeLimit = xsRadarLimitForRangeV1(range);
   const fallbackScore =
     xsRadarAvgV1([fallbackAvg?.avg5, fallbackAvg?.avg15, fallbackAvg?.avg40]) ?? 50;
@@ -864,7 +1000,11 @@ function xsBuildFifaRadarValuesFromHistoryV1(
     range,
     confidence,
     detailedStats: false,
+    l5: fallbackAvg?.avg5 ?? fallbackScore,
+    l15: fallbackAvg?.avg15 ?? fallbackScore,
+    l40: fallbackAvg?.avg40 ?? fallbackScore,
   };
+  fallbackMetrics.overall = xsRadarWeightedOverallByPositionV1(positionUsed, fallbackMetrics);
 
   if (!matches) {
     const fallbackProfile = positionUsed === "GEN" ? "balanced_attacker" : xsRadarProfileV1(positionUsed, {
@@ -891,6 +1031,7 @@ function xsBuildFifaRadarValuesFromHistoryV1(
       confidenceEnhanced: fallbackConfidenceEnhanced,
       recommendation: xsRadarRecommendationV1(positionUsed, fallbackMetrics, fallbackAutoProfile, fallbackConfidenceEnhanced, fallbackMatchContext),
       matchContext: fallbackMatchContext,
+      positionPercentile: xsRadarPositionPercentileV1(positionUsed, fallbackMetrics),
       meta: { source: "fallback", positionUsed, range },
       values: xsRadarValuesByPositionV1(positionUsed, fallbackMetrics),
     };
@@ -899,6 +1040,9 @@ function xsBuildFifaRadarValuesFromHistoryV1(
   const l5 = xsRadarAvgV1(scores.slice(0, 5)) ?? fallbackAvg?.avg5 ?? fallbackScore;
   const l15 = xsRadarAvgV1(scores.slice(0, 15)) ?? fallbackAvg?.avg15 ?? fallbackScore;
   const l40 = xsRadarAvgV1(scores.slice(0, 40)) ?? fallbackAvg?.avg40 ?? fallbackScore;
+  const trendL5 = xsRadarClampV1(fallbackAvg?.avg5 ?? l5);
+  const trendL15 = xsRadarClampV1(fallbackAvg?.avg15 ?? l15);
+  const trendL40 = xsRadarClampV1(fallbackAvg?.avg40 ?? l40);
   const form = xsRadarClampV1(l5 * 0.5 + l15 * 0.3 + l40 * 0.2);
 
   const stdDev = xsRadarStdDevV1(scores);
@@ -1017,7 +1161,11 @@ function xsBuildFifaRadarValuesFromHistoryV1(
     range,
     confidence,
     detailedStats: hasDetailedStats,
+    l5: trendL5,
+    l15: trendL15,
+    l40: trendL40,
   };
+  positionMetrics.overall = xsRadarWeightedOverallByPositionV1(positionUsed, positionMetrics);
 
   const profile = xsRadarProfileV1(positionUsed, {
     attack,
@@ -1034,17 +1182,19 @@ function xsBuildFifaRadarValuesFromHistoryV1(
   const confidenceEnhanced = xsRadarConfidenceEnhancedV1(positionMetrics);
   const adjustedMatchContext = xsAdjustMatchContextWithMetricsV1(matchContext, positionMetrics);
   const recommendation = xsRadarRecommendationV1(positionUsed, positionMetrics, autoProfile, confidenceEnhanced, adjustedMatchContext);
+  const positionPercentile = xsRadarPositionPercentileV1(positionUsed, positionMetrics);
 
   return {
     confidence,
     matches,
     positionUsed,
-    overall: xsRadarWeightedOverallByPositionV1(positionUsed, positionMetrics),
+    overall: positionMetrics.overall,
     profile,
     autoProfile,
     confidenceEnhanced,
     recommendation,
     matchContext: adjustedMatchContext,
+    positionPercentile,
     meta: {
       positionUsed,
       radarPositionLabel: xsRadarChartPositionLabelV1(positionUsed),
@@ -1104,6 +1254,7 @@ export default function CardDetailScreen() {
 
   const [perf, setPerf] = useState<any>(null);
   const [historyChart, setHistoryChart] = useState<any[]>([]); // XS_HISTORY_CHART_LOGOS_LOAD_V1
+  const [realMatchContext, setRealMatchContext] = useState<XsCardMatchContextV1 | null>(null); // XS_CARD_REAL_MATCH_CONTEXT_V1
   const [state, setState] = useState<"idle" | "loading" | "ok" | "err">("idle");
   const [error, setError] = useState("");
   const [activeSeries, setActiveSeries] = useState<"L5" | "L15" | "ALL">("L5");
@@ -1183,6 +1334,37 @@ export default function CardDetailScreen() {
 
     run();
 return () => { cancelled = true; };
+  }, [playerSlug]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      if (!playerSlug) {
+        setRealMatchContext(null);
+        return;
+      }
+      try {
+        const base = xsPositionFallbackBaseUrlV1();
+        const url = `${base}/player/next-match-context/${encodeURIComponent(playerSlug)}`;
+        console.log("[card real match context] url=", url);
+        const resp = await fetch(url, { headers: { accept: "application/json" } });
+        const json = await resp.json().catch(() => null);
+        const context = xsNormalizeRealMatchContextV1(json);
+        if (!cancelled) {
+          setRealMatchContext(context && xsIsRealMatchContextUsefulV1(context) ? context : null);
+        }
+        console.log("[card real match context] resolved=", context?.opponentName || "fallback-local", context?.difficulty || "unknown");
+      } catch (e: any) {
+        if (!cancelled) setRealMatchContext(null);
+        console.log("[card real match context] fallback=", String(e?.message || e || "error"));
+      }
+    }
+
+    run();
+    return () => {
+      cancelled = true;
+    };
   }, [playerSlug]);
 
   const playerName = pickStr((card as any)?.anyPlayer?.displayName ?? (card as any)?.player?.displayName ?? perf?.playerName);
@@ -1376,9 +1558,10 @@ const avg5 = avgOf(series.l5) ?? asNum((card as any)?.l5) ?? asNum((perf as any)
           anyPlayer: (card as any)?.anyPlayer,
           perf,
         },
-        radarRange
+        radarRange,
+        realMatchContext
       ),
-    [historyChart, avg5, avg15, avg40, resolvedPosition, positionRawParam, card, perf, radarRange]
+    [historyChart, avg5, avg15, avg40, resolvedPosition, positionRawParam, card, perf, radarRange, realMatchContext]
   );
 
   function pill(label: "L5" | "L15" | "ALL") {
@@ -1510,6 +1693,7 @@ return (
         confidenceEnhanced={xsFifaRadar.confidenceEnhanced}
         recommendation={xsFifaRadar.recommendation}
         matchContext={xsFifaRadar.matchContext}
+        positionPercentile={xsFifaRadar.positionPercentile}
       />
       {/* XS_FIFA_RADAR_CARD_DETAIL_V1_END */}
 

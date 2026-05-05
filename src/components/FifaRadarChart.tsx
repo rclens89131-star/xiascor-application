@@ -32,6 +32,12 @@ type RadarMatchContext = {
   difficultyScore: number | null;
   reason: string;
 };
+type RadarPositionPercentile = {
+  percentileLabel: string;
+  deltaLabel: string;
+  tier: "elite" | "strong" | "average" | "weak";
+  reason: string;
+};
 
 function clamp(v: number) {
   if (!Number.isFinite(v)) return 0;
@@ -73,6 +79,15 @@ function matchDifficultyToneStyle(difficulty: RadarMatchContext["difficulty"]) {
   return { fg: "#9CA3AF", bg: "rgba(156,163,175,0.10)", border: "rgba(156,163,175,0.28)" };
 }
 
+/* XS_RADAR_POSITION_PERCENTILE_V1 */
+function positionPercentileToneStyle(tier: RadarPositionPercentile["tier"]) {
+  if (tier === "elite") return { fg: "#38BDF8", bg: "rgba(56,189,248,0.12)", border: "rgba(56,189,248,0.38)" };
+  if (tier === "strong") return { fg: "#22C55E", bg: "rgba(34,197,94,0.10)", border: "rgba(34,197,94,0.34)" };
+  if (tier === "weak") return { fg: "#EF4444", bg: "rgba(239,68,68,0.11)", border: "rgba(239,68,68,0.36)" };
+  return { fg: "#FACC15", bg: "rgba(250,204,21,0.10)", border: "rgba(250,204,21,0.32)" };
+}
+/* XS_RADAR_POSITION_PERCENTILE_V1_END */
+
 function matchDifficultyLabel(difficulty: RadarMatchContext["difficulty"]) {
   if (difficulty === "easy") return "facile";
   if (difficulty === "medium") return "moyenne";
@@ -100,6 +115,7 @@ export default function FifaRadarChart(props: {
   confidenceEnhanced?: RadarConfidenceEnhanced | null;
   recommendation?: RadarRecommendation | null;
   matchContext?: RadarMatchContext | null;
+  positionPercentile?: RadarPositionPercentile | null;
   subtitle?: string;
 }) {
   const values =
@@ -172,6 +188,14 @@ export default function FifaRadarChart(props: {
       reason: "Prochain adversaire non disponible.",
     };
   const matchTone = matchDifficultyToneStyle(matchContext.difficulty);
+  const positionPercentile =
+    props.positionPercentile || {
+      percentileLabel: "Comparaison poste indisponible",
+      deltaLabel: "base provisoire insuffisante",
+      tier: "average" as const,
+      reason: "Comparaison provisoire en attente de données radar suffisantes.",
+    };
+  const positionPercentileTone = positionPercentileToneStyle(positionPercentile.tier);
 
   return (
     <View
@@ -353,6 +377,29 @@ export default function FifaRadarChart(props: {
           </Text>
         </View>
         {/* XS_CARD_MATCH_CONTEXT_RECO_V1_END */}
+
+        {/* XS_RADAR_POSITION_PERCENTILE_V1 */}
+        <View
+          style={{
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: positionPercentileTone.border,
+            backgroundColor: positionPercentileTone.bg,
+            padding: 10,
+            gap: 5,
+          }}
+        >
+          <Text style={{ color: positionPercentileTone.fg, fontSize: 13, fontWeight: "900" }}>
+            Comparaison poste : {positionPercentile.percentileLabel}
+          </Text>
+          <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
+            Écart : {positionPercentile.deltaLabel}
+          </Text>
+          <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
+            Raison : {positionPercentile.reason} Comparaison provisoire sans base marché globale.
+          </Text>
+        </View>
+        {/* XS_RADAR_POSITION_PERCENTILE_V1_END */}
       </View>
 
       <View style={{ gap: 10 }}>
