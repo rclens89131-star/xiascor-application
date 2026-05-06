@@ -1,206 +1,482 @@
-﻿import React from "react";
-import { View, Text, Image, TouchableOpacity} from "react-native";
-import { theme } from "../theme";
-import PerfL5Widget from "./PerfL5Widget";
+/* XS_MES_CARTES_GALLERY_IDENTIQUE_V1 */
+import { Feather } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import React from "react";
+import { Image, Text, TouchableOpacity, View } from "react-native";
 
-/**
- * XS_TILE_RETRO_COMPAT_THEME_FIX_V1
- * - Support ancien props ET nouveau { card }
- * - Corrige theme.cardBorder -> theme.stroke
- * - Corrige theme.card -> theme.panel
- */
+type XsScoreToneV1 = {
+  main: string;
+  glow: string;
+};
 
 function xsNum(v: any): number | null {
-  return typeof v === "number" && Number.isFinite(v) ? v : null;
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim()) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
 }
 
 function xsClamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n));
 }
 
-function XSL5MiniBars({ values }: { values: number[] }) {
-  const scores = Array.isArray(values) ? values.slice(-5) : [];
-  if (scores.length === 0) return null;
+function xsSafeTextV1(value: any, fallback = "—"): string {
+  const s = value == null ? "" : String(value).trim();
+  return s || fallback;
+}
 
-  return (
-    <PerfL5Widget
-      scores={scores}
-      height={58}
-    />
+function xsScoreColorV1(score: any): XsScoreToneV1 {
+  const n = xsNum(score);
+  if (n === null) return { main: "#374151", glow: "rgba(148,163,184,0.25)" };
+  if (n < 25) return { main: "#EF1D24", glow: "rgba(239,29,36,0.24)" };
+  if (n < 40) return { main: "#F58220", glow: "rgba(245,130,32,0.26)" };
+  if (n < 60) return { main: "#FFD21A", glow: "rgba(255,210,26,0.24)" };
+  if (n < 75) return { main: "#78BE20", glow: "rgba(120,190,32,0.24)" };
+  return { main: "#18A8F5", glow: "rgba(24,168,245,0.26)" };
+}
+
+function xsAvgV1(scores: number[]): number | null {
+  const values = scores.filter((n) => Number.isFinite(n));
+  if (!values.length) return null;
+  return Math.round(values.reduce((a, b) => a + b, 0) / values.length);
+}
+
+function xsPickNumFromRowV1(row: any): number | null {
+  const raw =
+    typeof row === "number" || typeof row === "string"
+      ? row
+      : row?.score ?? row?.scoreSorare ?? row?.total ?? row?.value ?? row?.so5Score ?? row?.decisiveScore;
+  const n = xsNum(raw);
+  return n === null ? null : xsClamp(n, 0, 100);
+}
+
+function xsGetL5ScoresV1(card: any): number[] {
+  const sources = [
+    card?.l5Scores,
+    card?.l5Bars,
+    card?.recentScores,
+    card?.so5Scores,
+    card?.historyChart,
+    card?.history,
+    card?.scores,
+    card?.gameScores,
+    card?.scoreHistory,
+    card?.player?.l5Scores,
+    card?.player?.recentScores,
+    card?.anyPlayer?.l5Scores,
+    card?.anyPlayer?.recentScores,
+  ];
+
+  for (const source of sources) {
+    if (!Array.isArray(source) || source.length === 0) continue;
+    const values = source
+      .slice(-5)
+      .map(xsPickNumFromRowV1)
+      .filter((n: number | null): n is number => n !== null);
+    if (values.length) return values;
+  }
+
+  const one = xsPickNumFromRowV1(card?.l5 ?? card?.lastScore ?? card?.latestScore ?? card?.score);
+  return one === null ? [] : [one];
+}
+
+function xsGetCardImageV1(card: any): string {
+  return xsSafeTextV1(
+    card?.pictureUrl ??
+      card?.imageUrl ??
+      card?.cardPictureUrl ??
+      card?.player?.pictureUrl ??
+      card?.player?.avatarUrl ??
+      card?.anyPlayer?.pictureUrl ??
+      card?.avatarUrl,
+    ""
   );
 }
 
-
-// XS_TILE_L5_ORDER_MATCH_DETAIL_V1
-// Normalise l'ordre L5 pour que la mini-courbe ait le même sens que l'écran détail.
-// Règle visuelle: ancien -> récent, donc dernier match joué à droite.
-function xsTileNormalizeL5Order(scores: any[]): any[] {
-  const arr = Array.isArray(scores) ? scores.filter((v) => v !== null && v !== undefined) : [];
-  if (arr.length <= 1) return arr;
-
-  // Si le tableau arrive dans l'ordre récent -> ancien, on le retourne.
-  // Sur l'écran détail validé, l'ordre attendu est ancien -> récent.
-  return [...arr].reverse();
+function xsGetClubLogoV1(card: any): string {
+  return xsSafeTextV1(
+    card?.clubLogoUrl ??
+      card?.teamLogoUrl ??
+      card?.anyTeam?.pictureUrl ??
+      card?.anyTeam?.logoUrl ??
+      card?.player?.activeClub?.pictureUrl ??
+      card?.player?.activeClub?.logoUrl,
+    ""
+  );
 }
+
+function xsGetPlayerNameV1(card: any): string {
+  return xsSafeTextV1(
+    card?.displayName ??
+      card?.playerName ??
+      card?.name ??
+      card?.anyPlayer?.displayName ??
+      card?.player?.displayName ??
+      card?.anyPlayer?.name ??
+      card?.player?.name ??
+      card?.slug,
+    "Carte"
+  );
+}
+
+function xsGetClubNameV1(card: any): string {
+  return xsSafeTextV1(
+    card?.clubName ??
+      card?.teamName ??
+      card?.anyTeam?.name ??
+      card?.player?.activeClub?.name ??
+      card?.player?.clubName,
+    "—"
+  );
+}
+
+function xsGetAgeV1(card: any): string {
+  const age = xsNum(card?.age ?? card?.player?.age ?? card?.anyPlayer?.age);
+  return age === null ? "—" : String(Math.round(age));
+}
+
+function xsGetPositionV1(card: any): string {
+  const raw = xsSafeTextV1(
+    card?.position ??
+      card?.playerPosition ??
+      card?.positionRaw ??
+      card?.player?.position ??
+      card?.anyPlayer?.position ??
+      card?.player?.anyPositions?.[0] ??
+      card?.anyPlayer?.anyPositions?.[0],
+    ""
+  ).toLowerCase();
+
+  if (!raw) return "—";
+  if (raw.includes("goal") || raw === "gk") return "GK";
+  if (raw.includes("def") || raw === "df") return "DF";
+  if (raw.includes("mid") || raw === "md") return "MD";
+  if (raw.includes("forward") || raw === "fw" || raw === "fwd" || raw.includes("attacker")) return "FW";
+  return raw.toUpperCase().slice(0, 3);
+}
+
+function xsGetCountryV1(card: any): string {
+  const raw =
+    card?.countryCode ??
+    card?.country ??
+    card?.player?.countryCode ??
+    card?.player?.country ??
+    card?.anyPlayer?.countryCode ??
+    card?.anyPlayer?.country;
+
+  if (typeof raw === "string") return raw.toUpperCase().slice(0, 3) || "—";
+  if (raw?.code) return String(raw.code).toUpperCase().slice(0, 3);
+  if (raw?.name) return String(raw.name).toUpperCase().slice(0, 3);
+  return "—";
+}
+
+function xsGetStarterRateV1(card: any): string {
+  const raw =
+    card?.starterRate ??
+    card?.startRate ??
+    card?.titularity ??
+    card?.titulaireRate ??
+    card?.player?.starterRate ??
+    card?.anyPlayer?.starterRate;
+  const n = xsNum(raw);
+  if (n === null) return "—";
+  const pct = n <= 1 ? n * 100 : n;
+  return `${Math.round(xsClamp(pct, 0, 100))}%`;
+}
+
+function xsGetNextMatchV1(card: any): string {
+  const src = card?.nextMatch ?? card?.upcomingGame ?? card?.fixture ?? card?.nextGame ?? card?.player?.nextMatch;
+  if (typeof src === "string") return xsSafeTextV1(src);
+  const home = xsSafeTextV1(src?.homeTeamShortName ?? src?.homeTeam ?? src?.home ?? src?.homeTeamName, "");
+  const away = xsSafeTextV1(src?.awayTeamShortName ?? src?.awayTeam ?? src?.away ?? src?.awayTeamName, "");
+  if (home && away) return `${home} vs ${away}`;
+  const opponent = xsSafeTextV1(src?.opponentName ?? src?.opponent ?? card?.opponentName, "");
+  return opponent ? `vs ${opponent}` : "—";
+}
+
+function xsGetDifficultyV1(card: any): number | null {
+  const raw =
+    card?.fixtureDifficulty ??
+    card?.difficulty ??
+    card?.nextMatch?.difficulty ??
+    card?.upcomingGame?.difficulty ??
+    card?.player?.fixtureDifficulty;
+  const n = xsNum(raw);
+  if (n === null) return null;
+  return Math.round(xsClamp(n > 10 ? n / 10 : n, 0, 10));
+}
+
+function xsGetRarityMarkV1(card: any): string {
+  const raw = xsSafeTextV1(card?.rarityTyped ?? card?.rarity ?? card?.scarcityLabel ?? card?.scarcity, "L");
+  return raw.slice(0, 1).toUpperCase();
+}
+
+function xsGetRankV1(card: any): string {
+  const n = xsNum(card?.serialNumber ?? card?.serial ?? card?.rank ?? card?.ranking);
+  return n === null ? "#—" : `#${Math.round(n)}`;
+}
+
+function xsDifficultyBarsV1(value: number | null) {
+  const active = value === null ? 0 : Math.max(1, Math.round(xsClamp(value, 0, 10) / 10 * 7));
+  return Array.from({ length: 7 }, (_, index) => index < active);
+}
+
 export function SorareCardTile(props: any) {
+  const c = { ...(props.card || {}), ...props };
+  const width = xsNum(props.width) ?? 170;
+  const imageHeight = Math.round(width * 1.08);
+  const l5Scores = xsGetL5ScoresV1(c);
+  const l5Avg = xsNum(c?.l5Avg ?? c?.l5) ?? xsAvgV1(l5Scores);
+  const scoreTone = xsScoreColorV1(l5Avg);
+  const pictureUrl = xsGetCardImageV1(c);
+  const clubLogo = xsGetClubLogoV1(c);
+  const difficulty = xsGetDifficultyV1(c);
+  const level = xsNum(c?.level ?? c?.cardLevel ?? c?.lvl) ?? 0;
+  const scoreCircleSize = Math.max(58, Math.round(width * 0.34));
+  const scoreBoxSize = Math.max(21, Math.round(width * 0.135));
 
-  // === RETRO COMPAT MODE ===
-  const c = props.card ?? props;
-
-  const pictureUrl =
-    c.pictureUrl ??
-    c.avatarUrl ??
-    c.imageUrl ??
-    "";
-
-  const playerName =
-    c.playerName ??
-    c.name ??
-    c.slug ??
-    "Carte";
-
-  const teamName =
-    c.teamName ??
-    c.clubName ??
-    "";
-
-  const seasonYear =
-    xsNum(c.seasonYear) ??
-    xsNum(c?.season?.year) ??
-    null;
-
-  const serial =
-    xsNum(c.serialNumber) ??
-    xsNum(c.serial) ??
-    null;
-
-  const rarity =
-    c.rarityTyped ??
-    c.rarity ??
-    "";
-
-  const level =
-    xsNum(c.level) ??
-    xsNum(c.lvl) ??
-    null;
-
-  const l5Bars =
-    Array.isArray(c.l5Bars) ? c.l5Bars :
-    Array.isArray(c.l5) ? c.l5 :
-    Array.isArray(c.recentScores) ? c.recentScores :
-    undefined;
-
-  /* XS_TILE_CONDITIONAL_TOUCHABLE_V5 */
-const xsContentV5 = (
-  <>
-
-      <View style={{ padding: 10 }}>
-        <View
-          style={{
-            borderRadius: 16,
-            overflow: "hidden",
-            borderWidth: 1,
-            borderColor: theme.stroke,
-            backgroundColor: "#0e0f12",
-          }}
-        >
-          {pictureUrl ? (
-            <Image
-              source={{ uri: pictureUrl }}
-              style={{ width: "100%", aspectRatio: 0.72 }}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={{ width: "100%", aspectRatio: 0.72, alignItems: "center", justifyContent: "center" }}>
-              <Text style={{ color: theme.muted }}>Image indisponible</Text>
-            </View>
-          )}
-        </View>
-
-        <View style={{ marginTop: 10 }}>
-          <Text style={{ color: theme.text, fontWeight: "900" }} numberOfLines={1}>
-            {playerName}
-          </Text>
-
-          <Text style={{ color: theme.muted, marginTop: 2 }} numberOfLines={1}>
-            {teamName}
-          </Text>
-
-          <View style={{ flexDirection: "row", alignItems: "center", marginTop: 8 }}>
-            <Text style={{ color: theme.muted }} numberOfLines={1}>
-              {seasonYear ?? "—"}{"  "}•{"  "}
-              {serial ? "#" + serial : "#—"}{"  "}•{"  "}
-              {rarity || "—"}
-            </Text>
-
-            <View style={{ flex: 1 }} />
-
-            <PerfL5Widget scores={xsTileNormalizeL5Order(l5Bars || [])} height={58} />
-          </View>
-
-          {level !== null && (
-            <View style={{
-              marginTop: 10,
-              alignSelf: "flex-start",
-              paddingHorizontal: 10,
-              paddingVertical: 6,
-              borderRadius: 999,
-              backgroundColor: "#15171C",
-              borderWidth: 1,
-              borderColor: theme.stroke
-            }}>
-              <Text style={{ color: theme.text, fontWeight: "900" }}>
-                LVL {level}
-              </Text>
-            </View>
-          )}
-        </View>
-      </View>
-    
-  </>
-);
-
-if (!props?.onPress) {
-  return (
-    <View style={{
-        width: props.width,
-        borderRadius: 18,
-        borderWidth: 1,
-        borderColor: theme.stroke,
-        backgroundColor: theme.panel,
-        overflow: "hidden",
-      }}>
-      {xsContentV5}
-    </View>
-  );
-}
-
-return (
-  <TouchableOpacity
-      
-      activeOpacity={0.9}
-      onPress={props.onPress}
+  const content = (
+    <View
       style={{
-        width: props.width,
+        width,
         borderRadius: 18,
-        borderWidth: 1,
-        borderColor: theme.stroke,
-        backgroundColor: theme.panel,
+        borderWidth: 1.4,
+        borderColor: "rgba(176,146,78,0.72)",
+        backgroundColor: "#050607",
         overflow: "hidden",
+        shadowColor: "#000",
+        shadowOpacity: 0.28,
+        shadowRadius: 10,
+        shadowOffset: { width: 0, height: 5 },
       }}
     >
-    {xsContentV5}
-  </TouchableOpacity>
-);}
+      <View style={{ height: imageHeight, backgroundColor: "#111827", overflow: "hidden" }}>
+        {pictureUrl ? (
+          <Image source={{ uri: pictureUrl }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+        ) : (
+          <LinearGradient
+            colors={["#382A0E", "#111827", "#030507"]}
+            style={{ width: "100%", height: "100%", alignItems: "center", justifyContent: "center" }}
+          >
+            <Feather name="user" size={42} color="rgba(255,255,255,0.42)" />
+          </LinearGradient>
+        )}
 
+        <LinearGradient
+          colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.55)", "rgba(0,0,0,0.95)"]}
+          locations={[0, 0.48, 1]}
+          style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: Math.round(imageHeight * 0.58) }}
+        />
+        <LinearGradient
+          colors={["rgba(121,88,15,0.42)", "rgba(0,0,0,0)"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0.75 }}
+          style={{ position: "absolute", left: 0, right: 0, top: 0, height: Math.round(imageHeight * 0.45) }}
+        />
 
+        <View style={{ position: "absolute", top: 12, left: 12 }}>
+          <Text style={{ color: "#FFFFFF", fontSize: 21, fontWeight: "900", fontStyle: "italic" }}>
+            {xsGetRarityMarkV1(c)}
+          </Text>
+        </View>
 
+        <View
+          style={{
+            position: "absolute",
+            top: 10,
+            left: Math.round(width * 0.24),
+            paddingHorizontal: 9,
+            paddingVertical: 5,
+            borderRadius: 8,
+            backgroundColor: "rgba(0,0,0,0.56)",
+          }}
+        >
+          <Text style={{ color: "#F8FAFC", fontWeight: "900", fontSize: 14 }}>{xsGetRankV1(c)}</Text>
+        </View>
 
+        <View
+          style={{
+            position: "absolute",
+            top: 10,
+            right: 10,
+            width: 38,
+            height: 38,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: "rgba(245,183,0,0.58)",
+            backgroundColor: "rgba(0,0,0,0.58)",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Feather name="star" size={21} color="#FFD028" fill="#FFD028" />
+        </View>
 
+        <Text
+          style={{
+            position: "absolute",
+            right: 8,
+            top: Math.round(imageHeight * 0.23),
+            color: "rgba(255,255,255,0.58)",
+            fontSize: 12,
+            transform: [{ rotate: "-90deg" }],
+          }}
+        >
+          © sorare
+        </Text>
 
+        <View style={{ position: "absolute", left: 12, top: Math.round(imageHeight * 0.22), gap: 4 }}>
+          {clubLogo ? (
+            <Image source={{ uri: clubLogo }} style={{ width: 33, height: 33 }} resizeMode="contain" />
+          ) : null}
+          <Text style={{ color: "#FFFFFF", fontSize: 22, lineHeight: 24, fontWeight: "900" }}>{xsGetAgeV1(c)}</Text>
+          <Text style={{ color: "#D1D5DB", fontSize: 12, lineHeight: 13, fontWeight: "700" }}>ANS</Text>
+          <Text style={{ color: "#FFFFFF", fontSize: 19, lineHeight: 24, fontWeight: "900" }}>{xsGetPositionV1(c)}</Text>
+          <Text style={{ color: "#D1D5DB", fontSize: 11, lineHeight: 13, fontWeight: "800" }}>{xsGetCountryV1(c)}</Text>
+        </View>
 
+        <View style={{ position: "absolute", left: 12, right: scoreCircleSize + 18, bottom: 14 }}>
+          <Text
+            style={{ color: "#FFFFFF", fontSize: 27, lineHeight: 30, fontWeight: "900", letterSpacing: 0 }}
+            numberOfLines={2}
+            adjustsFontSizeToFit
+            minimumFontScale={0.72}
+          >
+            {xsGetPlayerNameV1(c).toUpperCase()}
+          </Text>
+          <Text style={{ color: "#D1D5DB", fontSize: 15, marginTop: 2 }} numberOfLines={1}>
+            {xsGetClubNameV1(c)}
+          </Text>
+        </View>
 
+        <View
+          style={{
+            position: "absolute",
+            right: 10,
+            bottom: 10,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <View
+            style={{
+              width: scoreCircleSize,
+              height: scoreCircleSize,
+              borderRadius: 999,
+              borderWidth: 5,
+              borderColor: scoreTone.main,
+              backgroundColor: "rgba(0,0,0,0.72)",
+              alignItems: "center",
+              justifyContent: "center",
+              shadowColor: scoreTone.main,
+              shadowOpacity: 0.38,
+              shadowRadius: 8,
+            }}
+          >
+            <Text style={{ color: "#FFFFFF", fontWeight: "900", fontSize: Math.round(scoreCircleSize * 0.43), lineHeight: Math.round(scoreCircleSize * 0.48) }}>
+              {l5Avg === null ? "—" : l5Avg}
+            </Text>
+          </View>
+          <Text style={{ color: "#FFFFFF", fontWeight: "900", fontSize: 12, marginTop: 3 }}>L5 MOY.</Text>
+        </View>
+      </View>
 
+      <View style={{ borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.13)", paddingHorizontal: 12, paddingTop: 12, paddingBottom: 10 }}>
+        <View style={{ flexDirection: "row", alignItems: "stretch" }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ color: "#C7CBD1", fontSize: 11, fontWeight: "800" }} numberOfLines={1}>
+              5 DERNIERS MATCHS (L5)
+            </Text>
+            <View style={{ flexDirection: "row", gap: 5, marginTop: 8 }}>
+              {Array.from({ length: 5 }, (_, i) => {
+                const score = l5Scores[i];
+                const tone = xsScoreColorV1(score);
+                return (
+                  <View
+                    key={`l5-${i}`}
+                    style={{
+                      width: scoreBoxSize,
+                      height: scoreBoxSize,
+                      borderRadius: 6,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: score == null ? "#1F2937" : tone.main,
+                    }}
+                  >
+                    <Text style={{ color: score != null && score >= 75 ? "#FFFFFF" : "#050607", fontSize: 12, fontWeight: "900" }}>
+                      {score == null ? "—" : Math.round(score)}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
 
+          <View style={{ width: 1, backgroundColor: "rgba(255,255,255,0.16)", marginHorizontal: 10 }} />
 
+          <View style={{ width: Math.max(60, Math.round(width * 0.25)), alignItems: "center", justifyContent: "center" }}>
+            <Text style={{ color: "#C7CBD1", fontSize: 11, fontWeight: "800" }}>TITULAIRE</Text>
+            <Text style={{ color: "#FFFFFF", fontSize: 23, fontWeight: "900", marginTop: 8 }}>{xsGetStarterRateV1(c)}</Text>
+          </View>
+        </View>
+      </View>
 
+      <View style={{ borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.13)", paddingHorizontal: 12, paddingVertical: 11 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
+          <View style={{ flex: 1.1, minWidth: 0 }}>
+            <Text style={{ color: "#AEB4BD", fontSize: 10, fontWeight: "900" }}>PROCHAIN MATCH</Text>
+            <Text style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "900", marginTop: 7 }} numberOfLines={1}>
+              {xsGetNextMatchV1(c)}
+            </Text>
+          </View>
+
+          <View style={{ width: 1, height: 42, backgroundColor: "rgba(255,255,255,0.14)" }} />
+
+          <View style={{ flex: 0.96, minWidth: 0 }}>
+            <Text style={{ color: "#AEB4BD", fontSize: 10, fontWeight: "900" }}>DIFFICULTÉ</Text>
+            <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 4, marginTop: 7 }}>
+              <Text style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "900", marginRight: 2 }}>{difficulty === null ? "—" : `${difficulty}/10`}</Text>
+              {xsDifficultyBarsV1(difficulty).map((active, index) => (
+                <View
+                  key={`diff-${index}`}
+                  style={{
+                    width: 5,
+                    height: 7 + index * 2,
+                    borderRadius: 1.5,
+                    backgroundColor: active ? "#F59E0B" : "rgba(255,255,255,0.2)",
+                  }}
+                />
+              ))}
+            </View>
+          </View>
+
+          <View
+            style={{
+              minWidth: 54,
+              height: 40,
+              borderRadius: 9,
+              borderWidth: 1,
+              borderColor: "rgba(148,163,184,0.32)",
+              backgroundColor: "rgba(17,24,39,0.72)",
+              alignItems: "center",
+              justifyContent: "center",
+              paddingHorizontal: 8,
+            }}
+          >
+            <Text style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "900" }}>LVL {level}</Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+
+  if (!props?.onPress) return content;
+
+  return (
+    <TouchableOpacity activeOpacity={0.9} onPress={props.onPress} style={{ width }}>
+      {content}
+    </TouchableOpacity>
+  );
+}

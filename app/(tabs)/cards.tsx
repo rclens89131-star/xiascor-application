@@ -4,6 +4,8 @@
 /* XS_CARDS_CENTER_2COL_V1 */
 /* XS_MYCARDS_REMOVE_UNDER_META_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Feather } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { xsCardNavSet } from "../_lib/cardNavCache";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -142,54 +144,10 @@ type MyCardItemLocal = {
 /* XS_MY_CARDS_UI_TYPING_V1_END */
 function cardKey(card: MyCardItemLocal) {
   return String(
-    card?.slug ||
-      `${card?.anyPlayer?.displayName || card?.player?.displayName || "unknown"}
-
-/* XS_CARDS_L15_LAST_V1 — helpers safe (L15 + last score) */
-function getL15Value(card: any): number | null {
-const v =
-    card?.l15 ??
-    card?.L15 ??
-    card?.l15Score ??
-    card?.scoreL15 ??
-    card?.player?.l15 ??
-    card?.card?.l15 ??
-    null;
-const n = typeof v === "number" ? v : (typeof v === "string" ? Number(v) : NaN);
-  return Number.isFinite(n) ? n : null;
-}
-function getLastScoreValue(card: any): number | null {
-const direct =
-    card?.lastScore ??
-    card?.last_score ??
-    card?.score ??
-    card?.lastGameScore ??
-    null;
-
-  if (typeof direct === "number") return Number.isFinite(direct) ? direct : null;
-  if (typeof direct === "string") {
-const n = Number(direct);
-    return Number.isFinite(n) ? n : null;
-  }
-const arr =
-    card?.scores ??
-    card?.gameScores ??
-    card?.scoreHistory ??
-    card?.games ??
-    card?.recentScores ??
-    null;
-
-  if (Array.isArray(arr) && arr.length > 0) {
-const last = arr[arr.length - 1];
-const v = last?.score ?? last?.total ?? last?.value ?? last;
-const n = typeof v === "number" ? v : (typeof v === "string" ? Number(v) : NaN);
-    return Number.isFinite(n) ? n : null;
-  }
-
-  return null;
-}
-/* XS_CARDS_L15_LAST_V1_END */
--${card?.seasonYear || "na"}-${card?.serialNumber || "na"}`
+    (card as any)?.id ||
+      (card as any)?.cardId ||
+      card?.slug ||
+      `${card?.anyPlayer?.displayName || card?.player?.displayName || "unknown"}-${card?.seasonYear || "na"}-${card?.serialNumber || "na"}`
   );
 }
 
@@ -399,7 +357,9 @@ const xsL5Mini =
       style={{ alignSelf: "stretch" }}
     >
 <SorareCardTile
-width={xsTileWidth2col(width)} imageUrl={xsSafeStr(card?.pictureUrl)}
+      card={card}
+      width={xsTileWidth2col(width)}
+      imageUrl={xsSafeStr(card?.pictureUrl)}
       playerName={playerName}
       clubName={clubName}
       seasonLabel={season}
@@ -420,8 +380,8 @@ width={xsTileWidth2col(width)} imageUrl={xsSafeStr(card?.pictureUrl)}
   
 /* XS_CARDS_2COL_WIDTH_V1_BEGIN */
 /* XS_MYCARDS_WIDEN_GRID_REAL_V1 — constants (module scope) */
-const XS_MYCARDS_PAD = 8;
-const XS_MYCARDS_GAP = 8;
+const XS_MYCARDS_PAD = 16; /* XS_MES_CARTES_GALLERY_IDENTIQUE_V1 */
+const XS_MYCARDS_GAP = 12;
 /* XS_MYCARDS_WIDEN_GRID_REAL_V1 — width math */
 function xsTileWidth2col(screenW: number): number {
   // 2 colonnes + padding + gap => chaque tuile prend (presque) toute la largeur dispo
@@ -575,101 +535,135 @@ const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
   }, [width]);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#030507" }}>
+      <LinearGradient
+        colors={["#070A0E", "#030507", "#000000"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0.9, y: 1 }}
+        style={{ flex: 1 }}
+      >
+        <View style={{ paddingHorizontal: XS_MYCARDS_PAD, paddingTop: 10, paddingBottom: 12, gap: 14 }}>
+          <Text style={{ color: "#F8FAFC", fontSize: 38, lineHeight: 44, fontWeight: "900", letterSpacing: 0 }}>
+            Mes cartes
+          </Text>
 
-      <View style={{ padding: 16, gap: 10 }}>
-        <Text style={{ color: theme.text, fontSize: 22, fontWeight: "900" }}>Mes cartes</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <Pressable
+              onPress={onSync}
+              disabled={syncing || loading}
+              style={{
+                height: 48,
+                paddingHorizontal: 16,
+                borderRadius: 10,
+                backgroundColor: "rgba(4,10,18,0.92)",
+                borderWidth: 1.5,
+                borderColor: "rgba(37,150,255,0.95)",
+                opacity: syncing || loading ? 0.66 : 1,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 10,
+              }}
+            >
+              <Feather name="refresh-cw" size={20} color="#F8FAFC" />
+              <Text style={{ color: "#F8FAFC", fontWeight: "900", fontSize: 16 }} numberOfLines={1}>
+                {syncing ? "Sync..." : "Synchroniser"}
+              </Text>
+            </Pressable>
 
-        <Pressable
-          onPress={onSync}
-          disabled={syncing || loading}
-          style={{
-            paddingHorizontal: 12,
-            paddingVertical: 10,
-            alignSelf: "flex-start",
-            borderRadius: 14,
-            backgroundColor: "rgba(59,130,246,0.18)",
-            borderWidth: 1,
-            borderColor: "rgba(59,130,246,0.35)",
-            opacity: syncing || loading ? 0.7 : 1,
-          }}
-        >
-          <Text style={{ color: theme.text, fontWeight: "900" }}>{syncing ? "Synchronisation…" : "Synchroniser"}</Text>
-</Pressable>
+            <View style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 9 }}>
+              <View style={{ width: 13, height: 13, borderRadius: 999, backgroundColor: "#36C54A" }} />
+              <Text style={{ color: "#A4A7AE", fontSize: 16, flexShrink: 1 }} numberOfLines={1}>
+                {lastSync ? `Dernière sync: ${lastSync}` : "Dernière sync: —"}
+              </Text>
+            </View>
 
-        {error ? (
-          <Text style={{ color: theme.bad, fontWeight: "800" }}>Erreur: {error}</Text>
-        ) : (
-          <View style={{ gap: 2 }}>
-            {lastSync ? <Text style={{ color: theme.muted }}>Dernière sync: {lastSync}</Text> : null}
-          </View>
-        )}
-      </View>
-
-      {loading ? (
-        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-          <ActivityIndicator />
-          <Text style={{ color: theme.muted, marginTop: 8 }}>Chargement…</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={items}
-          keyExtractor={(item) => cardKey(item)}
-        contentContainerStyle={{ paddingHorizontal: XS_MYCARDS_PAD, paddingBottom: 120 }}
-        columnWrapperStyle={{ justifyContent: "space-between", gap: XS_MYCARDS_GAP }}
-        numColumns={2}
-          onEndReachedThreshold={0.6}
-          renderItem={({ item, index }) => {
-            /* XS_MYCARDS_WIDEN_GRID_REAL_V2 — removed isLeft (gap handled by columnWrapperStyle) */
-            return (
-              <View
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <Pressable
                 style={{
-                  /* XS_MYCARDS_WIDEN_GRID_REAL_V2 */
-                  width: xsTileWidth2col(width),
-                  marginBottom: XS_MYCARDS_GAP,
+                  width: 48,
+                  height: 48,
+                  borderRadius: 12,
+                  borderWidth: 1.2,
+                  borderColor: "rgba(148,163,184,0.35)",
+                  backgroundColor: "rgba(3,7,12,0.92)",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
               >
-                <CardTile card={item} width={width}  l5Cache={xsL5Cache} />{/* XS_MYCARDS_TILEWIDTH_CALL_FIX_V1 */}
-                {/* XS_MYCARDS_UI_META_ITEM_V1 */}
-                {(() => {
-const player =
-                    xsTxt((item as any)?.anyPlayer?.displayName) ||
-                    xsTxt((item as any)?.player?.displayName) ||
-                    xsTxt((item as any)?.anyPlayer?.slug) ||
-                    "—";
-const club =
-                    xsTxt((item as any)?.anyTeam?.name) ||
-                    xsTxt((item as any)?.player?.activeClub?.name) ||
-                    xsTxt((item as any)?.anyTeam?.slug) ||
-                    "—";
-const grade = xsNum((item as any)?.grade);
-  /* XS_UI_L5L15_V1 */
-const l5  = xsNum((item as any)?.l5);
-const bonus = xsBonusPctFromPower((item as any)?.power);
-                  return null; // XS_FIX_EMPTY_RETURN_V1
-                })()}
-              </View>
-            );
-          }}
-          ListFooterComponent={
-            loadingMore ? (
-              <View style={{ paddingVertical: 16 }}>
-                <ActivityIndicator />
-              </View>
-            ) : (
-              <View style={{ height: 16 }} />
-            )
-          }
-          ListEmptyComponent={
-            <View style={{ padding: 16 }}>
-              <Text style={{ color: theme.muted }}>Aucune carte en cache. Lance une synchronisation.</Text>
-              <Pressable onPress={onSync} style={{ marginTop: 12 }}>
-                <Text style={{ color: theme.accent, fontWeight: "900" }}>Synchroniser</Text>
-</Pressable>
+                <Feather name="filter" size={23} color="#F8FAFC" />
+              </Pressable>
+              <Pressable
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 12,
+                  borderWidth: 1.2,
+                  borderColor: "rgba(148,163,184,0.35)",
+                  backgroundColor: "rgba(3,7,12,0.92)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <View style={{ alignItems: "center", justifyContent: "center", marginTop: 2 }}>
+                  <Feather name="arrow-up" size={19} color="#F8FAFC" style={{ marginBottom: -6 }} />
+                  <Feather name="arrow-down" size={19} color="#F8FAFC" />
+                </View>
+              </Pressable>
             </View>
-          }
-        />
-      )}
+          </View>
+
+          {error ? (
+            <Text style={{ color: theme.bad, fontWeight: "800" }}>Erreur: {error}</Text>
+          ) : null}
+        </View>
+
+        {loading ? (
+          <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+            <ActivityIndicator color="#60A5FA" />
+            <Text style={{ color: "#A4A7AE", marginTop: 8 }}>Chargement...</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={items}
+            keyExtractor={(item) => cardKey(item)}
+            contentContainerStyle={{ paddingHorizontal: XS_MYCARDS_PAD, paddingBottom: 120 }}
+            columnWrapperStyle={{ justifyContent: "center", gap: XS_MYCARDS_GAP }}
+            numColumns={2}
+            onEndReachedThreshold={0.6}
+            onEndReached={loadMore}
+            renderItem={({ item }) => {
+              return (
+                <View
+                  style={{
+                    width: xsTileWidth2col(width),
+                    marginBottom: XS_MYCARDS_GAP,
+                  }}
+                >
+                  <CardTile card={item} width={width} l5Cache={xsL5Cache} />
+                </View>
+              );
+            }}
+            ListFooterComponent={
+              loadingMore ? (
+                <View style={{ paddingVertical: 16 }}>
+                  <ActivityIndicator color="#60A5FA" />
+                </View>
+              ) : (
+                <View style={{ height: 16 }} />
+              )
+            }
+            ListEmptyComponent={
+              <View style={{ padding: 16 }}>
+                <Text style={{ color: "#A4A7AE" }}>Aucune carte en cache. Lance une synchronisation.</Text>
+                <Pressable onPress={onSync} style={{ marginTop: 12 }}>
+                  <Text style={{ color: theme.accent, fontWeight: "900" }}>Synchroniser</Text>
+                </Pressable>
+              </View>
+            }
+          />
+        )}
+      </LinearGradient>
     </SafeAreaView>
   );
   /* XS_MY_CARDS_UI_V1_END */
