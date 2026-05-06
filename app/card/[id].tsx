@@ -748,6 +748,81 @@ function xsMcFutureRowsV1(historyChart: any[]): any[] {
     });
 }
 
+/* XS_COACH_MATCH_LOGO_HISTORY_FALLBACK_V3 */
+function xsMcPickOpponentLogoUrlV2(row: any): string | null {
+  try {
+    return xsMcFirstTextV1([
+      row?.opponentLogoUrl,
+      row?.logoUrl,
+      row?.clubLogoUrl,
+      row?.teamLogoUrl,
+      row?.crestUrl,
+      row?.pictureUrl,
+      row?.opponentClub?.logoUrl,
+      row?.opponentClub?.pictureUrl,
+      row?.opponentTeam?.logoUrl,
+      row?.opponentTeam?.pictureUrl,
+      row?.opponent?.logoUrl,
+      row?.opponent?.pictureUrl,
+      row?.team?.logoUrl,
+      row?.team?.pictureUrl,
+      row?.club?.logoUrl,
+      row?.club?.pictureUrl,
+    ]);
+  } catch {
+    return null;
+  }
+}
+
+function xsMcFindOpponentLogoFromHistoryV2(historyChart: any[], opponentName: any): string | null {
+  try {
+    const rows = Array.isArray(historyChart) ? historyChart : [];
+    if (!rows.length) return null;
+    const normalize = (value: any) =>
+      String(xsMcTextV1(value) || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+    const target = normalize(opponentName);
+    if (target) {
+      for (const row of rows) {
+        const names = [
+          row?.opponent,
+          row?.opponentName,
+          row?.teamName,
+          row?.clubName,
+          row?.opponent?.displayName,
+          row?.opponent?.name,
+          row?.opponentTeam?.shortName,
+          row?.opponentTeam?.name,
+          row?.opponentClub?.displayName,
+          row?.opponentClub?.name,
+          row?.team?.displayName,
+          row?.team?.name,
+          row?.club?.displayName,
+          row?.club?.name,
+        ]
+          .map(normalize)
+          .filter(Boolean);
+        const matched = names.some((name) => name === target || name.includes(target) || target.includes(name));
+        if (matched) {
+          const logoUrl = xsMcPickOpponentLogoUrlV2(row);
+          if (logoUrl) return logoUrl;
+        }
+      }
+    }
+    for (const row of rows) {
+      const logoUrl = xsMcPickOpponentLogoUrlV2(row);
+      if (logoUrl) return logoUrl;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 function xsBuildMatchContextV1(card: any, perf: any, historyChart: any[]): XsCardMatchContextV1 {
   const futureRows = xsMcFutureRowsV1(historyChart);
   const future = futureRows[0] || null;
@@ -776,7 +851,7 @@ function xsBuildMatchContextV1(card: any, perf: any, historyChart: any[]): XsCar
     s?.nextMatch?.opponentLogoUrl,
     s?.fixture?.opponentLogoUrl,
     s?.teamLogoUrl,
-  ]));
+  ])) || xsMcFindOpponentLogoFromHistoryV2(historyChart, opponentName);
   const competition = xsMcFirstTextV1(sources.flatMap((s: any) => [
     s?.competition,
     s?.competitionName,
