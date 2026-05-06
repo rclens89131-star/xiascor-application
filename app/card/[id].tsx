@@ -450,8 +450,10 @@ type XsRadarPositionPercentileV1 = {
 };
 
 type XsCardMatchContextV1 = {
+  /* XS_COACH_DECISION_UI_CLEAN_V2 */
   opponentName: string | null;
   opponentSlug?: string | null;
+  opponentLogoUrl?: string | null;
   competition: string | null;
   homeAway: "home" | "away" | "unknown";
   matchDate: string | null;
@@ -764,6 +766,17 @@ function xsBuildMatchContextV1(card: any, perf: any, historyChart: any[]): XsCar
     s?.awayTeam?.name,
     s?.homeTeam?.name,
   ]));
+  const opponentLogoUrl = xsMcFirstTextV1(sources.flatMap((s: any) => [
+    s?.opponentLogoUrl,
+    s?.opponent?.logoUrl,
+    s?.opponent?.pictureUrl,
+    s?.nextOpponentLogoUrl,
+    s?.nextMatchOpponentLogoUrl,
+    s?.nextMatch?.logoUrl,
+    s?.nextMatch?.opponentLogoUrl,
+    s?.fixture?.opponentLogoUrl,
+    s?.teamLogoUrl,
+  ]));
   const competition = xsMcFirstTextV1(sources.flatMap((s: any) => [
     s?.competition,
     s?.competitionName,
@@ -787,6 +800,7 @@ function xsBuildMatchContextV1(card: any, perf: any, historyChart: any[]): XsCar
   if (!opponentName) {
     return {
       opponentName: null,
+      opponentLogoUrl,
       competition,
       homeAway,
       matchDate,
@@ -832,6 +846,7 @@ function xsBuildMatchContextV1(card: any, perf: any, historyChart: any[]): XsCar
   const difficulty = difficultyScore >= 62 ? "hard" : difficultyScore <= 42 ? "easy" : "medium";
   return {
     opponentName,
+    opponentLogoUrl,
     competition,
     homeAway,
     matchDate,
@@ -882,6 +897,17 @@ function xsNormalizeRealMatchContextV1(value: any): XsCardMatchContextV1 | null 
   return {
     opponentName: xsMcTextV1(value.opponentName),
     opponentSlug: xsMcTextV1(value.opponentSlug),
+    opponentLogoUrl: xsMcFirstTextV1([
+      value.opponentLogoUrl,
+      value?.opponent?.logoUrl,
+      value?.opponent?.pictureUrl,
+      value.nextOpponentLogoUrl,
+      value.nextMatchOpponentLogoUrl,
+      value?.nextMatch?.logoUrl,
+      value?.nextMatch?.opponentLogoUrl,
+      value?.fixture?.opponentLogoUrl,
+      value.teamLogoUrl,
+    ]),
     competition: xsMcTextV1(value.competition),
     homeAway,
     matchDate: xsMcTextV1(value.matchDate),
@@ -1588,7 +1614,13 @@ function xsBuildFifaRadarValuesFromHistoryV1(
 ) {
   const positionUsed = xsRadarNormalizePositionV1(positionSource);
   const localMatchContext = xsBuildMatchContextV1(positionSource?.card, positionSource?.perf, historyChart);
-  const matchContext = xsIsRealMatchContextUsefulV1(realMatchContext) ? realMatchContext as XsCardMatchContextV1 : localMatchContext;
+  const matchContext = xsIsRealMatchContextUsefulV1(realMatchContext)
+    ? {
+        ...localMatchContext,
+        ...(realMatchContext as XsCardMatchContextV1),
+        opponentLogoUrl: (realMatchContext as XsCardMatchContextV1)?.opponentLogoUrl || localMatchContext.opponentLogoUrl || null,
+      }
+    : localMatchContext;
   const rangeLimit = xsRadarLimitForRangeV1(range);
   const fallbackScore =
     xsRadarAvgV1([fallbackAvg?.avg5, fallbackAvg?.avg15, fallbackAvg?.avg40]) ?? 50;

@@ -1,5 +1,7 @@
 ﻿import React from "react";
-import { View, Text } from "react-native";
+import { Image, View, Text } from "react-native";
+
+/* XS_COACH_DECISION_UI_CLEAN_V2 */
 
 type RadarValue = {
   label: string;
@@ -48,6 +50,7 @@ type RadarDecisionV2 = {
 };
 type RadarMatchContext = {
   opponentName: string | null;
+  opponentLogoUrl?: string | null;
   competition: string | null;
   homeAway: "home" | "away" | "unknown";
   matchDate: string | null;
@@ -219,6 +222,19 @@ function premiumStatsDetailsLabelV1(reason: string) {
   if (/proxy|absent|indispon|non disponible/i.test(reason)) return "Stats détaillées non confirmées";
   return "Stats détaillées : —";
 }
+
+function premiumShortDateV1(value: string) {
+  const raw = String(value || "").trim();
+  if (!raw || raw === "—") return "—";
+  const date = new Date(raw);
+  if (!Number.isFinite(date.getTime())) return raw.length > 18 ? raw.slice(0, 18) : raw;
+  const dd = String(date.getDate()).padStart(2, "0");
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const yyyy = String(date.getFullYear());
+  const hh = String(date.getHours()).padStart(2, "0");
+  const min = String(date.getMinutes()).padStart(2, "0");
+  return `${dd}/${mm}/${yyyy} · ${hh}:${min}`;
+}
 /* XS_RADAR_PREMIUM_DECISION_CARD_V1_END */
 
 export default function FifaRadarChart(props: {
@@ -358,6 +374,16 @@ export default function FifaRadarChart(props: {
   const premiumVerdict = premiumDecisionVerdictV1(decisionV2.finalLabel, decisionV2.finalTone);
   const premiumIcon = premiumDecisionIconV1(decisionV2.finalTone);
   const premiumScore = Math.round(clamp(coachDecision.score));
+  const premiumSummaryShort =
+    decisionV2.finalTone === "strongPlay" || decisionV2.finalTone === "play"
+      ? "Bonne option pour ce match."
+      : decisionV2.finalTone === "joker"
+        ? "Différentiel intéressant."
+        : decisionV2.finalTone === "risk"
+          ? "Pari risqué, prudence."
+          : decisionV2.finalTone === "avoid"
+            ? "Signaux trop négatifs."
+            : "Décision à arbitrer.";
   const decisionBullets = (decisionV2.bullets || [])
     .map((item) => String(item || "").trim())
     .filter(Boolean);
@@ -387,7 +413,7 @@ export default function FifaRadarChart(props: {
     .slice(0, 3);
   const displayedRisks = riskItems.length ? riskItems : ["—"];
   const confidenceScore = Math.round(clamp(confidenceEnhanced.score));
-  const matchDateLabel = safeTextV1(matchContext.matchDate);
+  const matchDateLabel = premiumShortDateV1(safeTextV1(matchContext.matchDate));
   const premiumWhy = displayedWhy.slice(0, 3);
   const premiumRisks = displayedRisks.slice(0, 2);
   const volatilityLabel = premiumVolatilityLabelV1(volatility);
@@ -397,7 +423,11 @@ export default function FifaRadarChart(props: {
       ? `(${Math.round(clamp(matchContext.difficultyScore))}/100)`
       : "";
   const positionDeltaValue = premiumDeltaValueV1(positionPercentile.deltaLabel);
-  const statsDetailsLabel = premiumStatsDetailsLabelV1(confidenceEnhanced.reason);
+  const opponentLogoUrl = String(matchContext.opponentLogoUrl || "").trim();
+  const calcLabel = String(coachDecision.windowBlendLabel || "")
+    .replace(/^Calcul\s*:\s*/i, "")
+    .trim();
+  const confidenceLine = `${hasMatches ? `${Math.max(0, Math.round(props.matches || 0))} matchs utilisés` : "—"} · fenêtre ${activeRange}`;
   const v3WhyItems = [
     {
       icon: "↗",
@@ -423,12 +453,12 @@ export default function FifaRadarChart(props: {
       ? "Risque moyen"
       : "Risque contenu";
   const v3RiskText = volatility === "high"
-    ? "Scores instables, peut manquer de constance."
+    ? "Scores instables"
     : volatility === "medium"
-      ? "Quelques variations à surveiller."
+      ? "Temps de jeu variable"
       : "Profil plutôt stable.";
-  const v3ProfileTitle = positionPercentile.percentileLabel || "Profil local";
-  const v3ProfileText = positionPercentile.reason || "Comparaison locale provisoire.";
+  const v3ProfileTitle = positionDeltaValue.startsWith("-") ? "Sous la moyenne locale" : "Au-dessus de la moyenne locale";
+  const v3ProfileText = `Score ajusté ${activeRange} : ${Math.round(avg)}`;
 
   return (
     <View
@@ -564,12 +594,12 @@ export default function FifaRadarChart(props: {
           </Text>
         </View>
 
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           <View
             style={{
-              width: 54,
-              height: 54,
-              borderRadius: 16,
+              width: 48,
+              height: 48,
+              borderRadius: 15,
               backgroundColor: premiumTone.fg,
               alignItems: "center",
               justifyContent: "center",
@@ -579,7 +609,7 @@ export default function FifaRadarChart(props: {
               shadowOffset: { width: 0, height: 6 },
             }}
           >
-            <Text style={{ color: "#FFFFFF", fontSize: 34, fontWeight: "900" }}>
+            <Text style={{ color: "#FFFFFF", fontSize: 29, fontWeight: "900" }}>
               {premiumIcon}
             </Text>
           </View>
@@ -589,37 +619,38 @@ export default function FifaRadarChart(props: {
               numberOfLines={1}
               adjustsFontSizeToFit
               minimumFontScale={0.68}
-              style={{ color: premiumTone.fg, fontSize: 34, lineHeight: 38, fontWeight: "900", letterSpacing: 0 }}
+              ellipsizeMode="tail"
+              style={{ color: premiumTone.fg, fontSize: 30, lineHeight: 34, fontWeight: "900", letterSpacing: 0 }}
             >
               {premiumVerdict}
             </Text>
-            <Text numberOfLines={2} style={{ color: "#F8FAFC", fontSize: 13, lineHeight: 17, marginTop: 1 }}>
-              {safeTextV1(decisionV2.summary || recommendation.reason)}
+            <Text numberOfLines={2} ellipsizeMode="tail" style={{ color: "#F8FAFC", fontSize: 12, lineHeight: 16, marginTop: 1, flexShrink: 1 }}>
+              {premiumSummaryShort}
             </Text>
-            {coachDecision.windowBlendLabel ? (
-              <Text numberOfLines={1} style={{ color: "#CBD5E1", fontSize: 11, lineHeight: 15, marginTop: 4, fontWeight: "800" }}>
-                {coachDecision.windowBlendLabel}
+            {calcLabel ? (
+              <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: "#CBD5E1", fontSize: 10, lineHeight: 14, marginTop: 3, fontWeight: "800" }}>
+                {calcLabel}
               </Text>
             ) : null}
           </View>
 
           <View
             style={{
-              width: 86,
+              width: 76,
               borderRadius: 14,
               borderWidth: 1.5,
               borderColor: "rgba(148,163,184,0.28)",
               backgroundColor: "rgba(15,23,42,0.66)",
-              paddingVertical: 8,
-              paddingHorizontal: 7,
+              paddingVertical: 7,
+              paddingHorizontal: 6,
               alignItems: "center",
             }}
           >
-            <Text style={{ color: "#F8FAFC", fontSize: 9, fontWeight: "900", letterSpacing: 0 }}>
-              SCORE COACH
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={{ color: "#F8FAFC", fontSize: 8, fontWeight: "900", letterSpacing: 0 }}>
+              SCORE
             </Text>
             <View style={{ flexDirection: "row", alignItems: "flex-end", marginTop: 4 }}>
-              <Text style={{ color: premiumTone.fg, fontSize: 31, fontWeight: "900", lineHeight: 34 }}>
+              <Text style={{ color: premiumTone.fg, fontSize: 28, fontWeight: "900", lineHeight: 31 }}>
                 {premiumScore}
               </Text>
               <Text style={{ color: "#94A3B8", fontSize: 13, fontWeight: "800", marginBottom: 3 }}>
@@ -772,35 +803,40 @@ export default function FifaRadarChart(props: {
           <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
             <View
               style={{
-                width: 50,
-                height: 58,
+                width: 48,
+                height: 48,
                 borderRadius: 10,
                 borderWidth: 1,
                 borderColor: "rgba(96,165,250,0.28)",
                 backgroundColor: "rgba(34,197,94,0.12)",
                 alignItems: "center",
                 justifyContent: "center",
+                overflow: "hidden",
               }}
             >
-              <Text style={{ color: premiumTone.fg, fontSize: 22, fontWeight: "900" }}>
-                {opponentInitials}
-              </Text>
+              {opponentLogoUrl ? (
+                <Image source={{ uri: opponentLogoUrl }} style={{ width: 40, height: 40 }} resizeMode="contain" />
+              ) : (
+                <Text style={{ color: premiumTone.fg, fontSize: 20, fontWeight: "900" }}>
+                  {opponentInitials}
+                </Text>
+              )}
             </View>
             <View style={{ flex: 1, gap: 3, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ color: "#F8FAFC", fontSize: 15, fontWeight: "900" }}>
+              <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: "#F8FAFC", fontSize: 14, fontWeight: "900", flexShrink: 1 }}>
                 {safeTextV1(matchContext.opponentName)}
               </Text>
-              <Text numberOfLines={1} style={{ color: "#CBD5E1", fontSize: 12 }}>
-                ⌂ {homeAwayLabel(matchContext.homeAway)} · ♛ {safeTextV1(matchContext.competition)}
+              <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: "#CBD5E1", fontSize: 11, flexShrink: 1 }}>
+                {homeAwayLabel(matchContext.homeAway)} · {safeTextV1(matchContext.competition)}
               </Text>
-              <Text numberOfLines={1} style={{ color: "#CBD5E1", fontSize: 12 }}>
-                ▣ {matchDateLabel}
+              <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: "#CBD5E1", fontSize: 11, flexShrink: 1 }}>
+                {matchDateLabel}
               </Text>
             </View>
-            <View style={{ flex: 1, gap: 6, minWidth: 0 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.76} style={{ color: "#F8FAFC", fontSize: 12, fontWeight: "900" }}>DIFFICULTÉ</Text>
+            <View style={{ width: 86, gap: 5, minWidth: 0, alignItems: "flex-start" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
                 <Text
+                  numberOfLines={1}
                   style={{
                     color: matchTone.fg,
                     backgroundColor: matchTone.bg,
@@ -808,20 +844,20 @@ export default function FifaRadarChart(props: {
                     borderWidth: 1,
                     borderRadius: 9,
                     overflow: "hidden",
-                    paddingHorizontal: 8,
+                    paddingHorizontal: 7,
                     paddingVertical: 4,
-                    fontSize: 11,
+                    fontSize: 10,
                     fontWeight: "900",
                   }}
                 >
-                  {matchDifficultyLabel(matchContext.difficulty).toUpperCase()}
+                  {matchContext.difficulty === "easy" ? "FACILE" : matchContext.difficulty === "hard" ? "DUR" : matchContext.difficulty === "medium" ? "MOYEN" : "—"}
                 </Text>
-                <Text style={{ color: "#94A3B8", fontSize: 11, fontWeight: "800" }}>
+                <Text numberOfLines={1} style={{ color: "#94A3B8", fontSize: 10, fontWeight: "800" }}>
                   {difficultyScoreLabel}
                 </Text>
               </View>
-              <Text numberOfLines={2} style={{ color: "#CBD5E1", fontSize: 11, lineHeight: 15 }}>
-                {safeTextV1(matchContext.reason)}
+              <Text numberOfLines={2} ellipsizeMode="tail" style={{ color: "#CBD5E1", fontSize: 10, lineHeight: 13 }}>
+                Basée sur le prochain match
               </Text>
             </View>
           </View>
@@ -867,7 +903,7 @@ export default function FifaRadarChart(props: {
               <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} style={{ color: "#F8FAFC", fontSize: 14, fontWeight: "900" }}>
                 {safeTextV1(v3ProfileTitle)}
               </Text>
-              <Text numberOfLines={2} style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 16 }}>
+              <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 16 }}>
                 {safeTextV1(v3ProfileText)}
               </Text>
             </View>
@@ -905,8 +941,8 @@ export default function FifaRadarChart(props: {
             <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.76} style={{ color: confidenceTone.fg, fontSize: 15, fontWeight: "900" }}>
               CONFIANCE : {confidenceEnhanced.label.toUpperCase()} ({confidenceScore}%)
             </Text>
-            <Text numberOfLines={1} style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 16 }}>
-              {hasMatches ? `${Math.max(0, Math.round(props.matches || 0))} matchs utilisés` : "—"} · Fenêtre {activeRange} · {statsDetailsLabel}
+            <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 16 }}>
+              {confidenceLine}
             </Text>
           </View>
         </View>
