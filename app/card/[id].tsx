@@ -823,6 +823,79 @@ function xsMcFindOpponentLogoFromHistoryV2(historyChart: any[], opponentName: an
   }
 }
 
+/* XS_COACH_NEXT_OPPONENT_LOGO_FIX_V1 */
+function xsMcFindNextOpponentLogoFromHistoryV1(futureRows: any[], opponentName: any): string | null {
+  try {
+    const rows = Array.isArray(futureRows) ? futureRows : [];
+    if (!rows.length) return null;
+    const normalize = (value: any) =>
+      String(xsMcTextV1(value) || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+    const target = normalize(opponentName);
+    if (target) {
+      for (const row of rows) {
+        const names = [
+          row?.opponent,
+          row?.opponentName,
+          row?.teamName,
+          row?.clubName,
+          row?.opponent?.displayName,
+          row?.opponent?.name,
+          row?.opponentTeam?.shortName,
+          row?.opponentTeam?.name,
+          row?.opponentClub?.displayName,
+          row?.opponentClub?.name,
+          row?.team?.displayName,
+          row?.team?.name,
+          row?.club?.displayName,
+          row?.club?.name,
+        ]
+          .map(normalize)
+          .filter(Boolean);
+        const matched = names.some((name) => name === target || name.includes(target) || target.includes(name));
+        if (matched) {
+          const logoUrl = xsMcPickOpponentLogoUrlV2(row);
+          if (logoUrl) return logoUrl;
+        }
+      }
+    }
+    for (const row of rows) {
+      const logoUrl = xsMcPickOpponentLogoUrlV2(row);
+      if (logoUrl) return logoUrl;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function xsCoachNextOpponentLogoDebugV1(historyChart: any[], matchContext: XsCardMatchContextV1 | null | undefined) {
+  try {
+    if (typeof process !== "undefined" && process.env?.NODE_ENV === "production") return;
+    const lastHistorical = (Array.isArray(historyChart) ? historyChart : [])
+      .filter((row: any) => {
+        const t = new Date(row?.matchDate || row?.startDate || row?.date || 0).getTime();
+        return Number.isFinite(t) && t <= Date.now();
+      })
+      .sort((a: any, b: any) => {
+        const da = new Date(a?.matchDate || a?.startDate || a?.date || 0).getTime();
+        const db = new Date(b?.matchDate || b?.startDate || b?.date || 0).getTime();
+        return db - da;
+      })[0];
+    console.log("[XS_COACH_NEXT_OPPONENT_LOGO_FIX_V1]", {
+      nextOpponentName: matchContext?.opponentName || null,
+      nextOpponentLogoUrl: Boolean(matchContext?.opponentLogoUrl),
+      historicalLastOpponentLogoUrl: Boolean(xsMcPickOpponentLogoUrlV2(lastHistorical)),
+    });
+  } catch {
+    // Dev-only diagnostic must never affect the card screen.
+  }
+}
+
 function xsBuildMatchContextV1(card: any, perf: any, historyChart: any[]): XsCardMatchContextV1 {
   const futureRows = xsMcFutureRowsV1(historyChart);
   const future = futureRows[0] || null;
@@ -841,17 +914,28 @@ function xsBuildMatchContextV1(card: any, perf: any, historyChart: any[]): XsCar
     s?.awayTeam?.name,
     s?.homeTeam?.name,
   ]));
-  const opponentLogoUrl = xsMcFirstTextV1(sources.flatMap((s: any) => [
+  const nextLogoSources = [
+    card?.nextGame, card?.nextMatch, card?.upcomingGame, card?.upcomingMatch, card?.fixture,
+    perf?.nextGame, perf?.nextMatch, perf?.upcomingGame, perf?.upcomingMatch, perf?.fixture,
+    future,
+  ];
+  const opponentLogoUrl = xsMcFirstTextV1(nextLogoSources.flatMap((s: any) => [
     s?.opponentLogoUrl,
     s?.opponent?.logoUrl,
     s?.opponent?.pictureUrl,
+    s?.nextOpponent?.logoUrl,
+    s?.nextOpponent?.pictureUrl,
     s?.nextOpponentLogoUrl,
     s?.nextMatchOpponentLogoUrl,
     s?.nextMatch?.logoUrl,
     s?.nextMatch?.opponentLogoUrl,
     s?.fixture?.opponentLogoUrl,
+    s?.opponentTeam?.logoUrl,
+    s?.opponentTeam?.pictureUrl,
+    s?.opponentClub?.logoUrl,
+    s?.opponentClub?.pictureUrl,
     s?.teamLogoUrl,
-  ])) || xsMcFindOpponentLogoFromHistoryV2(historyChart, opponentName);
+  ])) || xsMcFindNextOpponentLogoFromHistoryV1(futureRows, opponentName);
   const competition = xsMcFirstTextV1(sources.flatMap((s: any) => [
     s?.competition,
     s?.competitionName,
@@ -1696,6 +1780,7 @@ function xsBuildFifaRadarValuesFromHistoryV1(
         opponentLogoUrl: (realMatchContext as XsCardMatchContextV1)?.opponentLogoUrl || localMatchContext.opponentLogoUrl || null,
       }
     : localMatchContext;
+  xsCoachNextOpponentLogoDebugV1(historyChart, matchContext);
   const rangeLimit = xsRadarLimitForRangeV1(range);
   const fallbackScore =
     xsRadarAvgV1([fallbackAvg?.avg5, fallbackAvg?.avg15, fallbackAvg?.avg40]) ?? 50;
