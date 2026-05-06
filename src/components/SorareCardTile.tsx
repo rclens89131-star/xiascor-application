@@ -1,4 +1,5 @@
 /* XS_MES_CARTES_GALLERY_IDENTIQUE_V1 */
+/* XS_MES_CARTES_TILE_CLEAN_V2 */
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import React from "react";
@@ -226,16 +227,14 @@ function xsDifficultyBarsV1(value: number | null) {
 export function SorareCardTile(props: any) {
   const c = { ...(props.card || {}), ...props };
   const width = xsNum(props.width) ?? 170;
-  const imageHeight = Math.round(width * 1.08);
+  const imageHeight = Math.round(width * 1.16);
   const l5Scores = xsGetL5ScoresV1(c);
   const l5Avg = xsNum(c?.l5Avg ?? c?.l5) ?? xsAvgV1(l5Scores);
   const scoreTone = xsScoreColorV1(l5Avg);
   const pictureUrl = xsGetCardImageV1(c);
-  const clubLogo = xsGetClubLogoV1(c);
-  const difficulty = xsGetDifficultyV1(c);
   const level = xsNum(c?.level ?? c?.cardLevel ?? c?.lvl) ?? 0;
-  const scoreCircleSize = Math.max(58, Math.round(width * 0.34));
-  const scoreBoxSize = Math.max(21, Math.round(width * 0.135));
+  const scoreCircleSize = Math.max(48, Math.round(width * 0.29));
+  const scoreBoxSize = Math.max(18, Math.round(width * 0.112));
 
   const content = (
     <View
@@ -252,9 +251,15 @@ export function SorareCardTile(props: any) {
         shadowOffset: { width: 0, height: 5 },
       }}
     >
-      <View style={{ height: imageHeight, backgroundColor: "#111827", overflow: "hidden" }}>
+      <View style={{ height: imageHeight, backgroundColor: "#0B0D10", overflow: "hidden" }}>
+        <LinearGradient
+          colors={["#3A2A0C", "#12100A", "#050607"]}
+          start={{ x: 0.08, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0 }}
+        />
         {pictureUrl ? (
-          <Image source={{ uri: pictureUrl }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+          <Image source={{ uri: pictureUrl }} style={{ width: "100%", height: "100%" }} resizeMode="contain" />
         ) : (
           <LinearGradient
             colors={["#382A0E", "#111827", "#030507"]}
@@ -265,9 +270,9 @@ export function SorareCardTile(props: any) {
         )}
 
         <LinearGradient
-          colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.55)", "rgba(0,0,0,0.95)"]}
-          locations={[0, 0.48, 1]}
-          style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: Math.round(imageHeight * 0.58) }}
+          colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.5)", "rgba(0,0,0,0.96)"]}
+          locations={[0, 0.54, 1]}
+          style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: Math.round(imageHeight * 0.48) }}
         />
         <LinearGradient
           colors={["rgba(121,88,15,0.42)", "rgba(0,0,0,0)"]}
@@ -276,24 +281,18 @@ export function SorareCardTile(props: any) {
           style={{ position: "absolute", left: 0, right: 0, top: 0, height: Math.round(imageHeight * 0.45) }}
         />
 
-        <View style={{ position: "absolute", top: 12, left: 12 }}>
-          <Text style={{ color: "#FFFFFF", fontSize: 21, fontWeight: "900", fontStyle: "italic" }}>
-            {xsGetRarityMarkV1(c)}
-          </Text>
-        </View>
-
         <View
           style={{
             position: "absolute",
             top: 10,
-            left: Math.round(width * 0.24),
-            paddingHorizontal: 9,
-            paddingVertical: 5,
+            left: 10,
+            paddingHorizontal: 8,
+            paddingVertical: 4,
             borderRadius: 8,
             backgroundColor: "rgba(0,0,0,0.56)",
           }}
         >
-          <Text style={{ color: "#F8FAFC", fontWeight: "900", fontSize: 14 }}>{xsGetRankV1(c)}</Text>
+          <Text style={{ color: "#F8FAFC", fontWeight: "900", fontSize: 12 }}>{xsGetRankV1(c)}</Text>
         </View>
 
         <View
@@ -301,8 +300,8 @@ export function SorareCardTile(props: any) {
             position: "absolute",
             top: 10,
             right: 10,
-            width: 38,
-            height: 38,
+            width: 32,
+            height: 32,
             borderRadius: 10,
             borderWidth: 1,
             borderColor: "rgba(245,183,0,0.58)",
@@ -311,42 +310,35 @@ export function SorareCardTile(props: any) {
             justifyContent: "center",
           }}
         >
-          <Feather name="star" size={21} color="#FFD028" fill="#FFD028" />
+          <Feather name="star" size={18} color="#FFD028" fill="#FFD028" />
         </View>
 
-        <Text
+        <View
           style={{
             position: "absolute",
-            right: 8,
-            top: Math.round(imageHeight * 0.23),
-            color: "rgba(255,255,255,0.58)",
-            fontSize: 12,
-            transform: [{ rotate: "-90deg" }],
+            left: 10,
+            bottom: 76,
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+            borderRadius: 7,
+            backgroundColor: "rgba(0,0,0,0.58)",
+            borderWidth: 1,
+            borderColor: "rgba(255,255,255,0.14)",
           }}
         >
-          © sorare
-        </Text>
-
-        <View style={{ position: "absolute", left: 12, top: Math.round(imageHeight * 0.22), gap: 4 }}>
-          {clubLogo ? (
-            <Image source={{ uri: clubLogo }} style={{ width: 33, height: 33 }} resizeMode="contain" />
-          ) : null}
-          <Text style={{ color: "#FFFFFF", fontSize: 22, lineHeight: 24, fontWeight: "900" }}>{xsGetAgeV1(c)}</Text>
-          <Text style={{ color: "#D1D5DB", fontSize: 12, lineHeight: 13, fontWeight: "700" }}>ANS</Text>
-          <Text style={{ color: "#FFFFFF", fontSize: 19, lineHeight: 24, fontWeight: "900" }}>{xsGetPositionV1(c)}</Text>
-          <Text style={{ color: "#D1D5DB", fontSize: 11, lineHeight: 13, fontWeight: "800" }}>{xsGetCountryV1(c)}</Text>
+          <Text style={{ color: "#FFFFFF", fontSize: 12, fontWeight: "900" }}>{xsGetPositionV1(c)}</Text>
         </View>
 
-        <View style={{ position: "absolute", left: 12, right: scoreCircleSize + 18, bottom: 14 }}>
+        <View style={{ position: "absolute", left: 10, right: scoreCircleSize + 14, bottom: 12 }}>
           <Text
-            style={{ color: "#FFFFFF", fontSize: 27, lineHeight: 30, fontWeight: "900", letterSpacing: 0 }}
+            style={{ color: "#FFFFFF", fontSize: 21, lineHeight: 24, fontWeight: "900", letterSpacing: 0 }}
             numberOfLines={2}
             adjustsFontSizeToFit
             minimumFontScale={0.72}
           >
             {xsGetPlayerNameV1(c).toUpperCase()}
           </Text>
-          <Text style={{ color: "#D1D5DB", fontSize: 15, marginTop: 2 }} numberOfLines={1}>
+          <Text style={{ color: "#D1D5DB", fontSize: 12, marginTop: 2 }} numberOfLines={1}>
             {xsGetClubNameV1(c)}
           </Text>
         </View>
@@ -354,8 +346,8 @@ export function SorareCardTile(props: any) {
         <View
           style={{
             position: "absolute",
-            right: 10,
-            bottom: 10,
+            right: 8,
+            bottom: 12,
             alignItems: "center",
             justifyContent: "center",
           }}
@@ -365,7 +357,7 @@ export function SorareCardTile(props: any) {
               width: scoreCircleSize,
               height: scoreCircleSize,
               borderRadius: 999,
-              borderWidth: 5,
+              borderWidth: 4,
               borderColor: scoreTone.main,
               backgroundColor: "rgba(0,0,0,0.72)",
               alignItems: "center",
@@ -375,21 +367,21 @@ export function SorareCardTile(props: any) {
               shadowRadius: 8,
             }}
           >
-            <Text style={{ color: "#FFFFFF", fontWeight: "900", fontSize: Math.round(scoreCircleSize * 0.43), lineHeight: Math.round(scoreCircleSize * 0.48) }}>
+            <Text style={{ color: "#FFFFFF", fontWeight: "900", fontSize: Math.round(scoreCircleSize * 0.39), lineHeight: Math.round(scoreCircleSize * 0.44) }}>
               {l5Avg === null ? "—" : l5Avg}
             </Text>
           </View>
-          <Text style={{ color: "#FFFFFF", fontWeight: "900", fontSize: 12, marginTop: 3 }}>L5 MOY.</Text>
+          <Text style={{ color: "#FFFFFF", fontWeight: "900", fontSize: 10, marginTop: 2 }}>L5</Text>
         </View>
       </View>
 
-      <View style={{ borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.13)", paddingHorizontal: 12, paddingTop: 12, paddingBottom: 10 }}>
-        <View style={{ flexDirection: "row", alignItems: "stretch" }}>
+      <View style={{ borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.13)", paddingHorizontal: 10, paddingVertical: 9 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ color: "#C7CBD1", fontSize: 11, fontWeight: "800" }} numberOfLines={1}>
-              5 DERNIERS MATCHS (L5)
+            <Text style={{ color: "#C7CBD1", fontSize: 10, fontWeight: "900" }} numberOfLines={1}>
+              L5
             </Text>
-            <View style={{ flexDirection: "row", gap: 5, marginTop: 8 }}>
+            <View style={{ flexDirection: "row", gap: 4, marginTop: 6 }}>
               {Array.from({ length: 5 }, (_, i) => {
                 const score = l5Scores[i];
                 const tone = xsScoreColorV1(score);
@@ -414,58 +406,20 @@ export function SorareCardTile(props: any) {
             </View>
           </View>
 
-          <View style={{ width: 1, backgroundColor: "rgba(255,255,255,0.16)", marginHorizontal: 10 }} />
-
-          <View style={{ width: Math.max(60, Math.round(width * 0.25)), alignItems: "center", justifyContent: "center" }}>
-            <Text style={{ color: "#C7CBD1", fontSize: 11, fontWeight: "800" }}>TITULAIRE</Text>
-            <Text style={{ color: "#FFFFFF", fontSize: 23, fontWeight: "900", marginTop: 8 }}>{xsGetStarterRateV1(c)}</Text>
-          </View>
-        </View>
-      </View>
-
-      <View style={{ borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.13)", paddingHorizontal: 12, paddingVertical: 11 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
-          <View style={{ flex: 1.1, minWidth: 0 }}>
-            <Text style={{ color: "#AEB4BD", fontSize: 10, fontWeight: "900" }}>PROCHAIN MATCH</Text>
-            <Text style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "900", marginTop: 7 }} numberOfLines={1}>
-              {xsGetNextMatchV1(c)}
-            </Text>
-          </View>
-
-          <View style={{ width: 1, height: 42, backgroundColor: "rgba(255,255,255,0.14)" }} />
-
-          <View style={{ flex: 0.96, minWidth: 0 }}>
-            <Text style={{ color: "#AEB4BD", fontSize: 10, fontWeight: "900" }}>DIFFICULTÉ</Text>
-            <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 4, marginTop: 7 }}>
-              <Text style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "900", marginRight: 2 }}>{difficulty === null ? "—" : `${difficulty}/10`}</Text>
-              {xsDifficultyBarsV1(difficulty).map((active, index) => (
-                <View
-                  key={`diff-${index}`}
-                  style={{
-                    width: 5,
-                    height: 7 + index * 2,
-                    borderRadius: 1.5,
-                    backgroundColor: active ? "#F59E0B" : "rgba(255,255,255,0.2)",
-                  }}
-                />
-              ))}
-            </View>
-          </View>
-
           <View
             style={{
-              minWidth: 54,
-              height: 40,
+              minWidth: 48,
+              height: 32,
               borderRadius: 9,
               borderWidth: 1,
               borderColor: "rgba(148,163,184,0.32)",
               backgroundColor: "rgba(17,24,39,0.72)",
               alignItems: "center",
               justifyContent: "center",
-              paddingHorizontal: 8,
+              paddingHorizontal: 7,
             }}
           >
-            <Text style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "900" }}>LVL {level}</Text>
+            <Text style={{ color: "#FFFFFF", fontSize: 12, fontWeight: "900" }}>LVL {level}</Text>
           </View>
         </View>
       </View>
