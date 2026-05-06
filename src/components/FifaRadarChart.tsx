@@ -37,6 +37,7 @@ type RadarCoachDecision = {
   ceiling?: number;
   reasons: string[];
   reason: string;
+  windowBlendLabel?: string;
 };
 type RadarDecisionV2 = {
   finalLabel: string;
@@ -595,6 +596,11 @@ export default function FifaRadarChart(props: {
             <Text numberOfLines={2} style={{ color: "#F8FAFC", fontSize: 13, lineHeight: 17, marginTop: 1 }}>
               {safeTextV1(decisionV2.summary || recommendation.reason)}
             </Text>
+            {coachDecision.windowBlendLabel ? (
+              <Text numberOfLines={1} style={{ color: "#CBD5E1", fontSize: 11, lineHeight: 15, marginTop: 4, fontWeight: "800" }}>
+                {coachDecision.windowBlendLabel}
+              </Text>
+            ) : null}
           </View>
 
           <View

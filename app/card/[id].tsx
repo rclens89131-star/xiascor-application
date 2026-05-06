@@ -431,6 +431,7 @@ type XsRadarCoachDecisionV1 = {
   ceiling: number;
   reasons: string[];
   reason: string;
+  windowBlendLabel?: string;
 };
 
 type XsRadarDecisionV2 = {
@@ -1285,6 +1286,232 @@ function xsRadarRecommendationFromDecisionV2(
 }
 /* XS_RADAR_DECISION_ENGINE_V2_END */
 
+/* XS_COACH_DECISION_ACCUMULATED_WINDOWS_V1 */
+type XsRadarWindowSnapshotV1 = {
+  range: XsRadarRangeV1;
+  overall: number;
+  metrics: XsRadarMetricsByPositionV1;
+};
+
+function xsRadarConfidenceFromScoreV1(score: number, reason: string): XsRadarConfidenceEnhancedV1 {
+  const safeScore = Math.round(xsRadarClampV1(score));
+  return {
+    score: safeScore,
+    label: safeScore < 50 ? "Faible" : safeScore < 70 ? "Moyen" : "Élevé",
+    color: safeScore < 50 ? "red" : safeScore < 70 ? "orange" : "green",
+    reason,
+  };
+}
+
+function xsRadarMinMatchesForWindowV1(range: XsRadarRangeV1): number {
+  if (range === "L5") return 1;
+  if (range === "L15") return 6;
+  return 16;
+}
+
+function xsRadarWindowSnapshotV1(range: XsRadarRangeV1, radar: any): XsRadarWindowSnapshotV1 | null {
+  const metrics = radar?.metrics as XsRadarMetricsByPositionV1 | undefined;
+  const overall = xsRadarNumV1(radar?.overall ?? metrics?.overall ?? radar?.coachDecision?.rawOverall);
+  if (!metrics || overall == null) return null;
+  const matches = xsRadarNumV1(metrics.matches ?? radar?.matches) ?? 0;
+  if (matches < xsRadarMinMatchesForWindowV1(range)) return null;
+  return {
+    range,
+    overall: xsRadarClampV1(overall),
+    metrics,
+  };
+}
+
+function xsRadarWeightedMetricV1(
+  windows: Array<XsRadarWindowSnapshotV1 & { weight: number }>,
+  key: keyof XsRadarMetricsByPositionV1,
+  fallback: number
+): number {
+  const weighted = windows
+    .map((window) => {
+      const value = xsRadarNumV1(window.metrics?.[key]);
+      return value == null ? null : { value: xsRadarClampV1(value), weight: window.weight };
+    })
+    .filter((item): item is { value: number; weight: number } => item != null);
+
+  const totalWeight = weighted.reduce((sum, item) => sum + item.weight, 0);
+  if (totalWeight <= 0) return xsRadarClampV1(fallback);
+  return xsRadarClampV1(weighted.reduce((sum, item) => sum + item.value * item.weight, 0) / totalWeight);
+}
+
+function xsBuildAccumulatedCoachDecisionV1(
+  positionUsed: XsRadarPositionV1,
+  activeMetrics: XsRadarMetricsByPositionV1,
+  activeAutoProfile: XsRadarAutoProfileV1,
+  activeMatchContext: XsCardMatchContextV1 | null,
+  radarsByRange: Partial<Record<XsRadarRangeV1, any>>
+): {
+  coachDecision: XsRadarCoachDecisionV1;
+  decisionV2: XsRadarDecisionV2;
+  recommendation: XsRadarRecommendationV1;
+  metrics: XsRadarMetricsByPositionV1;
+} | null {
+  const baseWeights: Record<XsRadarRangeV1, number> = { L5: 0.4, L15: 0.35, L40: 0.25 };
+  const snapshots = (["L5", "L15", "L40"] as XsRadarRangeV1[])
+    .map((range) => xsRadarWindowSnapshotV1(range, radarsByRange[range]))
+    .filter((snapshot): snapshot is XsRadarWindowSnapshotV1 => snapshot != null);
+
+  const weightTotal = snapshots.reduce((sum, snapshot) => sum + baseWeights[snapshot.range], 0);
+  if (weightTotal <= 0) return null;
+
+  const weightedWindows = snapshots.map((snapshot) => ({
+    ...snapshot,
+    weight: baseWeights[snapshot.range] / weightTotal,
+  }));
+  const byRange = new Map<XsRadarRangeV1, XsRadarWindowSnapshotV1>(
+    snapshots.map((snapshot) => [snapshot.range, snapshot])
+  );
+  const l5Overall = byRange.get("L5")?.overall;
+  const l15Overall = byRange.get("L15")?.overall;
+  const l40Overall = byRange.get("L40")?.overall;
+  const longerAverage = xsRadarAvgV1([l15Overall, l40Overall]) ?? null;
+  const accumulatedOverall = xsRadarClampV1(
+    weightedWindows.reduce((sum, window) => sum + window.overall * window.weight, 0)
+  );
+  const confidenceScore = xsRadarWeightedMetricV1(
+    weightedWindows,
+    "confidenceScore",
+    activeMetrics.confidenceScore ?? (typeof activeMetrics.confidence === "number" ? activeMetrics.confidence * 100 : 50)
+  );
+  const scoreSeries = (
+    byRange.get("L40")?.metrics?.scoreSeries ||
+    byRange.get("L15")?.metrics?.scoreSeries ||
+    byRange.get("L5")?.metrics?.scoreSeries ||
+    activeMetrics.scoreSeries ||
+    []
+  )
+    .map((score: any) => xsRadarNumV1(score))
+    .filter((score: number | null): score is number => score != null)
+    .map((score: number) => xsRadarClampV1(score));
+  const trend = xsRadarTrendV1(scoreSeries);
+  const volatility = xsRadarVolatilityV1(scoreSeries);
+  const ceiling = xsRadarCeilingV1(scoreSeries);
+  const advanced = xsRadarAdvancedDecisionBonusV1(trend, volatility, ceiling);
+  const match = xsRadarMatchBonusV1(activeMatchContext);
+  const lowConfidencePenalty = confidenceScore < 45 ? 10 : confidenceScore < 60 ? 5 : 0;
+  const unconfirmedL5Penalty =
+    l5Overall != null && l5Overall >= 75 && longerAverage != null && longerAverage < 55 ? 12 : 0;
+  const lowRecentPenalty =
+    l5Overall != null && l15Overall != null && l5Overall < 45 && l15Overall < 50 ? 8 : 0;
+  const allWindowsHighBonus =
+    l5Overall != null &&
+    l15Overall != null &&
+    l40Overall != null &&
+    l5Overall >= 70 &&
+    l15Overall >= 70 &&
+    l40Overall >= 70
+      ? 4
+      : 0;
+  const score = Math.round(
+    xsRadarClampV1(
+      accumulatedOverall +
+        match.bonus +
+        advanced.trendBonus +
+        advanced.ceilingBonus +
+        advanced.volatilityPenalty -
+        lowConfidencePenalty -
+        unconfirmedL5Penalty -
+        lowRecentPenalty +
+        allWindowsHighBonus
+    )
+  );
+  const windowBlendLabel =
+    snapshots.length === 3
+      ? "Calcul : L5 40% · L15 35% · L40 25%"
+      : `Calcul : ${weightedWindows
+          .map((window) => `${window.range} ${Math.round(window.weight * 100)}%`)
+          .join(" · ")}`;
+  const reasons: string[] = [windowBlendLabel];
+  if (l5Overall != null) reasons.push(`L5 ${Math.round(l5Overall)}`);
+  if (l15Overall != null) reasons.push(`L15 ${Math.round(l15Overall)}`);
+  if (l40Overall != null) reasons.push(`L40 ${Math.round(l40Overall)}`);
+  if (unconfirmedL5Penalty) reasons.push("Pic L5 non confirmé par L15/L40");
+  if (lowRecentPenalty) reasons.push("L5 et L15 faibles");
+  if (lowConfidencePenalty) reasons.push("Confiance faible: décision abaissée");
+  if (match.bonus > 0) reasons.push(`Contexte favorable: ${match.reason}`);
+  else if (match.bonus < 0) reasons.push(`Contexte pénalisant: ${match.reason}`);
+  if (trend === "up") reasons.push("Trend en hausse");
+  else if (trend === "down") reasons.push("Trend en baisse");
+  if (volatility === "high") reasons.push("Volatilité élevée");
+  if (ceiling >= 70) reasons.push(`Plafond ${Math.round(ceiling)}`);
+
+  const confidenceForDecision = xsRadarConfidenceFromScoreV1(
+    confidenceScore,
+    "Confiance synthétisée depuis L5/L15/L40."
+  );
+  const decisionMetrics: XsRadarMetricsByPositionV1 = {
+    ...activeMetrics,
+    form: xsRadarClampV1(l5Overall ?? activeMetrics.form),
+    regularity: xsRadarWeightedMetricV1(weightedWindows, "regularity", activeMetrics.regularity),
+    gameTime: xsRadarWeightedMetricV1(weightedWindows, "gameTime", activeMetrics.gameTime),
+    impact: xsRadarWeightedMetricV1(weightedWindows, "impact", activeMetrics.impact),
+    attack: xsRadarWeightedMetricV1(weightedWindows, "attack", activeMetrics.attack),
+    creation: xsRadarWeightedMetricV1(weightedWindows, "creation", activeMetrics.creation),
+    defense: xsRadarWeightedMetricV1(weightedWindows, "defense", activeMetrics.defense),
+    reliability: xsRadarWeightedMetricV1(weightedWindows, "reliability", activeMetrics.reliability),
+    saves: xsRadarWeightedMetricV1(weightedWindows, "saves", activeMetrics.saves),
+    cleanSheets: xsRadarWeightedMetricV1(weightedWindows, "cleanSheets", activeMetrics.cleanSheets),
+    duels: xsRadarWeightedMetricV1(weightedWindows, "duels", activeMetrics.duels),
+    l5: l5Overall ?? activeMetrics.l5,
+    l15: l15Overall ?? activeMetrics.l15,
+    l40: l40Overall ?? activeMetrics.l40,
+    overall: accumulatedOverall,
+    confidenceScore: confidenceForDecision.score,
+    confidence: confidenceForDecision.score / 100,
+    coachAdjustedOverall: accumulatedOverall,
+    coachScore: score,
+    scoreSeries,
+  };
+  const coachDecision: XsRadarCoachDecisionV1 = {
+    score,
+    decision: xsRadarCoachLabelV1(score),
+    tone: xsRadarCoachToneV1(score),
+    adjustedOverall: Math.round(accumulatedOverall),
+    rawOverall: Math.round(accumulatedOverall),
+    matchBonus: match.bonus,
+    trend,
+    volatility,
+    ceiling,
+    reasons,
+    reason: reasons.join(" · "),
+    windowBlendLabel,
+  };
+  let decisionV2 = xsRadarDecisionEngineV2(positionUsed, decisionMetrics, coachDecision, activeMatchContext);
+
+  if (
+    unconfirmedL5Penalty &&
+    (decisionV2.finalTone === "strongPlay" || decisionV2.finalTone === "play")
+  ) {
+    decisionV2 = {
+      finalLabel: "Différentiel intéressant",
+      finalTone: "joker",
+      playStyle: "Boom/Bust",
+      summary: "Différentiel intéressant : L5 haut, mais L15/L40 ne confirment pas encore.",
+      bullets: ["Forme récente forte", "L15/L40 plus faibles", "Risque de faux positif"],
+    };
+  }
+
+  const baseRecommendation = xsRadarRecommendationV1(
+    positionUsed,
+    decisionMetrics,
+    activeAutoProfile,
+    confidenceForDecision,
+    activeMatchContext
+  );
+  const recommendation = xsRadarRecommendationFromDecisionV2(
+    decisionV2,
+    xsRadarRecommendationFromCoachV1(coachDecision, baseRecommendation, activeMatchContext)
+  );
+
+  return { coachDecision, decisionV2, recommendation, metrics: decisionMetrics };
+}
+/* XS_COACH_DECISION_ACCUMULATED_WINDOWS_V1_END */
+
 function xsRadarRecommendationV1(
   positionUsed: XsRadarPositionV1,
   metrics: XsRadarMetricsByPositionV1,
@@ -1356,7 +1583,8 @@ function xsBuildFifaRadarValuesFromHistoryV1(
   fallbackAvg: { avg5?: number | null; avg15?: number | null; avg40?: number | null },
   positionSource: any,
   range: XsRadarRangeV1 = "L15",
-  realMatchContext?: XsCardMatchContextV1 | null
+  realMatchContext?: XsCardMatchContextV1 | null,
+  skipAccumulatedCoachDecision: boolean = false
 ) {
   const positionUsed = xsRadarNormalizePositionV1(positionSource);
   const localMatchContext = xsBuildMatchContextV1(positionSource?.card, positionSource?.perf, historyChart);
@@ -1435,6 +1663,7 @@ function xsBuildFifaRadarValuesFromHistoryV1(
     const fallbackMatchContext = xsAdjustMatchContextWithMetricsV1(matchContext, fallbackMetrics);
     const fallbackBaseRecommendation = xsRadarRecommendationV1(positionUsed, fallbackMetrics, fallbackAutoProfile, fallbackConfidenceEnhanced, fallbackMatchContext);
     const fallbackCoachDecision = xsRadarCoachDecisionV1(positionUsed, fallbackMetrics, fallbackConfidenceEnhanced, fallbackMatchContext);
+    fallbackCoachDecision.windowBlendLabel = "Calcul : L5 40% · L15 35% · L40 25%";
     fallbackMetrics.coachAdjustedOverall = fallbackCoachDecision.adjustedOverall;
     fallbackMetrics.coachScore = fallbackCoachDecision.score;
     const fallbackDecisionV2 = xsRadarDecisionEngineV2(positionUsed, fallbackMetrics, fallbackCoachDecision, fallbackMatchContext);
@@ -1455,6 +1684,7 @@ function xsBuildFifaRadarValuesFromHistoryV1(
       recommendation: fallbackRecommendation,
       matchContext: fallbackMatchContext,
       positionPercentile: xsRadarPositionPercentileV1(positionUsed, fallbackMetrics),
+      metrics: fallbackMetrics,
       meta: { source: "fallback", positionUsed, range },
       values: xsRadarValuesByPositionV1(positionUsed, fallbackMetrics),
     };
@@ -1607,14 +1837,39 @@ function xsBuildFifaRadarValuesFromHistoryV1(
   positionMetrics.confidenceScore = confidenceEnhanced.score;
   const adjustedMatchContext = xsAdjustMatchContextWithMetricsV1(matchContext, positionMetrics);
   const baseRecommendation = xsRadarRecommendationV1(positionUsed, positionMetrics, autoProfile, confidenceEnhanced, adjustedMatchContext);
-  const coachDecision = xsRadarCoachDecisionV1(positionUsed, positionMetrics, confidenceEnhanced, adjustedMatchContext);
-  positionMetrics.coachAdjustedOverall = coachDecision.adjustedOverall;
-  positionMetrics.coachScore = coachDecision.score;
-  const decisionV2 = xsRadarDecisionEngineV2(positionUsed, positionMetrics, coachDecision, adjustedMatchContext);
-  const recommendation = xsRadarRecommendationFromDecisionV2(
+  const baseCoachDecision = xsRadarCoachDecisionV1(positionUsed, positionMetrics, confidenceEnhanced, adjustedMatchContext);
+  let coachDecision = baseCoachDecision;
+  let decisionMetrics = positionMetrics;
+  let decisionV2 = xsRadarDecisionEngineV2(positionUsed, positionMetrics, coachDecision, adjustedMatchContext);
+  let recommendation = xsRadarRecommendationFromDecisionV2(
     decisionV2,
     xsRadarRecommendationFromCoachV1(coachDecision, baseRecommendation, adjustedMatchContext)
   );
+  if (!skipAccumulatedCoachDecision) {
+    const radarsByRange: Partial<Record<XsRadarRangeV1, any>> = {
+      L5: xsBuildFifaRadarValuesFromHistoryV1(historyChart, fallbackAvg, positionSource, "L5", realMatchContext, true),
+      L15: xsBuildFifaRadarValuesFromHistoryV1(historyChart, fallbackAvg, positionSource, "L15", realMatchContext, true),
+      L40: xsBuildFifaRadarValuesFromHistoryV1(historyChart, fallbackAvg, positionSource, "L40", realMatchContext, true),
+    };
+    const accumulatedDecision = xsBuildAccumulatedCoachDecisionV1(
+      positionUsed,
+      positionMetrics,
+      autoProfile,
+      adjustedMatchContext,
+      radarsByRange
+    );
+    if (accumulatedDecision) {
+      coachDecision = accumulatedDecision.coachDecision;
+      decisionV2 = accumulatedDecision.decisionV2;
+      recommendation = accumulatedDecision.recommendation;
+      decisionMetrics = accumulatedDecision.metrics;
+    }
+  } else {
+    coachDecision.windowBlendLabel = `Calcul : ${range} 100%`;
+  }
+  positionMetrics.coachAdjustedOverall = coachDecision.adjustedOverall;
+  positionMetrics.coachScore = coachDecision.score;
+  positionMetrics.confidenceScore = confidenceEnhanced.score;
   const positionPercentile = xsRadarPositionPercentileV1(positionUsed, positionMetrics);
 
   return {
@@ -1630,6 +1885,8 @@ function xsBuildFifaRadarValuesFromHistoryV1(
     recommendation,
     matchContext: adjustedMatchContext,
     positionPercentile,
+    metrics: positionMetrics,
+    decisionMetrics,
     meta: {
       positionUsed,
       radarPositionLabel: xsRadarChartPositionLabelV1(positionUsed),
