@@ -1,5 +1,6 @@
 /* XS_MES_CARTES_GALLERY_IDENTIQUE_V1 */
 /* XS_MES_CARTES_TILE_CLEAN_V2 */
+/* XS_MES_CARTES_LVL_POSITION_V3 */
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import React from "react";
@@ -316,6 +317,22 @@ export function SorareCardTile(props: any) {
         <View
           style={{
             position: "absolute",
+            top: 50,
+            right: 10,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: "rgba(148,163,184,0.34)",
+            backgroundColor: "rgba(5,8,13,0.78)",
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+          }}
+        >
+          <Text style={{ color: "#FFFFFF", fontSize: 11, fontWeight: "900" }}>LVL {level}</Text>
+        </View>
+
+        <View
+          style={{
+            position: "absolute",
             left: 10,
             bottom: 76,
             paddingHorizontal: 8,
@@ -376,7 +393,7 @@ export function SorareCardTile(props: any) {
       </View>
 
       <View style={{ borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.13)", paddingHorizontal: 10, paddingVertical: 9 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={{ color: "#C7CBD1", fontSize: 10, fontWeight: "900" }} numberOfLines={1}>
               L5
@@ -404,22 +421,6 @@ export function SorareCardTile(props: any) {
                 );
               })}
             </View>
-          </View>
-
-          <View
-            style={{
-              minWidth: 48,
-              height: 32,
-              borderRadius: 9,
-              borderWidth: 1,
-              borderColor: "rgba(148,163,184,0.32)",
-              backgroundColor: "rgba(17,24,39,0.72)",
-              alignItems: "center",
-              justifyContent: "center",
-              paddingHorizontal: 7,
-            }}
-          >
-            <Text style={{ color: "#FFFFFF", fontSize: 12, fontWeight: "900" }}>LVL {level}</Text>
           </View>
         </View>
       </View>
