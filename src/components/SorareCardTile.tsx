@@ -1,6 +1,7 @@
 /* XS_MES_CARTES_GALLERY_IDENTIQUE_V1 */
 /* XS_MES_CARTES_TILE_CLEAN_V2 */
 /* XS_MES_CARTES_LVL_POSITION_V3 */
+/* XS_FIX_L5_MINI_CHART_ORDER_V1 */
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import React from "react";
@@ -39,7 +40,7 @@ function xsScoreColorV1(score: any): XsScoreToneV1 {
   return { main: "#18A8F5", glow: "rgba(24,168,245,0.26)" };
 }
 
-function xsAvgV1(scores: number[]): number | null {
+function xsAvgV1(scores: Array<number | null | undefined>): number | null {
   const values = scores.filter((n) => Number.isFinite(n));
   if (!values.length) return null;
   return Math.round(values.reduce((a, b) => a + b, 0) / values.length);
@@ -54,29 +55,75 @@ function xsPickNumFromRowV1(row: any): number | null {
   return n === null ? null : xsClamp(n, 0, 100);
 }
 
-function xsGetL5ScoresV1(card: any): number[] {
+function xsDateMsFromRowV1(row: any): number | null {
+  const raw =
+    row?.date ??
+    row?.gameDate ??
+    row?.matchDate ??
+    row?.playedAt ??
+    row?.startDate ??
+    row?.fixtureDate ??
+    row?.createdAt;
+  const time = raw ? new Date(raw).getTime() : NaN;
+  return Number.isFinite(time) ? time : null;
+}
+
+function xsNormalizeL5MiniChartOrderV1(
+  scores: any[],
+  order: "newest-first" | "oldest-first" | "auto" = "auto"
+): Array<number | null> {
+  const source = Array.isArray(scores) ? scores.slice() : [];
+  const rows = source
+    .map((row, index) => ({
+      score: xsPickNumFromRowV1(row),
+      dateMs: xsDateMsFromRowV1(row),
+      index,
+    }))
+    .filter((row) => row.score !== null);
+
+  if (!rows.length) return [];
+
+  const dated = rows.filter((row) => row.dateMs !== null);
+  if (dated.length >= 2) {
+    return rows
+      .slice()
+      .sort((a, b) => (b.dateMs ?? 0) - (a.dateMs ?? 0))
+      .slice(0, 5)
+      .sort((a, b) => (a.dateMs ?? 0) - (b.dateMs ?? 0))
+      .map((row) => row.score);
+  }
+
+  if (order === "newest-first") {
+    // XS_FIX_L5_MINI_CHART_ORDER_V1: display oldest -> newest, left -> right
+    return rows.slice(0, 5).reverse().map((row) => row.score);
+  }
+
+  return rows.slice(-5).map((row) => row.score);
+}
+
+function xsGetL5ScoresV1(card: any): Array<number | null> {
   const sources = [
-    card?.l5Scores,
-    card?.l5Bars,
-    card?.recentScores,
-    card?.so5Scores,
-    card?.historyChart,
-    card?.history,
-    card?.scores,
-    card?.gameScores,
-    card?.scoreHistory,
-    card?.player?.l5Scores,
-    card?.player?.recentScores,
-    card?.anyPlayer?.l5Scores,
-    card?.anyPlayer?.recentScores,
+    { value: card?.l5Bars, order: "newest-first" as const },
+    { value: card?.recentScores, order: "newest-first" as const },
+    { value: card?.so5Scores, order: "newest-first" as const },
+    { value: card?.historyChart, order: "newest-first" as const },
+    { value: card?.history, order: "newest-first" as const },
+    { value: card?.scores, order: "newest-first" as const },
+    { value: card?.gameScores, order: "newest-first" as const },
+    { value: card?.scoreHistory, order: "newest-first" as const },
+    { value: card?.player?.recentScores, order: "newest-first" as const },
+    { value: card?.anyPlayer?.recentScores, order: "newest-first" as const },
+    { value: card?.l5Scores, order: "auto" as const },
+    { value: card?.lastFiveScores, order: "auto" as const },
+    { value: card?.player?.l5Scores, order: "auto" as const },
+    { value: card?.player?.lastFiveScores, order: "auto" as const },
+    { value: card?.anyPlayer?.l5Scores, order: "auto" as const },
+    { value: card?.anyPlayer?.lastFiveScores, order: "auto" as const },
   ];
 
   for (const source of sources) {
-    if (!Array.isArray(source) || source.length === 0) continue;
-    const values = source
-      .slice(-5)
-      .map(xsPickNumFromRowV1)
-      .filter((n: number | null): n is number => n !== null);
+    if (!Array.isArray(source.value) || source.value.length === 0) continue;
+    const values = xsNormalizeL5MiniChartOrderV1(source.value, source.order);
     if (values.length) return values;
   }
 
