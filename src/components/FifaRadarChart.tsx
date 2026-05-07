@@ -41,12 +41,19 @@ type RadarCoachDecision = {
   reason: string;
   windowBlendLabel?: string;
 };
+type RadarSmartReasonItem = {
+  icon?: string;
+  title: string;
+  text: string;
+};
 type RadarDecisionV2 = {
   finalLabel: string;
   finalTone: "strongPlay" | "play" | "borderline" | "joker" | "risk" | "avoid";
   playStyle: string;
   summary: string;
   bullets: string[];
+  whyItems?: RadarSmartReasonItem[];
+  riskItems?: RadarSmartReasonItem[];
 };
 type RadarMatchContext = {
   opponentName: string | null;
@@ -428,7 +435,27 @@ export default function FifaRadarChart(props: {
     .replace(/^Calcul\s*:\s*/i, "")
     .trim();
   const confidenceLine = `${hasMatches ? `${Math.max(0, Math.round(props.matches || 0))} matchs utilisés` : "—"} · fenêtre ${activeRange}`;
-  const v3WhyItems = [
+  const smartWhyItems = Array.isArray(decisionV2.whyItems)
+    ? decisionV2.whyItems
+        .map((item) => ({
+          icon: String(item?.icon || "").trim(),
+          title: safeTextV1(item?.title),
+          text: safeTextV1(item?.text),
+        }))
+        .filter((item) => item.title !== "—")
+        .slice(0, 3)
+    : [];
+  const smartRiskItems = Array.isArray(decisionV2.riskItems)
+    ? decisionV2.riskItems
+        .map((item) => ({
+          icon: String(item?.icon || "").trim(),
+          title: safeTextV1(item?.title),
+          text: safeTextV1(item?.text),
+        }))
+        .filter((item) => item.title !== "—")
+        .slice(0, 2)
+    : [];
+  const fallbackV3WhyItems = [
     {
       icon: "↗",
       title: "Forme en hausse",
@@ -447,16 +474,19 @@ export default function FifaRadarChart(props: {
       text: `${confidenceScore}% de confiance sur la fenêtre ${activeRange}.`,
     },
   ];
-  const v3RiskTitle = volatility === "high"
+  const v3WhyItems = smartWhyItems.length ? smartWhyItems : fallbackV3WhyItems;
+  const fallbackV3RiskTitle = volatility === "high"
     ? "Très irrégulier"
     : volatility === "medium"
       ? "Risque moyen"
       : "Risque contenu";
-  const v3RiskText = volatility === "high"
+  const fallbackV3RiskText = volatility === "high"
     ? "Scores instables"
     : volatility === "medium"
       ? "Temps de jeu variable"
       : "Profil plutôt stable.";
+  const v3RiskTitle = smartRiskItems[0]?.title || fallbackV3RiskTitle;
+  const v3RiskText = smartRiskItems[0]?.text || fallbackV3RiskText;
   const v3ProfileTitle = positionDeltaValue.startsWith("-") ? "Sous la moyenne locale" : "Au-dessus de la moyenne locale";
   const v3ProfileText = `Score ajusté ${activeRange} : ${Math.round(avg)}`;
 
@@ -939,7 +969,7 @@ export default function FifaRadarChart(props: {
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.76} style={{ color: confidenceTone.fg, fontSize: 15, fontWeight: "900" }}>
-              CONFIANCE : {confidenceEnhanced.label.toUpperCase()} ({confidenceScore}%)
+              CONFIANCE DÉCISION : {confidenceEnhanced.label.toUpperCase()} ({confidenceScore}%)
             </Text>
             <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 16 }}>
               {confidenceLine}
