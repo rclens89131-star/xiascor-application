@@ -52,6 +52,7 @@ type RadarCoachDeepAnalysis = {
   positiveSignals: RadarSmartReasonItem[];
   negativeSignals: RadarSmartReasonItem[];
   actionAdvice: RadarSmartReasonItem;
+  availability?: RadarSmartReasonItem;
 };
 type RadarDecisionV2 = {
   finalLabel: string;
@@ -469,6 +470,9 @@ export default function FifaRadarChart(props: {
   const deepAdvice = deepAnalysis?.actionAdvice
     ? normalizeSmartItemsV2([deepAnalysis.actionAdvice], 1)[0]
     : null;
+  const availabilityItem = deepAnalysis?.availability
+    ? normalizeSmartItemsV2([deepAnalysis.availability], 1)[0]
+    : null;
   const fallbackV3WhyItems = [
     {
       icon: "↗",
@@ -853,6 +857,35 @@ export default function FifaRadarChart(props: {
               </Text>
               <Text numberOfLines={2} ellipsizeMode="tail" style={{ color: "#F8FAFC", fontSize: 12, lineHeight: 16, marginTop: 1 }}>
                 {deepAdvice.text}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
+        {availabilityItem ? (
+          <View
+            style={{
+              /* XS_PLAYER_STATUS_DECISION_V1 */
+              borderRadius: 13,
+              borderWidth: 1,
+              borderColor: "rgba(148,163,184,0.22)",
+              backgroundColor: "rgba(15,23,42,0.50)",
+              paddingHorizontal: 10,
+              paddingVertical: 8,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 9,
+            }}
+          >
+            <Text style={{ color: premiumTone.fg, fontSize: 16, fontWeight: "900" }}>
+              {availabilityItem.icon || "?"}
+            </Text>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} style={{ color: premiumTone.fg, fontSize: 12, fontWeight: "900" }}>
+                DISPONIBILITÉ
+              </Text>
+              <Text numberOfLines={2} ellipsizeMode="tail" style={{ color: "#F8FAFC", fontSize: 12, lineHeight: 16, marginTop: 1 }}>
+                {availabilityItem.title}{availabilityItem.text ? ` — ${availabilityItem.text}` : ""}
               </Text>
             </View>
           </View>

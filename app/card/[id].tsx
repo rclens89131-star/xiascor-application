@@ -440,12 +440,25 @@ type XsCoachDecisionSmartItemV1 = {
   text: string;
 };
 
+type XsPlayerStatusCodeV1 = "available" | "injured" | "suspended" | "doubtful" | "unknown";
+
+type XsPlayerStatusV1 = {
+  playerSlug?: string | null;
+  status: XsPlayerStatusCodeV1;
+  reason?: string | null;
+  expectedReturnDate?: string | null;
+  source?: string | null;
+  updatedAt?: string | null;
+};
+
 type XsCoachDecisionDeepAnalysisV2 = {
   verdict: string;
   mainReason: XsCoachDecisionSmartItemV1;
   positiveSignals: XsCoachDecisionSmartItemV1[];
   negativeSignals: XsCoachDecisionSmartItemV1[];
   actionAdvice: XsCoachDecisionSmartItemV1;
+  availability?: XsCoachDecisionSmartItemV1;
+  playerStatus?: XsPlayerStatusV1 | null;
 };
 
 type XsRadarDecisionV2 = {
@@ -1620,6 +1633,48 @@ function xsCoachDecisionDeepPushV2(
   if (!exists) list.push(item);
 }
 
+/* XS_PLAYER_STATUS_DECISION_V1 */
+function xsNormalizePlayerStatusV1(value: any, playerSlug?: string | null): XsPlayerStatusV1 {
+  const raw = String(value?.status || value?.availability || value?.playerStatus || "").trim().toLowerCase();
+  const status: XsPlayerStatusCodeV1 =
+    raw === "available" || raw === "fit" || raw === "ok"
+      ? "available"
+      : raw === "injured" || raw === "injury" || raw === "out" || raw === "unavailable"
+        ? "injured"
+        : raw === "suspended" || raw === "suspension" || raw === "ban"
+          ? "suspended"
+          : raw === "doubtful" || raw === "uncertain" || raw === "questionable" || raw === "doubt"
+            ? "doubtful"
+            : "unknown";
+  return {
+    playerSlug: value?.playerSlug || playerSlug || null,
+    status,
+    reason: String(value?.reason || value?.details || value?.label || "").trim() || null,
+    expectedReturnDate: value?.expectedReturnDate || value?.returnDate || value?.estimatedReturnDate || null,
+    source: value?.source || null,
+    updatedAt: value?.updatedAt || null,
+  };
+}
+
+function xsPlayerStatusAvailabilityItemV1(statusValue?: XsPlayerStatusV1 | null): XsCoachDecisionSmartItemV1 {
+  const status = statusValue?.status || "unknown";
+  const returnText = statusValue?.expectedReturnDate ? ` Retour estimé : ${statusValue.expectedReturnDate}.` : "";
+  const reason = statusValue?.reason ? `${statusValue.reason}${returnText}` : "";
+  if (status === "injured") {
+    return { icon: "!", title: "Blessé", text: reason || `Indisponible jusqu'à confirmation médicale.${returnText}`.trim() };
+  }
+  if (status === "suspended") {
+    return { icon: "!", title: "Suspendu", text: reason || `Ne pas aligner tant que la suspension n'est pas levée.${returnText}`.trim() };
+  }
+  if (status === "doubtful") {
+    return { icon: "?", title: "Incertain", text: reason || `Participation à confirmer avant lock.${returnText}`.trim() };
+  }
+  if (status === "available") {
+    return { icon: "✓", title: "Disponible", text: reason || "Aucun signal d'indisponibilité confirmé." };
+  }
+  return { icon: "?", title: "Statut non confirmé", text: reason || "Aucune donnée fiable de disponibilité." };
+}
+
 function xsCoachDecisionDeepTrendV2(l5: number, l15: number, l40: number): "up" | "down" | "stable" | "mixed" {
   const baseline = xsRadarAvgV1([l15, l40]) ?? l15;
   const spread = Math.max(l5, l15, l40) - Math.min(l5, l15, l40);
@@ -1736,7 +1791,8 @@ function xsBuildCoachDecisionDeepAnalysisV2(
   metrics: XsRadarMetricsByPositionV1,
   coachDecision: XsRadarCoachDecisionV1,
   confidence: XsRadarConfidenceEnhancedV1,
-  matchContext?: XsCardMatchContextV1 | null
+  matchContext?: XsCardMatchContextV1 | null,
+  playerStatus?: XsPlayerStatusV1 | null
 ): XsCoachDecisionDeepAnalysisV2 {
   const score = xsCoachDecisionSmartMetricV1(coachDecision.score);
   const l5 = xsCoachDecisionSmartMetricV1(metrics.l5 ?? metrics.form);
@@ -1794,8 +1850,18 @@ function xsBuildCoachDecisionDeepAnalysisV2(
   if (score < 40 && negative.length < 2) xsCoachDecisionDeepPushV2(negative, xsCoachDecisionDeepItemV2("▾", "Plancher bas", `Score coach ${Math.round(score)}, trop peu de sécurité.`));
   if (score >= 70 && negative.length === 0) xsCoachDecisionDeepPushV2(negative, xsCoachDecisionDeepItemV2("✓", "Aucun frein majeur", "Pas de signal bloquant dans la synthèse actuelle."));
 
-  const mainReason = xsCoachDecisionDeepMainReasonV2(score, metrics, positionUsed, matchContext, trend, positionSignal);
-  const verdict =
+  const availability = xsPlayerStatusAvailabilityItemV1(playerStatus);
+  const unavailable = playerStatus?.status === "injured" || playerStatus?.status === "suspended";
+  const doubtful = playerStatus?.status === "doubtful";
+  let mainReason = xsCoachDecisionDeepMainReasonV2(score, metrics, positionUsed, matchContext, trend, positionSignal);
+  if (unavailable) {
+    mainReason = availability;
+    xsCoachDecisionDeepPushV2(negative, availability, 3);
+  } else if (doubtful) {
+    xsCoachDecisionDeepPushV2(negative, availability, 3);
+  }
+
+  let verdict =
     score >= 75
       ? (contextHard ? "À aligner : profil solide malgré le match." : "À aligner : profil fiable avec bon contexte.")
       : score >= 70
@@ -1805,7 +1871,7 @@ function xsBuildCoachDecisionDeepAnalysisV2(
           : score >= 40
             ? (gameTime < 55 ? "Risqué : dépend trop du temps de jeu." : "Risqué : profil instable, plutôt dépannage.")
             : "À éviter : trop peu de garanties actuellement.";
-  const actionAdvice =
+  let actionAdvice =
     score >= 75 && confidence.score >= 60 && (gameTime >= 70 || reliability >= 65)
       ? xsCoachDecisionDeepItemV2("✓", "Conseil", "À aligner en priorité si tu cherches de la sécurité.")
       : score >= 70
@@ -1820,12 +1886,24 @@ function xsBuildCoachDecisionDeepAnalysisV2(
                 ? xsCoachDecisionDeepItemV2("!", "Conseil", "À éviter sauf contest faible ou besoin de différentiel.")
                 : xsCoachDecisionDeepItemV2("!", "Conseil", "À éviter : cherche un profil avec plus de garanties.");
 
+  if (unavailable) {
+    verdict = playerStatus?.status === "suspended"
+      ? "À éviter : joueur suspendu."
+      : "À éviter : joueur blessé.";
+    actionAdvice = xsCoachDecisionDeepItemV2("!", "Conseil", "Ne pas aligner tant que le statut n'est pas levé.");
+  } else if (doubtful && score >= 55) {
+    verdict = "Incertain : attendre confirmation.";
+    actionAdvice = xsCoachDecisionDeepItemV2("?", "Conseil", "À garder seulement si tu peux confirmer sa disponibilité avant lock.");
+  }
+
   return {
     verdict,
     mainReason,
     positiveSignals: positive.slice(0, positiveLimit),
     negativeSignals: negative.slice(0, 3),
     actionAdvice,
+    availability,
+    playerStatus: playerStatus || null,
   };
 }
 /* XS_COACH_DECISION_V2_DEEP_ANALYSIS_END */
@@ -1837,7 +1915,8 @@ function xsCoachDecisionSmartReasonsV1(
   decisionV2: XsRadarDecisionV2,
   recommendation: XsRadarRecommendationV1,
   confidence: XsRadarConfidenceEnhancedV1,
-  matchContext?: XsCardMatchContextV1 | null
+  matchContext?: XsCardMatchContextV1 | null,
+  playerStatus?: XsPlayerStatusV1 | null
 ): {
   coachDecision: XsRadarCoachDecisionV1;
   decisionV2: XsRadarDecisionV2;
@@ -1855,12 +1934,27 @@ function xsCoachDecisionSmartReasonsV1(
   const ceiling = xsCoachDecisionSmartMetricV1(coachDecision.ceiling);
   const volatility = coachDecision.volatility || "unknown";
   const positionSignal = xsCoachDecisionPositionSignalV1(positionUsed, metrics);
-  const decisionConfidence = xsCoachDecisionSmartConfidenceV1(metrics, coachDecision, confidence);
+  let decisionConfidence = xsCoachDecisionSmartConfidenceV1(metrics, coachDecision, confidence);
   const opponent = matchContext?.opponentName ? ` contre ${matchContext.opponentName}` : "";
   const contextGood = matchContext?.difficulty === "easy" || (matchContext?.difficulty === "medium" && matchContext?.homeAway === "home");
   const contextHard = matchContext?.difficulty === "hard";
   const why: XsCoachDecisionSmartItemV1[] = [];
   const risks: XsCoachDecisionSmartItemV1[] = [];
+  const playerStatusCode = playerStatus?.status || "unknown";
+  const statusUnavailable = playerStatusCode === "injured" || playerStatusCode === "suspended";
+  const statusDoubtful = playerStatusCode === "doubtful";
+
+  if (statusUnavailable) {
+    decisionConfidence = xsRadarConfidenceFromScoreV1(
+      Math.max(72, decisionConfidence.score),
+      `Confiance élevée dans la décision d'éviter : ${playerStatusCode === "suspended" ? "joueur suspendu" : "joueur blessé"}.`
+    );
+  } else if (statusDoubtful) {
+    decisionConfidence = xsRadarConfidenceFromScoreV1(
+      Math.max(0, decisionConfidence.score - 18),
+      "Confiance abaissée : disponibilité incertaine avant le match."
+    );
+  }
 
   if (score >= 70) {
     if (gameTime >= 70) xsCoachDecisionSmartPushV1(why, { icon: "▶", title: "Temps de jeu très fiable", text: `Sécurité minutes élevée (${Math.round(gameTime)}/100).` });
@@ -1923,12 +2017,68 @@ function xsCoachDecisionSmartReasonsV1(
         : score >= 40
           ? `Pari risqué : utilisable seulement si manque d'options.${riskText}`
           : `À éviter : ${mainWhy} tire fortement la décision vers le bas.${riskText}`;
+  let adjustedCoachDecision = coachDecision;
+  let adjustedDecisionV2 = decisionV2;
+  let adjustedRecommendation = recommendation;
+  if (statusUnavailable) {
+    const statusLabel = playerStatusCode === "suspended" ? "Suspendu" : "Blessé";
+    const adjustedScore = Math.min(score, 18);
+    adjustedCoachDecision = {
+      ...coachDecision,
+      score: adjustedScore,
+      decision: "À éviter",
+      tone: "avoid",
+      reasons: [statusLabel, ...(coachDecision.reasons || [])].slice(0, 4),
+      reason: `${statusLabel}: ne pas aligner tant que le statut n'est pas levé.`,
+    };
+    adjustedDecisionV2 = {
+      ...decisionV2,
+      finalLabel: "À éviter",
+      finalTone: "avoid",
+      playStyle: "Unavailable",
+      summary: `${statusLabel}: ne pas aligner.`,
+      bullets: [statusLabel, ...(decisionV2.bullets || [])].slice(0, 3),
+    };
+    adjustedRecommendation = {
+      ...recommendation,
+      label: "À éviter",
+      tone: "avoid",
+      reason: `${statusLabel}: ne pas aligner tant que le statut n'est pas levé.`,
+    };
+  } else if (statusDoubtful) {
+    const adjustedScore = Math.max(0, score - 10);
+    adjustedCoachDecision = {
+      ...coachDecision,
+      score: adjustedScore,
+      decision: xsRadarCoachLabelV1(adjustedScore),
+      tone: xsRadarCoachToneV1(adjustedScore),
+      reasons: ["Disponibilité incertaine", ...(coachDecision.reasons || [])].slice(0, 4),
+      reason: `Disponibilité incertaine: décision abaissée. ${coachDecision.reason || ""}`.trim(),
+    };
+    if (decisionV2.finalTone === "strongPlay" || decisionV2.finalTone === "play") {
+      adjustedDecisionV2 = {
+        ...decisionV2,
+        finalLabel: "Pari risqué",
+        finalTone: "risk",
+        playStyle: "Rotation risk",
+        summary: "Pari risqué : disponibilité à confirmer avant lock.",
+        bullets: ["Disponibilité incertaine", ...(decisionV2.bullets || [])].slice(0, 3),
+      };
+      adjustedRecommendation = {
+        ...recommendation,
+        label: "Pari risqué",
+        tone: "risky",
+        reason: "Pari risqué : attendre une confirmation de disponibilité avant de l'aligner.",
+      };
+    }
+  }
   const deepAnalysis = xsBuildCoachDecisionDeepAnalysisV2(
     positionUsed,
     metrics,
-    coachDecision,
+    adjustedCoachDecision,
     decisionConfidence,
-    matchContext
+    matchContext,
+    playerStatus
   );
   const deepWhy = [deepAnalysis.mainReason, ...deepAnalysis.positiveSignals].slice(0, 3);
   const deepRisks = deepAnalysis.negativeSignals.length ? deepAnalysis.negativeSignals.slice(0, 3) : finalRisks;
@@ -1942,7 +2092,7 @@ function xsCoachDecisionSmartReasonsV1(
     .filter((item, index, list) => list.indexOf(item) === index)
     .slice(0, 3);
   const smartDecisionV2: XsRadarDecisionV2 = {
-    ...decisionV2,
+    ...adjustedDecisionV2,
     summary,
     bullets,
     whyItems: deepWhy.length ? deepWhy : finalWhy,
@@ -1950,13 +2100,13 @@ function xsCoachDecisionSmartReasonsV1(
     deepAnalysis,
   };
   const smartCoachDecision: XsRadarCoachDecisionV1 = {
-    ...coachDecision,
+    ...adjustedCoachDecision,
     reasons: bullets,
     reason: `${summary} ${deepAnalysis.mainReason.text} ${deepAnalysis.actionAdvice.text}`,
   };
   const smartRecommendation: XsRadarRecommendationV1 = {
-    ...recommendation,
-    label: decisionV2.finalLabel || recommendation.label,
+    ...adjustedRecommendation,
+    label: adjustedDecisionV2.finalLabel || adjustedRecommendation.label,
     reason: deepAnalysis.actionAdvice.text,
   };
   return {
@@ -2266,6 +2416,7 @@ function xsBuildFifaRadarValuesFromHistoryV1(
   positionSource: any,
   range: XsRadarRangeV1 = "L15",
   realMatchContext?: XsCardMatchContextV1 | null,
+  playerStatus?: XsPlayerStatusV1 | null,
   skipAccumulatedCoachDecision: boolean = false
 ) {
   const positionUsed = xsRadarNormalizePositionV1(positionSource);
@@ -2367,7 +2518,8 @@ function xsBuildFifaRadarValuesFromHistoryV1(
       fallbackDecisionV2,
       fallbackRecommendation,
       fallbackConfidenceEnhanced,
-      fallbackMatchContext
+      fallbackMatchContext,
+      playerStatus
     );
     return {
       confidence,
@@ -2545,9 +2697,9 @@ function xsBuildFifaRadarValuesFromHistoryV1(
   );
   if (!skipAccumulatedCoachDecision) {
     const radarsByRange: Partial<Record<XsRadarRangeV1, any>> = {
-      L5: xsBuildFifaRadarValuesFromHistoryV1(historyChart, fallbackAvg, positionSource, "L5", realMatchContext, true),
-      L15: xsBuildFifaRadarValuesFromHistoryV1(historyChart, fallbackAvg, positionSource, "L15", realMatchContext, true),
-      L40: xsBuildFifaRadarValuesFromHistoryV1(historyChart, fallbackAvg, positionSource, "L40", realMatchContext, true),
+      L5: xsBuildFifaRadarValuesFromHistoryV1(historyChart, fallbackAvg, positionSource, "L5", realMatchContext, playerStatus, true),
+      L15: xsBuildFifaRadarValuesFromHistoryV1(historyChart, fallbackAvg, positionSource, "L15", realMatchContext, playerStatus, true),
+      L40: xsBuildFifaRadarValuesFromHistoryV1(historyChart, fallbackAvg, positionSource, "L40", realMatchContext, playerStatus, true),
     };
     const accumulatedDecision = xsBuildAccumulatedCoachDecisionV1(
       positionUsed,
@@ -2572,7 +2724,8 @@ function xsBuildFifaRadarValuesFromHistoryV1(
     decisionV2,
     recommendation,
     confidenceEnhanced,
-    adjustedMatchContext
+    adjustedMatchContext,
+    playerStatus
   );
   coachDecision = smartDecision.coachDecision;
   decisionV2 = smartDecision.decisionV2;
@@ -2657,6 +2810,7 @@ export default function CardDetailScreen() {
   const [perf, setPerf] = useState<any>(null);
   const [historyChart, setHistoryChart] = useState<any[]>([]); // XS_HISTORY_CHART_LOGOS_LOAD_V1
   const [realMatchContext, setRealMatchContext] = useState<XsCardMatchContextV1 | null>(null); // XS_CARD_REAL_MATCH_CONTEXT_V1
+  const [playerStatus, setPlayerStatus] = useState<XsPlayerStatusV1 | null>(null); // XS_PLAYER_STATUS_DECISION_V1
   const [state, setState] = useState<"idle" | "loading" | "ok" | "err">("idle");
   const [error, setError] = useState("");
   const [activeSeries, setActiveSeries] = useState<"L5" | "L15" | "ALL">("L5");
@@ -2760,6 +2914,42 @@ return () => { cancelled = true; };
       } catch (e: any) {
         if (!cancelled) setRealMatchContext(null);
         console.log("[card real match context] fallback=", String(e?.message || e || "error"));
+      }
+    }
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [playerSlug]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      if (!playerSlug) {
+        setPlayerStatus(null);
+        return;
+      }
+      try {
+        const base = xsPositionFallbackBaseUrlV1();
+        const url = `${base}/player/status/${encodeURIComponent(playerSlug)}`;
+        console.log("[XS_PLAYER_STATUS_DECISION_V1] url=", url);
+        const resp = await fetch(url, { headers: { accept: "application/json" } });
+        const json = await resp.json().catch(() => null);
+        const status = xsNormalizePlayerStatusV1(json, playerSlug);
+        if (!cancelled) setPlayerStatus(status);
+        console.log("[XS_PLAYER_STATUS_DECISION_V1] resolved=", {
+          playerSlug,
+          status: status.status,
+          hasExpectedReturnDate: Boolean(status.expectedReturnDate),
+          source: status.source || "unknown",
+        });
+      } catch (e: any) {
+        if (!cancelled) {
+          setPlayerStatus(xsNormalizePlayerStatusV1({ status: "unknown", source: "frontend_fallback_error" }, playerSlug));
+        }
+        console.log("[XS_PLAYER_STATUS_DECISION_V1] fallback=", String(e?.message || e || "error"));
       }
     }
 
@@ -2961,9 +3151,10 @@ const avg5 = avgOf(series.l5) ?? asNum((card as any)?.l5) ?? asNum((perf as any)
           perf,
         },
         radarRange,
-        realMatchContext
+        realMatchContext,
+        playerStatus
       ),
-    [historyChart, avg5, avg15, avg40, resolvedPosition, positionRawParam, card, perf, radarRange, realMatchContext]
+    [historyChart, avg5, avg15, avg40, resolvedPosition, positionRawParam, card, perf, radarRange, realMatchContext, playerStatus]
   );
 
   function pill(label: "L5" | "L15" | "ALL") {
