@@ -636,39 +636,57 @@ export async function publicPlayerPerformance(
 
 
 // XS_SYNC_MY_CARDS_HISTORY_BATCH_V1
-export async function syncMyCardsHistoryBatch(deviceId: string, cards: any[]) {
-  /* XS_HISTORY_BATCH_CLOUDRUN_V1 */
-  const XS_HISTORY_BATCH_BASE_V1 = "https://xiascor-backend-tssdy62zqa-ez.a.run.app";
-  /* XS_HISTORY_BATCH_CLOUDRUN_V1_END */
+type XsMyCardsHistoryBatchOptsV1 = {
+  maxPlayers?: number;
+  last?: number;
+  concurrency?: number;
+  force?: boolean;
+  ttlHours?: number;
+  budgetMs?: number;
+};
+
+export async function syncMyCardsHistoryBatch(deviceId: string, cards: any[], opts?: XsMyCardsHistoryBatchOptsV1) {
+  /* XS_MYCARDS_FAST_HISTORY_BACKGROUND_V1 */
   try {
-    const BASE_URL =
-      process.env.EXPO_PUBLIC_BASE_URL ??
-      "https://xiascor-backend-tssdy62zqa-ez.a.run.app";
+    const baseUrl = String(AUTH_BASE_URL || BASE_URL || "https://xiascor-backend-tssdy62zqa-ez.a.run.app").replace(/\/+$/, "");
+    const maxPlayers = Math.max(1, Math.min(50, Number(opts?.maxPlayers ?? 15) || 15));
+    const last = Math.max(1, Math.min(100, Number(opts?.last ?? 40) || 40));
+    const concurrency = Math.max(1, Math.min(4, Number(opts?.concurrency ?? 2) || 2));
+    const ttlHours = Math.max(1, Math.min(720, Number(opts?.ttlHours ?? 24) || 24));
+    const budgetMs = Math.max(0, Math.min(120000, Number(opts?.budgetMs ?? 15000) || 15000));
+    const force = opts?.force === true;
 
     const slugs = Array.from(new Set(
       (cards || [])
         .map((c: any) => c?.playerSlug || c?.player?.slug || c?.anyPlayer?.slug)
         .filter(Boolean)
-    ));
+        .map((s: any) => String(s).trim().toLowerCase())
+        .filter(Boolean)
+    )).slice(0, maxPlayers);
 
     if (!slugs.length) return { ok: false, error: "no_slugs" };
 
     const url =
-      `${XS_HISTORY_BATCH_BASE_V1}/history/sync-my-cards-scores` +
+      `${baseUrl}/history/sync-my-cards-scores` +
       `?deviceId=${encodeURIComponent(deviceId)}` +
-      `&last=100&concurrency=2` +
+      `&last=${encodeURIComponent(String(last))}` +
+      `&concurrency=${encodeURIComponent(String(concurrency))}` +
+      `&maxPlayers=${encodeURIComponent(String(maxPlayers))}` +
+      `&force=${force ? "1" : "0"}` +
+      `&ttlHours=${encodeURIComponent(String(ttlHours))}` +
+      `&historyBudgetMs=${encodeURIComponent(String(budgetMs))}` +
       `&slugs=${encodeURIComponent(slugs.join(","))}`;
 
-    console.log("[history batch] url=", url);
+    console.log("[XS_MYCARDS_FAST_HISTORY_BACKGROUND_V1] url=", url);
 
     const r = await fetch(url, { method: "POST" });
-    const json = await r.json();
+    const json = await r.json().catch(() => null);
 
-    console.log("[history batch] result=", json);
+    console.log("[XS_MYCARDS_FAST_HISTORY_BACKGROUND_V1] result=", json);
 
-    return json;
+    return json || { ok: false, error: `history_batch_http_${r.status}` };
   } catch (e: any) {
-    console.log("[history batch] error=", e?.message || e);
+    console.log("[XS_MYCARDS_FAST_HISTORY_BACKGROUND_V1] error=", e?.message || e);
     return { ok: false, error: String(e?.message || e) };
   }
 }

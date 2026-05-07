@@ -12,7 +12,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import PerfL5Widget from "../../src/components/PerfL5Widget";
 import { ActivityIndicator, FlatList, Image, Pressable, SafeAreaView, Text, View, useWindowDimensions, Dimensions, Alert } from "react-native";
 import { theme } from "../../src/theme";
-import { myCardsList, myCardsSync, publicPlayerPerformance, type PageInfo } from "../../src/scoutApi";
+import { myCardsList, myCardsSync, publicPlayerPerformance, syncMyCardsHistoryBatch, type PageInfo } from "../../src/scoutApi";
 /* XS_MYCARDS_UI_META_V1_BEGIN */
 /* XS_CARDS_GRID_GROW_V1
    Objectif:
@@ -441,6 +441,7 @@ const [loading, setLoading] = useState(true);
 const [loadingMore, setLoadingMore] = useState(false);
 const [syncing, setSyncing] = useState(false);
 const [error, setError] = useState("");
+const [historySyncStatus, setHistorySyncStatus] = useState(""); // XS_MYCARDS_FAST_HISTORY_BACKGROUND_V1
   /* XS_UI_LAST_SYNC_LABEL_V1 */
 const [lastSync, setLastSync] = useState<string>("");
 const loadingMoreRef = useRef(false);
@@ -501,6 +502,7 @@ const onSync = useCallback(async () => {
     if (!deviceId) return;
     setSyncing(true);
     setError("");
+    setHistorySyncStatus("");
     try {
       await myCardsSync(deviceId, { first: 50, maxPages: 80, maxCards: 20000, sleepMs: 250 });
 
@@ -512,9 +514,33 @@ const onSync = useCallback(async () => {
       try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
       setItems(syncCards);
       setPageInfo((res as any)?.pageInfo);
+      setHistorySyncStatus("Cartes synchronisées");
 
       if (!XS_ENABLE_HISTORY_BATCH_AFTER_SYNC_V1) {
         console.log("[history batch] skipped auto after sync", { cards: syncCards.length });
+      } else {
+        setHistorySyncStatus("Mise à jour des performances en cours...");
+        void syncMyCardsHistoryBatch(deviceId, syncCards, {
+          maxPlayers: 15,
+          last: 40,
+          concurrency: 2,
+          force: false,
+          ttlHours: 24,
+          budgetMs: 15000,
+        }).then((json: any) => {
+          const synced = Number(json?.synced ?? json?.historySync?.synced ?? 0) || 0;
+          const skipped = Number(json?.skippedFresh ?? json?.historySync?.skippedFresh ?? 0) || 0;
+          const failed = Number(json?.failed ?? json?.historySync?.failed ?? 0) || 0;
+          if (json?.ok && (synced > 0 || skipped > 0 || failed === 0)) {
+            setHistorySyncStatus(`Performances mises à jour : ${synced} joueurs · ${skipped} déjà à jour`);
+          } else {
+            setHistorySyncStatus("Performances en attente : mise à jour différée");
+          }
+          console.log("[XS_MYCARDS_FAST_HISTORY_BACKGROUND_V1] done", { synced, skipped, failed, ok: !!json?.ok });
+        }).catch((e: any) => {
+          setHistorySyncStatus("Performances en attente : mise à jour différée");
+          console.log("[XS_MYCARDS_FAST_HISTORY_BACKGROUND_V1] warning", String(e?.message || e));
+        });
       }
     } catch (e: any) {
       setError(e?.message || "Erreur synchronisation");
@@ -615,6 +641,11 @@ const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
 
           {error ? (
             <Text style={{ color: theme.bad, fontWeight: "800" }}>Erreur: {error}</Text>
+          ) : null}
+          {historySyncStatus ? (
+            <Text style={{ color: "#A4A7AE", fontWeight: "800", fontSize: 13 }} numberOfLines={2}>
+              {historySyncStatus}
+            </Text>
           ) : null}
         </View>
 
