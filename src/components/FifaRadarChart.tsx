@@ -46,6 +46,13 @@ type RadarSmartReasonItem = {
   title: string;
   text: string;
 };
+type RadarCoachDeepAnalysis = {
+  verdict: string;
+  mainReason: RadarSmartReasonItem;
+  positiveSignals: RadarSmartReasonItem[];
+  negativeSignals: RadarSmartReasonItem[];
+  actionAdvice: RadarSmartReasonItem;
+};
 type RadarDecisionV2 = {
   finalLabel: string;
   finalTone: "strongPlay" | "play" | "borderline" | "joker" | "risk" | "avoid";
@@ -54,6 +61,7 @@ type RadarDecisionV2 = {
   bullets: string[];
   whyItems?: RadarSmartReasonItem[];
   riskItems?: RadarSmartReasonItem[];
+  deepAnalysis?: RadarCoachDeepAnalysis;
 };
 type RadarMatchContext = {
   opponentName: string | null;
@@ -381,7 +389,8 @@ export default function FifaRadarChart(props: {
   const premiumVerdict = premiumDecisionVerdictV1(decisionV2.finalLabel, decisionV2.finalTone);
   const premiumIcon = premiumDecisionIconV1(decisionV2.finalTone);
   const premiumScore = Math.round(clamp(coachDecision.score));
-  const premiumSummaryShort =
+  const deepAnalysis = decisionV2.deepAnalysis || null;
+  const fallbackPremiumSummaryShort =
     decisionV2.finalTone === "strongPlay" || decisionV2.finalTone === "play"
       ? "Bonne option pour ce match."
       : decisionV2.finalTone === "joker"
@@ -391,6 +400,10 @@ export default function FifaRadarChart(props: {
           : decisionV2.finalTone === "avoid"
             ? "Signaux trop négatifs."
             : "Décision à arbitrer.";
+  const premiumSummaryShort =
+    deepAnalysis?.verdict && safeTextV1(deepAnalysis.verdict) !== "—"
+      ? safeTextV1(deepAnalysis.verdict)
+      : fallbackPremiumSummaryShort;
   const decisionBullets = (decisionV2.bullets || [])
     .map((item) => String(item || "").trim())
     .filter(Boolean);
@@ -435,26 +448,27 @@ export default function FifaRadarChart(props: {
     .replace(/^Calcul\s*:\s*/i, "")
     .trim();
   const confidenceLine = `${hasMatches ? `${Math.max(0, Math.round(props.matches || 0))} matchs utilisés` : "—"} · fenêtre ${activeRange}`;
-  const smartWhyItems = Array.isArray(decisionV2.whyItems)
-    ? decisionV2.whyItems
+  const normalizeSmartItemsV2 = (items?: Array<RadarSmartReasonItem | null | undefined> | null, max = 3) =>
+    (Array.isArray(items) ? items : [])
         .map((item) => ({
           icon: String(item?.icon || "").trim(),
           title: safeTextV1(item?.title),
           text: safeTextV1(item?.text),
         }))
         .filter((item) => item.title !== "—")
-        .slice(0, 3)
+        .filter((item, index, list) => list.findIndex((other) => other.title === item.title) === index)
+        .slice(0, max);
+  const deepWhyItems = deepAnalysis
+    ? normalizeSmartItemsV2([deepAnalysis.mainReason, ...(deepAnalysis.positiveSignals || [])], 3)
     : [];
-  const smartRiskItems = Array.isArray(decisionV2.riskItems)
-    ? decisionV2.riskItems
-        .map((item) => ({
-          icon: String(item?.icon || "").trim(),
-          title: safeTextV1(item?.title),
-          text: safeTextV1(item?.text),
-        }))
-        .filter((item) => item.title !== "—")
-        .slice(0, 2)
+  const deepRiskItems = deepAnalysis
+    ? normalizeSmartItemsV2(deepAnalysis.negativeSignals || [], 2)
     : [];
+  const smartWhyItems = deepWhyItems.length ? deepWhyItems : normalizeSmartItemsV2(decisionV2.whyItems, 3);
+  const smartRiskItems = deepRiskItems.length ? deepRiskItems : normalizeSmartItemsV2(decisionV2.riskItems, 2);
+  const deepAdvice = deepAnalysis?.actionAdvice
+    ? normalizeSmartItemsV2([deepAnalysis.actionAdvice], 1)[0]
+    : null;
   const fallbackV3WhyItems = [
     {
       icon: "↗",
@@ -815,6 +829,34 @@ export default function FifaRadarChart(props: {
             </View>
           </View>
         </View>
+
+        {deepAdvice ? (
+          <View
+            style={{
+              borderRadius: 13,
+              borderWidth: 1,
+              borderColor: "rgba(148,163,184,0.22)",
+              backgroundColor: "rgba(15,23,42,0.50)",
+              paddingHorizontal: 10,
+              paddingVertical: 8,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 9,
+            }}
+          >
+            <Text style={{ color: premiumTone.fg, fontSize: 16, fontWeight: "900" }}>
+              {deepAdvice.icon || "✓"}
+            </Text>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} style={{ color: premiumTone.fg, fontSize: 12, fontWeight: "900" }}>
+                CONSEIL
+              </Text>
+              <Text numberOfLines={2} ellipsizeMode="tail" style={{ color: "#F8FAFC", fontSize: 12, lineHeight: 16, marginTop: 1 }}>
+                {deepAdvice.text}
+              </Text>
+            </View>
+          </View>
+        ) : null}
 
         <View
           style={{

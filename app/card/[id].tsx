@@ -440,6 +440,14 @@ type XsCoachDecisionSmartItemV1 = {
   text: string;
 };
 
+type XsCoachDecisionDeepAnalysisV2 = {
+  verdict: string;
+  mainReason: XsCoachDecisionSmartItemV1;
+  positiveSignals: XsCoachDecisionSmartItemV1[];
+  negativeSignals: XsCoachDecisionSmartItemV1[];
+  actionAdvice: XsCoachDecisionSmartItemV1;
+};
+
 type XsRadarDecisionV2 = {
   finalLabel: string;
   finalTone: "strongPlay" | "play" | "borderline" | "joker" | "risk" | "avoid";
@@ -448,6 +456,7 @@ type XsRadarDecisionV2 = {
   bullets: string[];
   whyItems?: XsCoachDecisionSmartItemV1[];
   riskItems?: XsCoachDecisionSmartItemV1[];
+  deepAnalysis?: XsCoachDecisionDeepAnalysisV2;
 };
 
 type XsRadarPositionPercentileV1 = {
@@ -1594,6 +1603,233 @@ function xsCoachDecisionSmartConfidenceV1(
   };
 }
 
+/* XS_COACH_DECISION_V2_DEEP_ANALYSIS */
+function xsCoachDecisionDeepItemV2(icon: string, title: string, text: string): XsCoachDecisionSmartItemV1 {
+  return { icon, title, text };
+}
+
+function xsCoachDecisionDeepPushV2(
+  list: XsCoachDecisionSmartItemV1[],
+  item: XsCoachDecisionSmartItemV1 | null | undefined,
+  max = 3
+) {
+  if (!item || list.length >= max) return;
+  const title = String(item.title || "").trim();
+  if (!title) return;
+  const exists = list.some((x) => String(x.title || "").trim().toLowerCase() === title.toLowerCase());
+  if (!exists) list.push(item);
+}
+
+function xsCoachDecisionDeepTrendV2(l5: number, l15: number, l40: number): "up" | "down" | "stable" | "mixed" {
+  const baseline = xsRadarAvgV1([l15, l40]) ?? l15;
+  const spread = Math.max(l5, l15, l40) - Math.min(l5, l15, l40);
+  if (spread <= 7) return "stable";
+  if (l5 - baseline >= 7) return "up";
+  if (baseline - l5 >= 7) return "down";
+  return "mixed";
+}
+
+function xsCoachDecisionDeepPositionSignalV2(positionUsed: XsRadarPositionV1, metrics: XsRadarMetricsByPositionV1) {
+  if (positionUsed === "GK") {
+    const value = Math.max(
+      xsCoachDecisionSmartMetricV1(metrics.gameTime),
+      xsCoachDecisionSmartMetricV1(metrics.cleanSheets),
+      xsCoachDecisionSmartMetricV1(metrics.saves),
+      xsCoachDecisionSmartMetricV1(metrics.reliability)
+    );
+    return {
+      value,
+      positive: xsCoachDecisionDeepItemV2("◆", "Base gardien fiable", `Minutes/fiabilité gardien à ${Math.round(value)}/100.`),
+      negative: xsCoachDecisionDeepItemV2("!", "Base gardien fragile", `Minutes, clean sheet ou fiabilité trop bas (${Math.round(value)}/100).`),
+    };
+  }
+  if (positionUsed === "DEF") {
+    const value = Math.max(xsCoachDecisionSmartMetricV1(metrics.defense), xsCoachDecisionSmartMetricV1(metrics.duels), xsCoachDecisionSmartMetricV1(metrics.reliability));
+    return {
+      value,
+      positive: xsCoachDecisionDeepItemV2("◆", "Bon volume défensif", `Défense/duels/fiabilité à ${Math.round(value)}/100.`),
+      negative: xsCoachDecisionDeepItemV2("!", "Volume défensif faible", `Défense ou duels insuffisants (${Math.round(value)}/100).`),
+    };
+  }
+  if (positionUsed === "MID") {
+    const value = Math.max(xsCoachDecisionSmartMetricV1(metrics.creation), xsCoachDecisionSmartMetricV1(metrics.impact), xsCoachDecisionSmartMetricV1(metrics.regularity));
+    return {
+      value,
+      positive: xsCoachDecisionDeepItemV2("◆", "Influence au milieu", `Création/impact/régularité à ${Math.round(value)}/100.`),
+      negative: xsCoachDecisionDeepItemV2("!", "Influence limitée", `Création ou impact trop neutres (${Math.round(value)}/100).`),
+    };
+  }
+  if (positionUsed === "FW") {
+    const value = Math.max(xsCoachDecisionSmartMetricV1(metrics.attack), xsCoachDecisionSmartMetricV1(metrics.impact));
+    return {
+      value,
+      positive: xsCoachDecisionDeepItemV2("◆", "Menace offensive", `Attaque/impact à ${Math.round(value)}/100.`),
+      negative: xsCoachDecisionDeepItemV2("!", "Menace offensive faible", `Attaque ou impact insuffisants (${Math.round(value)}/100).`),
+    };
+  }
+  const value = Math.max(xsCoachDecisionSmartMetricV1(metrics.impact), xsCoachDecisionSmartMetricV1(metrics.reliability));
+  return {
+    value,
+    positive: xsCoachDecisionDeepItemV2("◆", "Impact utile", `Impact/fiabilité à ${Math.round(value)}/100.`),
+    negative: xsCoachDecisionDeepItemV2("!", "Impact limité", `Impact ou fiabilité trop bas (${Math.round(value)}/100).`),
+  };
+}
+
+function xsCoachDecisionDeepMainReasonV2(
+  score: number,
+  metrics: XsRadarMetricsByPositionV1,
+  positionUsed: XsRadarPositionV1,
+  matchContext: XsCardMatchContextV1 | null | undefined,
+  trend: "up" | "down" | "stable" | "mixed",
+  positionSignal: ReturnType<typeof xsCoachDecisionDeepPositionSignalV2>
+): XsCoachDecisionSmartItemV1 {
+  const form = xsCoachDecisionSmartMetricV1(metrics.l5 ?? metrics.form);
+  const gameTime = xsCoachDecisionSmartMetricV1(metrics.gameTime);
+  const impact = xsCoachDecisionSmartMetricV1(metrics.impact);
+  const regularity = xsCoachDecisionSmartMetricV1(metrics.regularity);
+  const reliability = xsCoachDecisionSmartMetricV1(metrics.reliability);
+  const contextHard = matchContext?.difficulty === "hard";
+  const contextGood = matchContext?.difficulty === "easy" || (matchContext?.difficulty === "medium" && matchContext?.homeAway === "home");
+
+  if (score < 40) {
+    const weak = [
+      xsCoachDecisionDeepItemV2("↓", "Forme insuffisante", `L5 ${Math.round(form)} : les derniers scores ne donnent pas assez de garanties.`),
+      xsCoachDecisionDeepItemV2("!", "Temps de jeu trop faible", `Sécurité minutes ${Math.round(gameTime)}/100, risque fort de rôle limité.`),
+      xsCoachDecisionDeepItemV2("!", "Impact limité", `Impact Sorare ${Math.round(impact)}/100, poids trop faible dans les scores.`),
+      xsCoachDecisionDeepItemV2("~", "Régularité faible", `Régularité ${Math.round(regularity)}/100, plancher trop fragile.`),
+      positionSignal.negative,
+    ];
+    const values = [form, gameTime, impact, regularity, positionSignal.value];
+    const weakestIndex = values.reduce((best, value, index) => (value < values[best] ? index : best), 0);
+    if (contextGood && values[weakestIndex] > 48) {
+      return xsCoachDecisionDeepItemV2("⌂", "Contexte insuffisant", "Match jouable, mais les métriques joueur restent trop faibles.");
+    }
+    return weak[weakestIndex];
+  }
+
+  if (score >= 70) {
+    if (gameTime >= 72) return xsCoachDecisionDeepItemV2("▶", "Temps de jeu sécurisant", `Minutes très fiables (${Math.round(gameTime)}/100), bon socle Sorare.`);
+    if (positionSignal.value >= 65) return positionSignal.positive;
+    if (impact >= 65) return xsCoachDecisionDeepItemV2("★", "Impact Sorare fort", `Impact ${Math.round(impact)}/100, il pèse vraiment dans le scoring.`);
+    if (trend === "up") return xsCoachDecisionDeepItemV2("↗", "Dynamique positive", "L5 au-dessus du L15/L40, forme récente confirmée.");
+    if (contextGood) return xsCoachDecisionDeepItemV2("⌂", "Contexte favorable", "Match abordable qui renforce une base déjà solide.");
+    if (contextHard) return xsCoachDecisionDeepItemV2("◆", "Profil solide malgré le match", "Le score reste haut malgré un contexte plus exigeant.");
+    return xsCoachDecisionDeepItemV2("✓", "Profil complet", "Aucun axe faible majeur dans la synthèse L5/L15/L40.");
+  }
+
+  if (score >= 55) {
+    if (gameTime >= 65) return xsCoachDecisionDeepItemV2("▶", "Base minutes correcte", `Temps de jeu ${Math.round(gameTime)}/100, utile sans être premium.`);
+    if (trend === "up") return xsCoachDecisionDeepItemV2("↗", "Forme récente utile", "L5 supérieur au fond L15/L40, mais confirmation encore nécessaire.");
+    if (positionSignal.value >= 60) return positionSignal.positive;
+    return xsCoachDecisionDeepItemV2("=", "Option équilibrée", "Quelques signaux positifs, mais pas assez pour un statut prioritaire.");
+  }
+
+  if (gameTime < 55) return xsCoachDecisionDeepItemV2("!", "Dépend trop du temps de jeu", `Minutes fragiles (${Math.round(gameTime)}/100), risque de rendement incomplet.`);
+  if (trend === "down") return xsCoachDecisionDeepItemV2("↓", "Baisse récente", "L5 inférieur au L15/L40, dynamique négative.");
+  if (regularity < 55) return xsCoachDecisionDeepItemV2("~", "Régularité fragile", `Régularité ${Math.round(regularity)}/100, profil difficile à sécuriser.`);
+  if (reliability < 55) return xsCoachDecisionDeepItemV2("!", "Fiabilité limitée", `Fiabilité ${Math.round(reliability)}/100, décision prudente.`);
+  return xsCoachDecisionDeepItemV2("?", "Profil de dépannage", "Quelques arguments existent, mais la synthèse reste trop moyenne.");
+}
+
+function xsBuildCoachDecisionDeepAnalysisV2(
+  positionUsed: XsRadarPositionV1,
+  metrics: XsRadarMetricsByPositionV1,
+  coachDecision: XsRadarCoachDecisionV1,
+  confidence: XsRadarConfidenceEnhancedV1,
+  matchContext?: XsCardMatchContextV1 | null
+): XsCoachDecisionDeepAnalysisV2 {
+  const score = xsCoachDecisionSmartMetricV1(coachDecision.score);
+  const l5 = xsCoachDecisionSmartMetricV1(metrics.l5 ?? metrics.form);
+  const l15 = xsCoachDecisionSmartMetricV1(metrics.l15 ?? metrics.form);
+  const l40 = xsCoachDecisionSmartMetricV1(metrics.l40 ?? metrics.form);
+  const gameTime = xsCoachDecisionSmartMetricV1(metrics.gameTime);
+  const impact = xsCoachDecisionSmartMetricV1(metrics.impact);
+  const regularity = xsCoachDecisionSmartMetricV1(metrics.regularity);
+  const reliability = xsCoachDecisionSmartMetricV1(metrics.reliability);
+  const ceiling = xsCoachDecisionSmartMetricV1(coachDecision.ceiling);
+  const volatility = coachDecision.volatility || "unknown";
+  const trend = xsCoachDecisionDeepTrendV2(l5, l15, l40);
+  const positionSignal = xsCoachDecisionDeepPositionSignalV2(positionUsed, metrics);
+  const contextGood = matchContext?.difficulty === "easy" || (matchContext?.difficulty === "medium" && matchContext?.homeAway === "home");
+  const contextHard = matchContext?.difficulty === "hard";
+  const positive: XsCoachDecisionSmartItemV1[] = [];
+  const negative: XsCoachDecisionSmartItemV1[] = [];
+  const positiveLimit = score < 40 ? 1 : 3;
+
+  if (gameTime >= 70) xsCoachDecisionDeepPushV2(positive, xsCoachDecisionDeepItemV2("▶", "Temps de jeu stable", `Minutes solides (${Math.round(gameTime)}/100).`), positiveLimit);
+  else if (gameTime < 55) xsCoachDecisionDeepPushV2(negative, xsCoachDecisionDeepItemV2("!", "Temps de jeu fragile", `Sécurité minutes ${Math.round(gameTime)}/100.`));
+
+  if (trend === "up" && score >= 40) xsCoachDecisionDeepPushV2(positive, xsCoachDecisionDeepItemV2("↗", "L5 supérieur au fond", `L5 ${Math.round(l5)} au-dessus du L15/L40.`), positiveLimit);
+  else if (trend === "down") xsCoachDecisionDeepPushV2(negative, xsCoachDecisionDeepItemV2("↓", "L5 inférieur au L15/L40", `L5 ${Math.round(l5)}, dynamique récente en baisse.`));
+  else if (trend === "stable" && score >= 55) xsCoachDecisionDeepPushV2(positive, xsCoachDecisionDeepItemV2("=", "Courbe stable", `L5/L15/L40 cohérents autour de ${Math.round(xsRadarAvgV1([l5, l15, l40]) ?? l5)}.`), positiveLimit);
+
+  if (positionSignal.value >= 62 && score >= 40) xsCoachDecisionDeepPushV2(positive, positionSignal.positive, positiveLimit);
+  else if (positionSignal.value < 50) xsCoachDecisionDeepPushV2(negative, positionSignal.negative);
+
+  if (impact >= 65) xsCoachDecisionDeepPushV2(positive, xsCoachDecisionDeepItemV2("★", "Impact réel", `Impact Sorare ${Math.round(impact)}/100.`), positiveLimit);
+  else if (impact < 50) xsCoachDecisionDeepPushV2(negative, xsCoachDecisionDeepItemV2("!", "Impact limité", `Impact Sorare ${Math.round(impact)}/100.`));
+
+  if (regularity >= 65 && score >= 55) xsCoachDecisionDeepPushV2(positive, xsCoachDecisionDeepItemV2("✓", "Régularité solide", `Régularité ${Math.round(regularity)}/100.`), positiveLimit);
+  else if (regularity < 55) xsCoachDecisionDeepPushV2(negative, xsCoachDecisionDeepItemV2("~", "Régularité faible", `Régularité ${Math.round(regularity)}/100.`));
+
+  if (ceiling >= 75 && score >= 40) xsCoachDecisionDeepPushV2(positive, xsCoachDecisionDeepItemV2("◎", "Plafond intéressant", `Pic déjà observé à ${Math.round(ceiling)}.`), positiveLimit);
+  if (ceiling >= 70 && (volatility === "high" || regularity < 55 || score < 55)) {
+    xsCoachDecisionDeepPushV2(negative, xsCoachDecisionDeepItemV2("◎", "Score dépend d'un pic", `Plafond ${Math.round(ceiling)}, mais base instable.`));
+  }
+
+  if (contextGood) {
+    if (score >= 55) xsCoachDecisionDeepPushV2(positive, xsCoachDecisionDeepItemV2("⌂", "Match abordable", matchContext?.opponentName ? `Contexte favorable contre ${matchContext.opponentName}.` : "Contexte match favorable."), positiveLimit);
+    else xsCoachDecisionDeepPushV2(negative, xsCoachDecisionDeepItemV2("⌂", "Contexte favorable insuffisant", "Le match aide, mais ne compense pas les faiblesses joueur."));
+  } else if (contextHard) {
+    const text = score >= 70 && gameTime >= 70
+      ? "Match difficile, mais son temps de jeu limite le risque."
+      : "Adversaire ou déplacement qui baisse la projection.";
+    xsCoachDecisionDeepPushV2(negative, xsCoachDecisionDeepItemV2("!", "Contexte match difficile", text));
+  }
+
+  if (volatility === "high") xsCoachDecisionDeepPushV2(negative, xsCoachDecisionDeepItemV2("~", "Volatilité élevée", "Scores très variables, projection moins sûre."));
+  else if (volatility === "medium" && score < 70) xsCoachDecisionDeepPushV2(negative, xsCoachDecisionDeepItemV2("~", "Variabilité à surveiller", "Scores variables sur les dernières fenêtres."));
+
+  if (confidence.score < 50) xsCoachDecisionDeepPushV2(negative, xsCoachDecisionDeepItemV2("?", "Confiance décision faible", confidence.reason));
+  if (score < 40 && negative.length < 2) xsCoachDecisionDeepPushV2(negative, xsCoachDecisionDeepItemV2("▾", "Plancher bas", `Score coach ${Math.round(score)}, trop peu de sécurité.`));
+  if (score >= 70 && negative.length === 0) xsCoachDecisionDeepPushV2(negative, xsCoachDecisionDeepItemV2("✓", "Aucun frein majeur", "Pas de signal bloquant dans la synthèse actuelle."));
+
+  const mainReason = xsCoachDecisionDeepMainReasonV2(score, metrics, positionUsed, matchContext, trend, positionSignal);
+  const verdict =
+    score >= 75
+      ? (contextHard ? "À aligner : profil solide malgré le match." : "À aligner : profil fiable avec bon contexte.")
+      : score >= 70
+        ? "À aligner : signaux forts, risque contrôlé."
+        : score >= 55
+          ? "Option : utile mais pas prioritaire."
+          : score >= 40
+            ? (gameTime < 55 ? "Risqué : dépend trop du temps de jeu." : "Risqué : profil instable, plutôt dépannage.")
+            : "À éviter : trop peu de garanties actuellement.";
+  const actionAdvice =
+    score >= 75 && confidence.score >= 60 && (gameTime >= 70 || reliability >= 65)
+      ? xsCoachDecisionDeepItemV2("✓", "Conseil", "À aligner en priorité si tu cherches de la sécurité.")
+      : score >= 70
+        ? xsCoachDecisionDeepItemV2("✓", "Conseil", "À aligner si ton alternative n'offre pas plus de minutes.")
+        : score >= 55 && trend === "up" && ceiling >= 70
+          ? xsCoachDecisionDeepItemV2("◎", "Conseil", "Bon différentiel si tu acceptes le risque.")
+          : score >= 55
+            ? xsCoachDecisionDeepItemV2("=", "Conseil", "Bon pick secondaire, pas une priorité absolue.")
+            : score >= 40
+              ? xsCoachDecisionDeepItemV2("!", "Conseil", "À utiliser seulement si tu manques d'options à ce poste.")
+              : ceiling >= 75
+                ? xsCoachDecisionDeepItemV2("!", "Conseil", "À éviter sauf contest faible ou besoin de différentiel.")
+                : xsCoachDecisionDeepItemV2("!", "Conseil", "À éviter : cherche un profil avec plus de garanties.");
+
+  return {
+    verdict,
+    mainReason,
+    positiveSignals: positive.slice(0, positiveLimit),
+    negativeSignals: negative.slice(0, 3),
+    actionAdvice,
+  };
+}
+/* XS_COACH_DECISION_V2_DEEP_ANALYSIS_END */
+
 function xsCoachDecisionSmartReasonsV1(
   positionUsed: XsRadarPositionV1,
   metrics: XsRadarMetricsByPositionV1,
@@ -1679,7 +1915,7 @@ function xsCoachDecisionSmartReasonsV1(
   const finalRisks = risks.slice(0, 3);
   const mainWhy = finalWhy[0]?.title ? finalWhy[0].title.toLowerCase() : "lecture des signaux";
   const riskText = finalRisks[0]?.title ? ` Risque principal : ${finalRisks[0].title.toLowerCase()}.` : "";
-  const summary =
+  const fallbackSummary =
     score >= 70
       ? `À aligner : ${mainWhy}${opponent ? ` ${opponent}` : ""}.${riskText}`
       : score >= 55
@@ -1687,25 +1923,41 @@ function xsCoachDecisionSmartReasonsV1(
         : score >= 40
           ? `Pari risqué : utilisable seulement si manque d'options.${riskText}`
           : `À éviter : ${mainWhy} tire fortement la décision vers le bas.${riskText}`;
-  const bullets = [...finalWhy.map((item) => item.title), ...finalRisks.map((item) => item.title)]
+  const deepAnalysis = xsBuildCoachDecisionDeepAnalysisV2(
+    positionUsed,
+    metrics,
+    coachDecision,
+    decisionConfidence,
+    matchContext
+  );
+  const deepWhy = [deepAnalysis.mainReason, ...deepAnalysis.positiveSignals].slice(0, 3);
+  const deepRisks = deepAnalysis.negativeSignals.length ? deepAnalysis.negativeSignals.slice(0, 3) : finalRisks;
+  const summary = deepAnalysis.verdict || fallbackSummary;
+  const bullets = [
+    deepAnalysis.mainReason.title,
+    ...deepAnalysis.positiveSignals.map((item) => item.title),
+    ...deepRisks.map((item) => item.title),
+    deepAnalysis.actionAdvice.title,
+  ]
     .filter((item, index, list) => list.indexOf(item) === index)
     .slice(0, 3);
   const smartDecisionV2: XsRadarDecisionV2 = {
     ...decisionV2,
     summary,
     bullets,
-    whyItems: finalWhy,
-    riskItems: finalRisks,
+    whyItems: deepWhy.length ? deepWhy : finalWhy,
+    riskItems: deepRisks,
+    deepAnalysis,
   };
   const smartCoachDecision: XsRadarCoachDecisionV1 = {
     ...coachDecision,
     reasons: bullets,
-    reason: summary,
+    reason: `${summary} ${deepAnalysis.mainReason.text} ${deepAnalysis.actionAdvice.text}`,
   };
   const smartRecommendation: XsRadarRecommendationV1 = {
     ...recommendation,
     label: decisionV2.finalLabel || recommendation.label,
-    reason: summary,
+    reason: deepAnalysis.actionAdvice.text,
   };
   return {
     coachDecision: smartCoachDecision,
