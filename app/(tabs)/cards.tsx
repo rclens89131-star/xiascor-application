@@ -49,7 +49,7 @@ import { SorareCardTile } from "../../src/components/SorareCardTile"; // XS_SORA
 const DEVICE_ID_KEY = "XS_DEVICE_ID_V1";
 const JWT_DEVICE_ID_KEY = "XS_JWT_DEVICE_ID_V1";
 const OAUTH_DEVICE_ID_KEY = "xs_device_id";
-const XS_ENABLE_HISTORY_BATCH_AFTER_SYNC_V1 = false; /* XS_FIX_MYCARDS_POSITION_DEVICEID_AND_SYNC_V1 */
+const XS_ENABLE_HISTORY_BATCH_AFTER_SYNC_V1 = true; // XS_ENABLE_MYCARDS_HISTORY_AFTER_SYNC_V1 /* XS_FIX_MYCARDS_POSITION_DEVICEID_AND_SYNC_V1 */
 
 /* XS_MYCARDS_LOCAL_ASYNC_CACHE_SAFE_V1_BEGIN
    Cache local téléphone pour éviter écran vide si Cloud Run/cache backend est temporairement indisponible.
@@ -668,6 +668,7 @@ const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
