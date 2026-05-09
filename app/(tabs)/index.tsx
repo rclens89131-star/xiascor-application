@@ -1,161 +1,212 @@
-﻿/* XS_TEXT_OUTSIDE_TEXT_SEP_FIX_V1 */
-// XS_HOME_NEWS_V1
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Image, Linking, Pressable, SafeAreaView, Text, View } from "react-native";
+/* XS_HOME_FEED_V2_PREMIUM_STABLE */
+import React, { useMemo, useState } from "react";
+import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { theme } from "../../src/theme";
+import { SafeAreaView } from "react-native-safe-area-context";
+
 import { CopilotFAB } from "../../src/components/CopilotFAB";
 import { CopilotSheet } from "../../src/components/CopilotSheet";
-import { fetchFootballNews, type NewsItem } from "../../src/news";
+import { FeedCard, type FeedCategory, type FeedItem } from "../../src/components/FeedCard";
+import { theme } from "../../src/theme";
 
-function timeAgo(ms: number) {
-  const diff = Date.now() - ms;
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return "à l’instant";
-  if (minutes < 60) return `il y a ${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `il y a ${hours} h`;
-  const days = Math.floor(hours / 24);
-  return `il y a ${days} j`;
-}
+const MARKER = "XS_HOME_FEED_V2_PREMIUM_STABLE";
+const FILTERS: FeedCategory[] = ["Tout", "Ligue 1", "MLS", "Blessures", "Trending"];
+
+const TRENDS = [
+  "PSG : rotation offensive surveillée avant le week-end",
+  "MLS : plusieurs titulaires incertains après le voyage",
+  "Ligue 1 : les gardiens bonus attirent les managers",
+];
+
+const FEED_DATA: FeedItem[] = [
+  {
+    id: "1",
+    title: "Bayern - PSG : énorme pression",
+    image: "https://images.unsplash.com/photo-1522778119026-d647f0596c20?auto=format&fit=crop&w=1200&q=80",
+    source: "RMC Sport",
+    time: "30 min",
+    impact: "PSG offensif → boost attaquants",
+    severity: "Élevé",
+    l5: 72,
+    l15: 65,
+    category: "Trending",
+  },
+  {
+    id: "2",
+    title: "Marseille prépare un onze très offensif",
+    image: "https://images.unsplash.com/photo-1517466787929-bc90951d0974?auto=format&fit=crop&w=1200&q=80",
+    source: "L'Équipe",
+    time: "1 h",
+    impact: "Ailiers titulaires → potentiel décisif en hausse",
+    severity: "Moyen",
+    l5: 68,
+    l15: 61,
+    category: "Ligue 1",
+  },
+  {
+    id: "3",
+    title: "Los Angeles : le latéral droit reste incertain",
+    image: "https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?auto=format&fit=crop&w=1200&q=80",
+    source: "MLS Soccer",
+    time: "2 h",
+    impact: "Joueur incertain → risque DNP",
+    severity: "Critique",
+    l5: 49,
+    l15: 54,
+    category: "MLS",
+  },
+  {
+    id: "4",
+    title: "Blessure musculaire confirmée pour un milieu clé",
+    image: "https://images.unsplash.com/photo-1579952363873-27f3bade9f55?auto=format&fit=crop&w=1200&q=80",
+    source: "Foot Mercato",
+    time: "3 h",
+    impact: "Absence probable → minutes redistribuées au remplaçant",
+    severity: "Élevé",
+    category: "Blessures",
+  },
+  {
+    id: "5",
+    title: "Nantes : le gardien monte dans les projections",
+    image: "https://images.unsplash.com/photo-1540379708242-14a809bef941?auto=format&fit=crop&w=1200&q=80",
+    source: "Data XI",
+    time: "4 h",
+    impact: "Matchup favorable → clean sheet bonus à surveiller",
+    severity: "Faible",
+    l5: 63,
+    l15: 58,
+    category: "Ligue 1",
+  },
+];
 
 export default function HomeScreen() {
-  const [items, setItems] = useState<NewsItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [fromCache, setFromCache] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<FeedCategory>("Tout");
+  const [usefulIds, setUsefulIds] = useState<string[]>([]);
+  const [watchlistIds, setWatchlistIds] = useState<string[]>([]);
+  const [followedIds, setFollowedIds] = useState<string[]>([]);
 
-  const load = useCallback(async (forceRefresh: boolean) => {
-    setError(null);
-    forceRefresh ? setRefreshing(true) : setLoading(true);
-    try {
-      const res = await fetchFootballNews({ forceRefresh });
-      setItems(res.items);
-      setFromCache(res.fromCache);
-    } catch (e: any) {
-      setError(e?.message ?? "Impossible de charger les actualités.");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+  const feedItems = useMemo(() => {
+    if (activeFilter === "Tout") return FEED_DATA;
+    return FEED_DATA.filter((item) => item.category === activeFilter);
+  }, [activeFilter]);
 
-  useEffect(() => {
-    load(false);
-  }, [load]);
+  const toggleId = (ids: string[], id: string) => (ids.includes(id) ? ids.filter((itemId) => itemId !== id) : [...ids, id]);
 
-  const header = useMemo(() => {
-    return (
-      <View style={{ paddingHorizontal: 16, paddingTop: 6, paddingBottom: 10, gap: 10 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-          <Pressable
-            onPress={() => router.push("/(tabs)/settings")}
-            style={{
-              width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center",
-              backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke,
-            }}
-            accessibilityLabel="Ouvrir paramètres"
-          >
-            <Ionicons name="settings-outline" size={20} color={theme.text} />
-          </Pressable>
+  const handleCardPress = (item: FeedItem) => {
+    console.log(`[${MARKER}] open card placeholder`, item.id);
+  };
 
-          <Text style={{ color: theme.text, fontSize: 18, fontWeight: "900" }}>Actualités Football</Text>
+  const header = (
+    <View style={styles.header}>
+      <View style={styles.topBar}>
+        <Pressable
+          accessibilityLabel="Ouvrir paramètres"
+          accessibilityRole="button"
+          onPress={() => router.push("/(tabs)/settings")}
+          style={({ pressed }) => [styles.iconButton, pressed ? styles.pressed : null]}
+        >
+          <Ionicons name="settings-outline" size={20} color={theme.text} />
+        </Pressable>
 
-          <Pressable
-            onPress={() => { /* futur: notifications */ }}
-            style={{
-              width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center",
-              backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, opacity: 0.9,
-            }}
-            accessibilityLabel="Notifications"
-          >
-            <Ionicons name="notifications-outline" size={20} color={theme.text} />
-          </Pressable>
+        <View style={styles.titleBlock}>
+          <Text style={styles.screenTitle}>Accueil</Text>
         </View>
 
-        <Text style={{ color: theme.muted, fontSize: 12 }}>
-          Foot uniquement • toutes ligues • cache 15 min • {fromCache ? "affichage depuis cache" : "live"}
-        </Text>
+        <Pressable
+          accessibilityLabel="Notifications"
+          accessibilityRole="button"
+          onPress={() => console.log(`[${MARKER}] notifications placeholder`)}
+          style={({ pressed }) => [styles.iconButton, pressed ? styles.pressed : null]}
+        >
+          <Ionicons name="notifications-outline" size={20} color={theme.text} />
+        </Pressable>
+      </View>
 
-        {error ? (
-          <View style={{ backgroundColor: theme.panel, borderRadius: 14, padding: 12, borderWidth: 1, borderColor: theme.stroke }}>
-            <Text style={{ color: theme.bad, fontWeight: "800" }}>Erreur</Text>
-            <Text style={{ color: theme.muted, marginTop: 4 }}>{error}</Text>
-            <Pressable
-              onPress={() => load(true)}
-              style={{
-                marginTop: 10, alignSelf: "flex-start",
-                backgroundColor: theme.panel2, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8,
-                borderWidth: 1, borderColor: theme.stroke,
-              }}
-            >
-              <Text style={{ color: theme.text, fontWeight: "800" }}>Réessayer</Text>
-            </Pressable>
+      <View style={styles.trendsBox}>
+        <View style={styles.trendsHeader}>
+          <Text style={styles.trendsTitle}>🔥 Tendances aujourd'hui</Text>
+          <Text style={styles.trendsBadge}>Live mock</Text>
+        </View>
+        {TRENDS.map((trend) => (
+          <View key={trend} style={styles.trendRow}>
+            <View style={styles.trendDot} />
+            <Text style={styles.trendText} numberOfLines={2}>
+              {trend}
+            </Text>
           </View>
-        ) : null}
-      </View>
-    );
-  }, [error, fromCache, load]);
-
-  const renderItem = ({ item }: { item: NewsItem }) => (
-    <Pressable
-      onPress={() => item.url && Linking.openURL(item.url)}
-      style={{
-        backgroundColor: theme.panel,
-        borderRadius: 16,
-        padding: 12,
-        borderWidth: 1,
-        borderColor: theme.stroke,
-        flexDirection: "row",
-        gap: 12,
-      }}
-    >
-      <View style={{ flex: 1, gap: 6 }}>
-        <Text style={{ color: theme.text, fontSize: 14, fontWeight: "800" }} numberOfLines={3}>
-          {item.title}
-        </Text>
-        <Text style={{ color: theme.muted, fontSize: 12 }} numberOfLines={1}>
-          {item.source}<Text>{" • "}</Text>{timeAgo(item.publishedAt)}
-        </Text>
-        {item.excerpt ? (
-          <Text style={{ color: theme.muted, fontSize: 12 }} numberOfLines={2}>
-            {item.excerpt}
-          </Text>
-        ) : null}
+        ))}
       </View>
 
-      {item.imageUrl ? (
-        <Image
-          source={{ uri: item.imageUrl }}
-          style={{ width: 96, height: 72, borderRadius: 12, backgroundColor: theme.panel2 }}
-        />
-      ) : null}
-    </Pressable>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
+        {FILTERS.map((filter) => {
+          const active = activeFilter === filter;
+
+          return (
+            <Pressable
+              accessibilityLabel={`Filtrer le feed par ${filter}`}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              key={filter}
+              onPress={() => {
+                console.log(`[${MARKER}] filter`, filter);
+                setActiveFilter(filter);
+              }}
+              style={({ pressed }) => [
+                styles.filterButton,
+                active ? styles.filterButtonActive : null,
+                pressed ? styles.pressed : null,
+              ]}
+            >
+              <Text style={[styles.filterText, active ? styles.filterTextActive : null]}>{filter}</Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
   );
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.screen}>
       <FlatList
-        data={items}
-        keyExtractor={(x) => x.id}
-        renderItem={renderItem}
-        contentContainerStyle={{ paddingHorizontal: 16, gap: 12, paddingBottom: 120 }}
-        ListHeaderComponent={header}
-        refreshing={refreshing}
-        onRefresh={() => load(true)}
+        contentContainerStyle={styles.feedContent}
+        data={feedItems}
+        extraData={[activeFilter, usefulIds, watchlistIds, followedIds]}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        keyExtractor={(item) => item.id}
         ListEmptyComponent={
-          loading ? (
-            <View style={{ paddingVertical: 18 }}>
-              <ActivityIndicator />
+          <View style={styles.contentShell}>
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyTitle}>Aucun signal Sorare pour le moment.</Text>
+              <Text style={styles.emptyText}>Le feed reste disponible dès que de nouvelles données sont ajoutées.</Text>
             </View>
-          ) : !error ? (
-            <View style={{ paddingVertical: 18 }}>
-              <Text style={{ color: theme.muted }}>Aucune actualité pour le moment.</Text>
-            </View>
-          ) : null
+          </View>
         }
+        ListHeaderComponent={<View style={styles.contentShell}>{header}</View>}
+        renderItem={({ item }) => (
+          <View style={styles.contentShell}>
+            <FeedCard
+              followed={followedIds.includes(item.id)}
+              item={item}
+              onFollow={() => {
+                console.log(`[${MARKER}] follow`, item.id);
+                setFollowedIds((ids) => toggleId(ids, item.id));
+              }}
+              onPress={() => handleCardPress(item)}
+              onUseful={() => {
+                console.log(`[${MARKER}] useful`, item.id);
+                setUsefulIds((ids) => toggleId(ids, item.id));
+              }}
+              onWatchlist={() => {
+                console.log(`[${MARKER}] watchlist`, item.id);
+                setWatchlistIds((ids) => toggleId(ids, item.id));
+              }}
+              useful={usefulIds.includes(item.id)}
+              watched={watchlistIds.includes(item.id)}
+            />
+          </View>
+        )}
+        showsVerticalScrollIndicator={false}
       />
 
       <CopilotSheet />
@@ -164,3 +215,150 @@ export default function HomeScreen() {
   );
 }
 
+const styles = StyleSheet.create({
+  screen: {
+    backgroundColor: "#070B13",
+    flex: 1,
+  },
+  feedContent: {
+    alignItems: "center",
+    paddingBottom: 128,
+    paddingHorizontal: 14,
+  },
+  contentShell: {
+    alignSelf: "center",
+    maxWidth: 560,
+    width: "100%",
+  },
+  header: {
+    gap: 14,
+    paddingBottom: 16,
+    paddingTop: 6,
+  },
+  topBar: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  iconButton: {
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderColor: "rgba(255, 255, 255, 0.10)",
+    borderRadius: 14,
+    borderWidth: 1,
+    height: 42,
+    justifyContent: "center",
+    width: 42,
+  },
+  titleBlock: {
+    alignItems: "center",
+    flex: 1,
+  },
+  screenTitle: {
+    color: theme.text,
+    fontSize: 24,
+    fontWeight: "900",
+  },
+  trendsBox: {
+    backgroundColor: "#101827",
+    borderColor: "rgba(255, 255, 255, 0.10)",
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 8,
+    padding: 12,
+  },
+  trendsHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  trendsTitle: {
+    color: theme.text,
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  trendsBadge: {
+    backgroundColor: "rgba(34, 197, 94, 0.13)",
+    borderColor: "rgba(34, 197, 94, 0.30)",
+    borderRadius: 999,
+    borderWidth: 1,
+    color: "#BBF7D0",
+    fontSize: 11,
+    fontWeight: "900",
+    overflow: "hidden",
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  trendRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
+  trendDot: {
+    backgroundColor: theme.warn,
+    borderRadius: 4,
+    height: 7,
+    width: 7,
+  },
+  trendText: {
+    color: theme.muted,
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 18,
+  },
+  filters: {
+    gap: 8,
+    paddingRight: 16,
+  },
+  filterButton: {
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    borderColor: "rgba(255, 255, 255, 0.10)",
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 15,
+    paddingVertical: 9,
+  },
+  filterButtonActive: {
+    backgroundColor: theme.accent,
+    borderColor: "rgba(147, 197, 253, 0.85)",
+  },
+  filterText: {
+    color: theme.muted,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  filterTextActive: {
+    color: "#FFFFFF",
+  },
+  separator: {
+    height: 14,
+  },
+  emptyState: {
+    alignItems: "center",
+    backgroundColor: "#101827",
+    borderColor: "rgba(255, 255, 255, 0.10)",
+    borderRadius: 16,
+    borderWidth: 1,
+    marginTop: 4,
+    padding: 18,
+  },
+  emptyTitle: {
+    color: theme.text,
+    fontSize: 15,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  emptyText: {
+    color: theme.muted,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 6,
+    textAlign: "center",
+  },
+  pressed: {
+    opacity: 0.78,
+  },
+});
