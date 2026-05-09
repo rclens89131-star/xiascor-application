@@ -448,7 +448,13 @@ type XsPlayerStatusV1 = {
   reason?: string | null;
   expectedReturnDate?: string | null;
   source?: string | null;
+  sourceUrl?: string | null;
   updatedAt?: string | null;
+  yellowCards?: number | null;
+  redCards?: number | null;
+  suspensionMatches?: number | null;
+  injuryDate?: string | null;
+  statusDate?: string | null;
 };
 
 type XsCoachDecisionDeepAnalysisV2 = {
@@ -1636,6 +1642,13 @@ function xsCoachDecisionDeepPushV2(
 /* XS_PLAYER_STATUS_DECISION_V1 */
 function xsNormalizePlayerStatusV1(value: any, playerSlug?: string | null): XsPlayerStatusV1 {
   const raw = String(value?.status || value?.availability || value?.playerStatus || "").trim().toLowerCase();
+  const pickNumber = (...values: any[]): number | null => {
+    for (const item of values) {
+      const n = Number(item);
+      if (Number.isFinite(n)) return n;
+    }
+    return null;
+  };
   const status: XsPlayerStatusCodeV1 =
     raw === "available" || raw === "fit" || raw === "ok"
       ? "available"
@@ -1652,7 +1665,13 @@ function xsNormalizePlayerStatusV1(value: any, playerSlug?: string | null): XsPl
     reason: String(value?.reason || value?.details || value?.label || "").trim() || null,
     expectedReturnDate: value?.expectedReturnDate || value?.returnDate || value?.estimatedReturnDate || null,
     source: value?.source || null,
+    sourceUrl: value?.sourceUrl || value?.url || null,
     updatedAt: value?.updatedAt || null,
+    yellowCards: pickNumber(value?.yellowCards, value?.cards?.yellow, value?.discipline?.yellowCards),
+    redCards: pickNumber(value?.redCards, value?.cards?.red, value?.discipline?.redCards),
+    suspensionMatches: pickNumber(value?.suspensionMatches, value?.suspendedMatches, value?.banMatches, value?.discipline?.suspensionMatches),
+    injuryDate: value?.injuryDate || value?.startDate || null,
+    statusDate: value?.statusDate || value?.reportedAt || value?.updatedAt || null,
   };
 }
 

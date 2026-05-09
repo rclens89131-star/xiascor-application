@@ -46,6 +46,20 @@ type RadarSmartReasonItem = {
   title: string;
   text: string;
 };
+type RadarPlayerStatus = {
+  playerSlug?: string | null;
+  status?: "available" | "injured" | "suspended" | "doubtful" | "unknown" | string | null;
+  reason?: string | null;
+  expectedReturnDate?: string | null;
+  source?: string | null;
+  sourceUrl?: string | null;
+  updatedAt?: string | null;
+  yellowCards?: number | null;
+  redCards?: number | null;
+  suspensionMatches?: number | null;
+  injuryDate?: string | null;
+  statusDate?: string | null;
+};
 type RadarCoachDeepAnalysis = {
   verdict: string;
   mainReason: RadarSmartReasonItem;
@@ -53,6 +67,7 @@ type RadarCoachDeepAnalysis = {
   negativeSignals: RadarSmartReasonItem[];
   actionAdvice: RadarSmartReasonItem;
   availability?: RadarSmartReasonItem;
+  playerStatus?: RadarPlayerStatus | null;
 };
 type RadarDecisionV2 = {
   finalLabel: string;
@@ -250,6 +265,76 @@ function premiumShortDateV1(value: string) {
   const hh = String(date.getHours()).padStart(2, "0");
   const min = String(date.getMinutes()).padStart(2, "0");
   return `${dd}/${mm}/${yyyy} · ${hh}:${min}`;
+}
+
+/* XS_COACH_PLAYER_ALERT_HEADER_V1 */
+function playerStatusCodeV1(value: RadarPlayerStatus | null | undefined, availability?: RadarSmartReasonItem | null) {
+  const raw = String(value?.status || availability?.title || "").trim().toLowerCase();
+  if (/available|disponible|fit|ok/.test(raw)) return "available";
+  if (/injured|injury|bless|out|unavailable/.test(raw)) return "injured";
+  if (/suspended|suspension|suspendu|ban/.test(raw)) return "suspended";
+  if (/doubtful|incertain|uncertain|questionable|doubt/.test(raw)) return "doubtful";
+  return "unknown";
+}
+
+function playerStatusToneV1(status: string) {
+  if (status === "available") return { fg: "#22C55E", bg: "rgba(34,197,94,0.12)", border: "rgba(34,197,94,0.40)", icon: "✓", label: "Disponible" };
+  if (status === "injured") return { fg: "#FB923C", bg: "rgba(251,146,60,0.13)", border: "rgba(251,146,60,0.42)", icon: "🚑", label: "Blessé" };
+  if (status === "suspended") return { fg: "#EF4444", bg: "rgba(239,68,68,0.13)", border: "rgba(239,68,68,0.44)", icon: "⛔", label: "Suspendu" };
+  if (status === "doubtful") return { fg: "#FACC15", bg: "rgba(250,204,21,0.11)", border: "rgba(250,204,21,0.36)", icon: "?", label: "Incertain" };
+  return { fg: "#94A3B8", bg: "rgba(148,163,184,0.10)", border: "rgba(148,163,184,0.30)", icon: "?", label: "Statut non confirmé" };
+}
+
+function playerStatusSourceLabelV1(source: unknown) {
+  const raw = String(source || "").trim();
+  if (!raw) return "source inconnue";
+  if (/api-football/i.test(raw)) return "API-Football";
+  if (/manual-club-official/i.test(raw)) return "source officielle";
+  if (/fallback_unknown|unknown/i.test(raw)) return "fallback_unknown";
+  return raw.length > 22 ? `${raw.slice(0, 22)}…` : raw;
+}
+
+function playerStatusDaysSinceV1(value: unknown) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const t = Date.parse(raw);
+  if (!Number.isFinite(t)) return null;
+  const days = Math.max(0, Math.floor((Date.now() - t) / (24 * 60 * 60 * 1000)));
+  return days;
+}
+
+function playerStatusDetailLineV1(status: string, playerStatus: RadarPlayerStatus | null, availabilityItem?: RadarSmartReasonItem | null) {
+  const reason = String(playerStatus?.reason || availabilityItem?.text || "").trim();
+  const returnDate = String(playerStatus?.expectedReturnDate || "").trim();
+  const sinceDays = playerStatusDaysSinceV1(playerStatus?.injuryDate || playerStatus?.statusDate || playerStatus?.updatedAt);
+  const sinceText = status === "injured" || status === "suspended" || status === "doubtful"
+    ? (sinceDays == null ? "durée inconnue" : `${sinceDays} j`)
+    : "";
+  const bits = [
+    reason || (status === "available" ? "Aucun signal d'indisponibilité." : "Statut à confirmer."),
+    returnDate ? `retour estimé ${returnDate}` : "",
+    sinceText,
+  ].filter(Boolean);
+  return bits.join(" · ");
+}
+
+function playerStatusCardBadgeV1(label: string, tone: { fg: string; bg: string; border: string }) {
+  return (
+    <View
+      style={{
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: tone.border,
+        backgroundColor: tone.bg,
+        paddingHorizontal: 7,
+        paddingVertical: 3,
+      }}
+    >
+      <Text numberOfLines={1} style={{ color: tone.fg, fontSize: 10, fontWeight: "900" }}>
+        {label}
+      </Text>
+    </View>
+  );
 }
 /* XS_RADAR_PREMIUM_DECISION_CARD_V1_END */
 
@@ -473,6 +558,16 @@ export default function FifaRadarChart(props: {
   const availabilityItem = deepAnalysis?.availability
     ? normalizeSmartItemsV2([deepAnalysis.availability], 1)[0]
     : null;
+  const playerStatus = deepAnalysis?.playerStatus || null;
+  const playerStatusCode = playerStatusCodeV1(playerStatus, availabilityItem);
+  const playerStatusTone = playerStatusToneV1(playerStatusCode);
+  const playerStatusSource = playerStatusSourceLabelV1(playerStatus?.source);
+  const playerStatusOfficial = /source officielle|manual-club-official/i.test(playerStatusSource);
+  const playerStatusLine = playerStatusDetailLineV1(playerStatusCode, playerStatus, availabilityItem);
+  const yellowCards = typeof playerStatus?.yellowCards === "number" && Number.isFinite(playerStatus.yellowCards) ? playerStatus.yellowCards : null;
+  const redCards = typeof playerStatus?.redCards === "number" && Number.isFinite(playerStatus.redCards) ? playerStatus.redCards : null;
+  const suspensionMatches = typeof playerStatus?.suspensionMatches === "number" && Number.isFinite(playerStatus.suspensionMatches) ? playerStatus.suspensionMatches : null;
+  const hasCardData = yellowCards != null || redCards != null || suspensionMatches != null;
   const fallbackV3WhyItems = [
     {
       icon: "↗",
@@ -862,31 +957,50 @@ export default function FifaRadarChart(props: {
           </View>
         ) : null}
 
-        {availabilityItem ? (
+        {availabilityItem || playerStatus ? (
           <View
             style={{
-              /* XS_PLAYER_STATUS_DECISION_V1 */
+              /* player status alert header */
               borderRadius: 13,
               borderWidth: 1,
-              borderColor: "rgba(148,163,184,0.22)",
-              backgroundColor: "rgba(15,23,42,0.50)",
+              borderColor: playerStatusTone.border,
+              backgroundColor: playerStatusTone.bg,
               paddingHorizontal: 10,
               paddingVertical: 8,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 9,
+              gap: 7,
             }}
           >
-            <Text style={{ color: premiumTone.fg, fontSize: 16, fontWeight: "900" }}>
-              {availabilityItem.icon || "?"}
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Text style={{ color: playerStatusTone.fg, fontSize: 17, fontWeight: "900" }}>
+                {playerStatusTone.icon}
+              </Text>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text numberOfLines={1} style={{ color: "#94A3B8", fontSize: 9, fontWeight: "900", letterSpacing: 0.8 }}>
+                  ÉTAT JOUEUR
+                </Text>
+                <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} style={{ color: playerStatusTone.fg, fontSize: 13, fontWeight: "900" }}>
+                  {playerStatusTone.label}
+                </Text>
+              </View>
+              {playerStatusCardBadgeV1(playerStatusOfficial ? "source officielle" : playerStatusSource, playerStatusTone)}
+            </View>
+
+            <Text numberOfLines={2} ellipsizeMode="tail" style={{ color: "#F8FAFC", fontSize: 11, lineHeight: 15, fontWeight: "700" }}>
+              {playerStatusLine}
             </Text>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} style={{ color: premiumTone.fg, fontSize: 12, fontWeight: "900" }}>
-                DISPONIBILITÉ
-              </Text>
-              <Text numberOfLines={2} ellipsizeMode="tail" style={{ color: "#F8FAFC", fontSize: 12, lineHeight: 16, marginTop: 1 }}>
-                {availabilityItem.title}{availabilityItem.text ? ` — ${availabilityItem.text}` : ""}
-              </Text>
+
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+              {hasCardData ? (
+                <>
+                  {playerStatusCardBadgeV1(`🟨 ${yellowCards ?? 0}`, playerStatusTone)}
+                  {playerStatusCardBadgeV1(`🟥 ${redCards ?? 0}`, playerStatusTone)}
+                  {playerStatusCardBadgeV1(`⛔ ${suspensionMatches ?? 0} match`, playerStatusTone)}
+                </>
+              ) : (
+                <Text numberOfLines={1} style={{ color: "#CBD5E1", fontSize: 10, fontWeight: "800" }}>
+                  Cartons non disponibles
+                </Text>
+              )}
             </View>
           </View>
         ) : null}
