@@ -1,3 +1,4 @@
+﻿/* XS_TILE_REMOVE_LVL_KEEP_GREEN_BONUS_V1 */
 /* XS_MES_CARTES_GALLERY_IDENTIQUE_V1 */
 /* XS_CARD_BONUS_GAMEWEEK_V1 */
 /* XS_MES_CARTES_TILE_CLEAN_V2 */
@@ -47,6 +48,7 @@ function xsAvgV1(scores: Array<number | null | undefined>): number | null {
   return Math.round(values.reduce((a, b) => a + b, 0) / values.length);
 }
 
+/* XS_TILE_POWER_TOTAL_BONUS_V1 */
 function xsCardBonusPctV1(card: any): number | null {
   const direct = xsNum(
     card?.bonusPct ??
@@ -399,7 +401,7 @@ export function SorareCardTile(props: any) {
             paddingVertical: 4,
           }}
         >
-          <Text style={{ color: "#FFFFFF", fontSize: 11, fontWeight: "900" }}>LVL {level}</Text>
+          <Text style={{ color: "#FFFFFF", fontSize: 11, fontWeight: "900" }}></Text>
         </View>
 
         <View
@@ -525,3 +527,4 @@ export function SorareCardTile(props: any) {
     </TouchableOpacity>
   );
 }
+
