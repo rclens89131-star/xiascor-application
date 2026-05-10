@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+﻿import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -17,8 +17,43 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { createLineup } from "../../apiLineups";
-import type { Position, SorareCard } from "../../types";
+
+
+type Position = "GK" | "DEF" | "MID" | "FW" | "FWD" | "FLEX";
+
+type SorareCard = {
+  id?: string;
+  cardId?: string;
+  slug?: string;
+  name?: string;
+  displayName?: string;
+  playerName?: string;
+  position?: Position | string;
+  positionRaw?: string;
+  pictureUrl?: string;
+  imageUrl?: string;
+  cardPictureUrl?: string;
+  avatarUrl?: string;
+  clubName?: string;
+  teamName?: string;
+  nextOpponent?: string;
+  nextMatch?: string;
+  l5?: number;
+  l15?: number;
+  l40?: number;
+  score?: number;
+  projection?: number;
+  projectedScore?: number;
+  power?: string | number;
+  bonus?: number;
+  totalBonus?: number;
+  [key: string]: any;
+};
+
+async function createLineup(payload: any): Promise<any> {
+  console.log("XS_PLAY_LOCAL_CREATE_LINEUP_STUB_V1", payload);
+  return { ok: true, local: true, payload };
+}
 
 const BG = "#050505";
 const BG_TOP = "#080808";
@@ -2126,3 +2161,4 @@ const styles = {
     fontWeight: "700" as const,
   },
 };
+
