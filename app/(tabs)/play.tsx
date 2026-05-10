@@ -69,6 +69,28 @@ const YELLOW = "#ffc400";
 const YELLOW_DEEP = "#f4a900";
 const GREEN = "#19f07a";
 
+
+/* XS_PLAY_APPLY_CARD_BONUS_V1 BEGIN */
+function xsPlayBonusPctV1(card: any): number | null {
+  const raw = card?.power ?? card?.cardPower ?? card?.bonusPct ?? card?.totalBonus ?? card?.bonus;
+  const n = Number(String(raw ?? "").replace(",", "."));
+  if (!Number.isFinite(n)) return null;
+  if (n > 0 && n < 3) return Math.round((n - 1) * 1000) / 10;
+  return Math.round(n * 10) / 10;
+}
+
+function xsPlayScoreWithBonusV1(score: number, card: any): number {
+  const bonus = xsPlayBonusPctV1(card);
+  if (bonus === null) return Math.round(score);
+  return Math.round(score * (1 + bonus / 100));
+}
+
+function xsPlayBonusLabelV1(card: any): string {
+  const bonus = xsPlayBonusPctV1(card);
+  return bonus === null ? "Bonus —" : `Bonus +${bonus}%`;
+}
+/* XS_PLAY_APPLY_CARD_BONUS_V1 END */
+
 type ModeKey = "classic" | "cap240" | "cap220";
 type StrategyKey = "safe" | "balanced" | "differential";
 type SlotKey = "GK" | "DEF" | "MID" | "FWD" | "FLEX";
@@ -2161,4 +2183,5 @@ const styles = {
     fontWeight: "700" as const,
   },
 };
+
 
