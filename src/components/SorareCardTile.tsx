@@ -1,4 +1,5 @@
-﻿/* XS_FIX_TILE_REMOVE_EMPTY_LVL_AND_POWER_BADGE_V2 */
+﻿/* XS_FIX_MYCARDS_BONUS_BADGE_REAL_V3 */
+/* XS_FIX_TILE_REMOVE_EMPTY_LVL_AND_POWER_BADGE_V2 */
 /* XS_TILE_REMOVE_LVL_KEEP_GREEN_BONUS_V1 */
 /* XS_MES_CARTES_GALLERY_IDENTIQUE_V1 */
 /* XS_CARD_BONUS_GAMEWEEK_V1 */
@@ -52,24 +53,21 @@ function xsAvgV1(scores: Array<number | null | undefined>): number | null {
 /* XS_TILE_POWER_TOTAL_BONUS_V1 */
 function xsCardBonusPctV1(card: any): number | null {
   const raw =
+    card?.power ??
+    card?.cardPower ??
     card?.bonusPct ??
     card?.totalBonus ??
     card?.bonus ??
     card?.xpBonus ??
     card?.seasonBonus ??
     card?.collectionBonus ??
-    card?.power ??
-    card?.cardPower ??
-    card?.c?.power ??
-    card?.raw?.power;
+    card?.raw?.power ??
+    card?.card?.power;
 
   const n = xsNum(raw);
   if (n === null) return null;
 
-  // power Sorare est souvent un multiplicateur: 1.040 => +4%
   if (n > 0 && n < 3) return Math.round((n - 1) * 1000) / 10;
-
-  // sinon on considère déjà un pourcentage: 4 => +4%
   return Math.round(n * 10) / 10;
 }
 
@@ -396,22 +394,6 @@ export function SorareCardTile(props: any) {
         <View
           style={{
             position: "absolute",
-            top: 50,
-            right: 10,
-            borderRadius: 10,
-            borderWidth: 1,
-            borderColor: "rgba(148,163,184,0.34)",
-            backgroundColor: "rgba(5,8,13,0.78)",
-            paddingHorizontal: 8,
-            paddingVertical: 4,
-          }}
-        >
-          <Text style={{ color: "#FFFFFF", fontSize: 11, fontWeight: "900" }}></Text>
-        </View>
-
-        <View
-          style={{
-            position: "absolute",
             top: 80,
             right: 10,
             borderRadius: 10,
@@ -532,5 +514,6 @@ export function SorareCardTile(props: any) {
     </TouchableOpacity>
   );
 }
+
 
 
