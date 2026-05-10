@@ -374,7 +374,6 @@ const xsL5Mini =
                 bonusPct: bonusPct == null ? "" : String(bonusPct),
                 power: (card as any)?.power,
                 cardPower: (card as any)?.power ?? (card as any)?.cardPower,
-                cardPower: String((card as any)?.power ?? (card as any)?.cardPower ?? ""),
               },
             });
           }
@@ -734,6 +733,7 @@ const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
