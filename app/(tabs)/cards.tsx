@@ -1,5 +1,6 @@
 ﻿/* XS_CARDS_CENTER_ITEMWIDTH_V1 */
 /* XS_CARDS_CENTER_2COL_V2 */
+/* XS_CARD_BONUS_GAMEWEEK_V1 */
 /* XS_FIX_L5_FALLBACK_V1 */
 /* XS_CARDS_CENTER_2COL_V1 */
 /* XS_MYCARDS_REMOVE_UNDER_META_V1 */
@@ -13,6 +14,7 @@ import PerfL5Widget from "../../src/components/PerfL5Widget";
 import { ActivityIndicator, FlatList, Image, Pressable, SafeAreaView, Text, View, useWindowDimensions, Dimensions, Alert } from "react-native";
 import { theme } from "../../src/theme";
 import { myCardsList, myCardsSync, publicPlayerPerformance, syncMyCardsHistoryBatch, type PageInfo } from "../../src/scoutApi";
+import { useAppStore } from "../../src/store/useAppStore";
 /* XS_MYCARDS_UI_META_V1_BEGIN */
 /* XS_CARDS_GRID_GROW_V1
    Objectif:
@@ -42,6 +44,18 @@ function xsBonusPctFromPower(power: any): number | null {
 const p = xsNum(power);
   if (p === null) return null;
   return (p - 1) * 100;
+}
+function xsCardBonusPctV1(card: any): number | null {
+  const direct = xsNum(
+    card?.bonusPct ??
+      card?.totalBonus ??
+      card?.bonus ??
+      card?.xpBonus ??
+      card?.seasonBonus ??
+      null
+  );
+  if (direct !== null) return direct > 1 ? direct : direct * 100;
+  return xsBonusPctFromPower(card?.power ?? card?.cardPower ?? card?.playerPower ?? null);
 }
 /* XS_MYCARDS_UI_META_V1_END */
 import { SorareCardTile } from "../../src/components/SorareCardTile"; // XS_SORARE_TILE_IMPORT_V1
@@ -137,6 +151,14 @@ type MyCardItemLocal = {
   rarityTyped?: string | null;
   seasonYear?: number | null;
   serialNumber?: number | null;
+  power?: string | number | null;
+  cardPower?: string | number | null;
+  bonus?: string | number | null;
+  bonusPct?: string | number | null;
+  totalBonus?: string | number | null;
+  xpBonus?: string | number | null;
+  seasonBonus?: string | number | null;
+  grade?: string | number | null;
   anyTeam?: { name?: string | null } | null;
   anyPlayer?: { displayName?: string | null } | null;
   player?: { displayName?: string | null; activeClub?: { name?: string | null } | null } | null;
@@ -297,7 +319,7 @@ const clubName   = xsSafeStr(card?.anyTeam?.name || card?.player?.activeClub?.na
 const rarity     = xsSafeStr((card?.rarityTyped || card?.rarity || "limited")).toLowerCase();
 const season     = (card?.seasonYear != null) ? String(card.seasonYear) : "—";
 const serial     = (card?.serialNumber != null) ? "#" + String(card.serialNumber) : "#—";
-const bonusPct = xsBonusPctFromPower((card as any)?.power ?? (card as any)?.cardPower ?? (card as any)?.playerPower ?? null);
+const bonusPct = xsCardBonusPctV1(card);
 const xsL5Mini0 = xsL5BarsFromCard(card as any); /* XS_L5_MINICHART_TILE_RENDER_V1_PASS */
 const playerSlugKey = String((card as any)?.anyPlayer?.slug || (card as any)?.playerSlug || (card as any)?.player?.slug || "").trim();
 const xsL5Mini =
@@ -349,6 +371,8 @@ const xsL5Mini =
                 playerSlug: String(playerSlug || ""),
                 position,
                 positionRaw,
+                bonusPct: bonusPct == null ? "" : String(bonusPct),
+                cardPower: String((card as any)?.power ?? (card as any)?.cardPower ?? ""),
               },
             });
           }
@@ -367,6 +391,7 @@ const xsL5Mini =
       scarcityLabel={rarity}
       l15={xsGetL15ValueV1(card as any)} /* XS_CARDS_FIX_L15_PROP_SCOPE_V1 */
       deltaPct={bonusPct}
+      bonusPct={bonusPct}
       trendBars={xsTrendBarsFromL15((typeof (card as any)?.l5 === "number") ? (card as any).l5 : xsGetL15ValueV1(card as any))} /* XS_CARDS_FIX_TRENDBARS_SCOPE_V1 */
       l5={(typeof (card as any)?.l5 === "number") ? (card as any).l5 : null} // XS_FIX_L5_FALLBACK_V1 // XS_MYCARDS_PASS_L5_LEVEL_V1
       l5Bars={xsL5Mini} /* XS_L5_MINICHART_TILE_RENDER_V1 */
@@ -390,6 +415,7 @@ function xsTileWidth2col(screenW: number): number {
 /* XS_CARDS_2COL_WIDTH_V1_END */
 export default function CardsScreen() {
 /* XS_MY_CARDS_UI_V1_BEGIN */
+const setGallery = useAppStore((s) => s.setGallery);
 const [deviceId, setDeviceId] = useState("");
 const [items, setItems] = useState<MyCardItemLocal[]>([]);
 /* XS_L5_PREFETCH_CACHE_V1_BEGIN */
@@ -472,14 +498,16 @@ const resRaw = await myCardsList(id, 50);
 const res = await xsApplyMyCardsLocalCacheSafeV1(id, resRaw); /* XS_MYCARDS_LOCAL_ASYNC_CACHE_SAFE_V1_APPLY_LOAD_INITIAL */
       
       try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
-      setItems(res.cards || []);
+      const cards = res.cards || [];
+      setItems(cards);
+      setGallery(cards as any);
       setPageInfo(res.pageInfo);
     } catch (e: any) {
       setError(e?.message || "Erreur chargement");
     } finally {
       setLoading(false);
     }
-  }, [ensureDeviceId]);
+  }, [ensureDeviceId, setGallery]);
 const loadMore = useCallback(async () => {
     if (!pageInfo?.hasNextPage || !pageInfo?.endCursor || loadingMoreRef.current || !deviceId) return;
     loadingMoreRef.current = true;
@@ -489,7 +517,11 @@ const resRaw = await myCardsList(deviceId, 50, pageInfo.endCursor || undefined);
 const res = await xsApplyMyCardsLocalCacheSafeV1(deviceId, resRaw); /* XS_MYCARDS_LOCAL_ASYNC_CACHE_SAFE_V1_APPLY_LOAD_MORE */
       
       try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
-      setItems((prev) => [...prev, ...(res.cards || [])]);
+      setItems((prev) => {
+        const next = [...prev, ...(res.cards || [])];
+        setGallery(next as any);
+        return next;
+      });
       setPageInfo(res.pageInfo);
     } catch (e: any) {
       setError(e?.message || "Erreur pagination");
@@ -497,7 +529,7 @@ const res = await xsApplyMyCardsLocalCacheSafeV1(deviceId, resRaw); /* XS_MYCARD
       setLoadingMore(false);
       loadingMoreRef.current = false;
     }
-  }, [deviceId, pageInfo?.endCursor, pageInfo?.hasNextPage]);
+  }, [deviceId, pageInfo?.endCursor, pageInfo?.hasNextPage, setGallery]);
 const onSync = useCallback(async () => {
     if (!deviceId) return;
     setSyncing(true);
@@ -513,6 +545,7 @@ const onSync = useCallback(async () => {
 
       try { setLastSync(String((res as any)?.meta?.fetchedAt || "")); } catch {}
       setItems(syncCards);
+      setGallery(syncCards as any);
       setPageInfo((res as any)?.pageInfo);
       setHistorySyncStatus("Cartes synchronisées");
 
@@ -547,7 +580,7 @@ const onSync = useCallback(async () => {
     } finally {
       setSyncing(false);
     }
-  }, [deviceId, loadInitial]);
+  }, [deviceId, loadInitial, setGallery]);
 
   useEffect(() => {
     loadInitial();

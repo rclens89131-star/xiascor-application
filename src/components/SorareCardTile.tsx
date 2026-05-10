@@ -1,4 +1,5 @@
 /* XS_MES_CARTES_GALLERY_IDENTIQUE_V1 */
+/* XS_CARD_BONUS_GAMEWEEK_V1 */
 /* XS_MES_CARTES_TILE_CLEAN_V2 */
 /* XS_MES_CARTES_LVL_POSITION_V3 */
 /* XS_FIX_L5_MINI_CHART_ORDER_V1 */
@@ -44,6 +45,29 @@ function xsAvgV1(scores: Array<number | null | undefined>): number | null {
   const values = scores.filter((n) => Number.isFinite(n));
   if (!values.length) return null;
   return Math.round(values.reduce((a, b) => a + b, 0) / values.length);
+}
+
+function xsCardBonusPctV1(card: any): number | null {
+  const direct = xsNum(
+    card?.bonusPct ??
+      card?.deltaPct ??
+      card?.totalBonus ??
+      card?.bonus ??
+      card?.xpBonus ??
+      card?.seasonBonus ??
+      null
+  );
+  if (direct !== null) return direct > 1 ? direct : direct * 100;
+
+  const power = xsNum(card?.power ?? card?.cardPower ?? card?.playerPower ?? null);
+  if (power === null) return null;
+  return (power - 1) * 100;
+}
+
+function xsFormatBonusPctV1(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return "BONUS —";
+  const rounded = Math.abs(value - Math.round(value)) < 0.05 ? String(Math.round(value)) : value.toFixed(1);
+  return `+${rounded}%`;
 }
 
 function xsPickNumFromRowV1(row: any): number | null {
@@ -281,6 +305,7 @@ export function SorareCardTile(props: any) {
   const scoreTone = xsScoreColorV1(l5Avg);
   const pictureUrl = xsGetCardImageV1(c);
   const level = xsNum(c?.level ?? c?.cardLevel ?? c?.lvl) ?? 0;
+  const bonusPct = xsCardBonusPctV1(c);
   const scoreCircleSize = Math.max(48, Math.round(width * 0.29));
   const scoreBoxSize = Math.max(18, Math.round(width * 0.112));
 
@@ -375,6 +400,24 @@ export function SorareCardTile(props: any) {
           }}
         >
           <Text style={{ color: "#FFFFFF", fontSize: 11, fontWeight: "900" }}>LVL {level}</Text>
+        </View>
+
+        <View
+          style={{
+            position: "absolute",
+            top: 80,
+            right: 10,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: "rgba(34,197,94,0.42)",
+            backgroundColor: "rgba(6,16,12,0.82)",
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+          }}
+        >
+          <Text style={{ color: bonusPct === null ? "#A4A7AE" : "#86EFAC", fontSize: 11, fontWeight: "900" }}>
+            {xsFormatBonusPctV1(bonusPct)}
+          </Text>
         </View>
 
         <View

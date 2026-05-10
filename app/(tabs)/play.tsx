@@ -1,5 +1,6 @@
 ﻿/* XS_TEXT_OUTSIDE_TEXT_SEP_FIX_V1 */
 /* XS_PLAY_REPAIR_ESCAPED_PATCH_V1 */
+/* XS_CARD_BONUS_GAMEWEEK_V1 */
 import React, { useEffect, useMemo, useState } from "react";
 import { FlatList, Image, Pressable, SafeAreaView, ScrollView, Switch, Text, TextInput, View, Modal } from "react-native"; /* XS_PLAY_SCROLL_HEADER_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -326,13 +327,68 @@ function isCardCompatibleWithSlot(slot: Slot, pos: PosCode, allowGkInFlex: boole
   return false;
 }
 
+function xsPlayNumV1(v: any): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim()) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
 function estimateCardScore(card: any): number | null {
-  const candidates = [card?.expectedScore, card?.score, card?.l15, card?.avgScore, card?.card?.expectedScore, card?.card?.score];
+  const candidates = [
+    card?.expectedScore,
+    card?.score,
+    card?.l15,
+    card?.avgScore,
+    card?.anyPlayer?.l15,
+    card?.card?.expectedScore,
+    card?.card?.score,
+    card?.card?.l15,
+  ];
   for (const c of candidates) {
-    if (typeof c === "number" && Number.isFinite(c)) return c;
+    const n = xsPlayNumV1(c);
+    if (n !== null) return n;
   }
   
   return null;
+}
+
+function xsPlayCardBonusPctV1(card: any): number | null {
+  const direct = xsPlayNumV1(
+    card?.bonusPct ??
+      card?.deltaPct ??
+      card?.totalBonus ??
+      card?.bonus ??
+      card?.xpBonus ??
+      card?.seasonBonus ??
+      card?.card?.bonusPct ??
+      card?.card?.totalBonus ??
+      card?.card?.bonus ??
+      card?.card?.xpBonus ??
+      card?.card?.seasonBonus ??
+      null
+  );
+  if (direct !== null) return direct > 1 ? direct : direct * 100;
+
+  const power = xsPlayNumV1(
+    card?.power ??
+      card?.cardPower ??
+      card?.playerPower ??
+      card?.card?.power ??
+      card?.card?.cardPower ??
+      card?.card?.playerPower ??
+      null
+  );
+  if (power === null) return null;
+  return (power - 1) * 100;
+}
+
+function xsPlayFormatBonusPctV1(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return "Bonus —";
+  const rounded = Math.abs(value - Math.round(value)) < 0.05 ? String(Math.round(value)) : value.toFixed(1);
+  return `Bonus +${rounded}%`;
 }
 
 function SlotMiniCard({
@@ -353,6 +409,7 @@ function SlotMiniCard({
   const pos = cardPosCode(card);
   const season = cardSeason(card);
   const rarityLabel = cardRarityLabel(card);
+  const bonusPct = xsPlayCardBonusPctV1(card);
   
   return (
     <View style={{ gap: 8 }}>
@@ -370,7 +427,7 @@ function SlotMiniCard({
         <View style={{ flex: 1 }}>
           <Text style={{ color: theme.text, fontWeight: "900" }} numberOfLines={1}>{name}</Text>
           <Text style={{ color: theme.muted, marginTop: 2, fontSize: 12 }} numberOfLines={1}>
-            {pos === "UNK" ? "position inconnue" : pos} • Saison {season}
+            {pos === "UNK" ? "position inconnue" : pos} • Saison {season} • {xsPlayFormatBonusPctV1(bonusPct)}
           </Text>
 
           <View style={{ alignSelf: "flex-start", marginTop: 5, borderRadius: 10, borderWidth: 1, borderColor: rarityColor(String(card?.rarity ?? card?.card?.rarity ?? "")), paddingHorizontal: 7, paddingVertical: 2, backgroundColor: "rgba(255,255,255,0.02)" }}>
@@ -615,6 +672,25 @@ if (parsed?.picked) {
   return hasAny ? total : null;
   }, [pickedCards]);
 
+  const scoreBonusEstimate = useMemo(() => {
+    let base = 0;
+    let final = 0;
+    let hasScore = false;
+    let hasBonus = false;
+
+    for (const card of pickedCards) {
+      const score = estimateCardScore(card);
+      if (score === null) continue;
+      const bonusPct = xsPlayCardBonusPctV1(card);
+      base += score;
+      final += score * (1 + ((bonusPct ?? 0) / 100));
+      hasScore = true;
+      if (bonusPct !== null) hasBonus = true;
+    }
+
+    return hasScore ? { base, final, bonusPoints: final - base, hasBonus } : null;
+  }, [pickedCards]);
+
   const capRemaining = useMemo(() => {
     const cap = scenario === "cap_240" ? 240 : scenario === "cap_220" ? 220 : null;
     if (!cap || scoreEstimate == null) return null;
@@ -804,6 +880,18 @@ if (parsed?.picked) {
           <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
             <Text style={{ color: theme.muted }}>Score estimé</Text>
             <Text style={{ color: theme.text, fontWeight: "900" }}>{scoreEstimate == null ? "—" : scoreEstimate.toFixed(1)}</Text>
+          </View>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+            <Text style={{ color: theme.muted, flexShrink: 1 }}>Bonus cartes</Text>
+            <Text style={{ color: theme.text, fontWeight: "900" }} numberOfLines={1}>
+              {scoreBonusEstimate?.hasBonus ? `+${scoreBonusEstimate.bonusPoints.toFixed(1)} pts` : "Bonus non disponible"}
+            </Text>
+          </View>
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={{ color: theme.muted }}>Score final bonus</Text>
+            <Text style={{ color: theme.good, fontWeight: "900" }}>
+              {scoreBonusEstimate == null ? "—" : scoreBonusEstimate.final.toFixed(1)}
+            </Text>
           </View>
           {scenario !== "classic" && (
             <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
