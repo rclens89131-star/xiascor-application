@@ -1,4 +1,5 @@
-﻿/* XS_TILE_REMOVE_LVL_KEEP_GREEN_BONUS_V1 */
+﻿/* XS_FIX_TILE_REMOVE_EMPTY_LVL_AND_POWER_BADGE_V2 */
+/* XS_TILE_REMOVE_LVL_KEEP_GREEN_BONUS_V1 */
 /* XS_MES_CARTES_GALLERY_IDENTIQUE_V1 */
 /* XS_CARD_BONUS_GAMEWEEK_V1 */
 /* XS_MES_CARTES_TILE_CLEAN_V2 */
@@ -50,20 +51,26 @@ function xsAvgV1(scores: Array<number | null | undefined>): number | null {
 
 /* XS_TILE_POWER_TOTAL_BONUS_V1 */
 function xsCardBonusPctV1(card: any): number | null {
-  const direct = xsNum(
+  const raw =
     card?.bonusPct ??
-      card?.deltaPct ??
-      card?.totalBonus ??
-      card?.bonus ??
-      card?.xpBonus ??
-      card?.seasonBonus ??
-      null
-  );
-  if (direct !== null) return direct > 1 ? direct : direct * 100;
+    card?.totalBonus ??
+    card?.bonus ??
+    card?.xpBonus ??
+    card?.seasonBonus ??
+    card?.collectionBonus ??
+    card?.power ??
+    card?.cardPower ??
+    card?.c?.power ??
+    card?.raw?.power;
 
-  const power = xsNum(card?.power ?? card?.cardPower ?? card?.playerPower ?? null);
-  if (power === null) return null;
-  return (power - 1) * 100;
+  const n = xsNum(raw);
+  if (n === null) return null;
+
+  // power Sorare est souvent un multiplicateur: 1.040 => +4%
+  if (n > 0 && n < 3) return Math.round((n - 1) * 1000) / 10;
+
+  // sinon on considère déjà un pourcentage: 4 => +4%
+  return Math.round(n * 10) / 10;
 }
 
 function xsFormatBonusPctV1(value: number | null): string {
@@ -305,9 +312,7 @@ export function SorareCardTile(props: any) {
   const l5Scores = xsGetL5ScoresV1(c);
   const l5Avg = xsNum(c?.l5Avg ?? c?.l5) ?? xsAvgV1(l5Scores);
   const scoreTone = xsScoreColorV1(l5Avg);
-  const pictureUrl = xsGetCardImageV1(c);
-  const level = xsNum(c?.level ?? c?.cardLevel ?? c?.lvl) ?? 0;
-  const bonusPct = xsCardBonusPctV1(c);
+  const pictureUrl = xsGetCardImageV1(c);  const bonusPct = xsCardBonusPctV1(c);
   const scoreCircleSize = Math.max(48, Math.round(width * 0.29));
   const scoreBoxSize = Math.max(18, Math.round(width * 0.112));
 
@@ -527,4 +532,5 @@ export function SorareCardTile(props: any) {
     </TouchableOpacity>
   );
 }
+
 
