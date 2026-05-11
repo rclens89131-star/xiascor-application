@@ -89,6 +89,20 @@ type RadarMatchContext = {
   difficultyScore: number | null;
   reason: string;
 };
+type RadarAiPrediction = {
+  projectedScore?: number | null;
+  projectedRangeLow?: number | null;
+  projectedRangeHigh?: number | null;
+  confidence?: string | null;
+  confidenceScore?: number | null;
+  riskLevel?: string | null;
+  why?: string | null;
+  positivePoints?: string[] | null;
+  negativePoints?: string[] | null;
+  actionableAdvice?: string | null;
+  aiUsed?: boolean;
+  aiError?: string | null;
+};
 type RadarPositionPercentile = {
   percentileLabel: string;
   deltaLabel: string;
@@ -358,6 +372,10 @@ export default function FifaRadarChart(props: {
   recommendation?: RadarRecommendation | null;
   matchContext?: RadarMatchContext | null;
   positionPercentile?: RadarPositionPercentile | null;
+  aiPrediction?: RadarAiPrediction | null;
+  aiPredictionLoading?: boolean;
+  aiPredictionError?: string | null;
+  onAiPredictionPress?: (() => void) | null;
   subtitle?: string;
 }) {
   const values =
@@ -463,6 +481,10 @@ export default function FifaRadarChart(props: {
       reason: "Prochain adversaire non disponible.",
     };
   const matchTone = matchDifficultyToneStyle(matchContext.difficulty);
+  const aiPrediction = props.aiPrediction || null; /* XS_AI_PLAYER_SCORE_PREDICTION_V1 */
+  const aiPredictionLoading = Boolean(props.aiPredictionLoading); /* XS_AI_PLAYER_SCORE_PREDICTION_V1 */
+  const aiPredictionError = String(props.aiPredictionError || "").trim(); /* XS_AI_PLAYER_SCORE_PREDICTION_V1 */
+  const aiPredictionCanRequest = typeof props.onAiPredictionPress === "function" && !aiPredictionLoading; /* XS_AI_PLAYER_SCORE_PREDICTION_V1 */
   const positionPercentile =
     props.positionPercentile || {
       percentileLabel: "Comparaison poste indisponible",
@@ -1015,9 +1037,29 @@ export default function FifaRadarChart(props: {
             gap: 8,
           }}
         >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Text style={{ color: "#60A5FA", fontSize: 15, fontWeight: "900" }}>▦</Text>
-            <Text style={{ color: "#60A5FA", fontSize: 15, fontWeight: "900" }}>CONTEXTE MATCH</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, minWidth: 0, flexShrink: 1 }}>
+              <Text style={{ color: "#60A5FA", fontSize: 15, fontWeight: "900" }}>▦</Text>
+              <Text numberOfLines={1} style={{ color: "#60A5FA", fontSize: 15, fontWeight: "900" }}>CONTEXTE MATCH</Text>
+            </View>
+            <Text
+              onPress={aiPredictionCanRequest ? () => props.onAiPredictionPress?.() : undefined}
+              numberOfLines={1}
+              style={{
+                color: aiPredictionLoading ? "#94A3B8" : "#E0F2FE",
+                backgroundColor: "rgba(59,130,246,0.16)",
+                borderColor: "rgba(96,165,250,0.36)",
+                borderWidth: 1,
+                borderRadius: 999,
+                overflow: "hidden",
+                paddingHorizontal: 9,
+                paddingVertical: 5,
+                fontSize: 10,
+                fontWeight: "900",
+              }}
+            >
+              {aiPredictionLoading ? "Analyse..." : "Prédiction IA"}
+            </Text>
           </View>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
             <View
@@ -1081,6 +1123,74 @@ export default function FifaRadarChart(props: {
             </View>
           </View>
         </View>
+
+        {(aiPrediction || aiPredictionLoading || aiPredictionError) ? (
+          <View
+            style={{
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor: "rgba(96,165,250,0.26)",
+              backgroundColor: "rgba(15,23,42,0.58)",
+              padding: 10,
+              gap: 8,
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <Text numberOfLines={1} style={{ color: "#93C5FD", fontSize: 13, fontWeight: "900" }}>
+                PRÉDICTION IA
+              </Text>
+              {aiPrediction ? (
+                <Text numberOfLines={1} style={{ color: "#F8FAFC", fontSize: 12, fontWeight: "900" }}>
+                  Score {Math.round(clamp(Number(aiPrediction.projectedScore || 0)))}/100
+                </Text>
+              ) : null}
+            </View>
+            {aiPredictionLoading ? (
+              <Text style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
+                Analyse du prochain match en cours...
+              </Text>
+            ) : aiPredictionError ? (
+              <Text numberOfLines={2} ellipsizeMode="tail" style={{ color: "#FCA5A5", fontSize: 12, lineHeight: 17, fontWeight: "800" }}>
+                {aiPredictionError}
+              </Text>
+            ) : aiPrediction ? (
+              <>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                  {playerStatusCardBadgeV1(
+                    `${Math.round(clamp(Number(aiPrediction.projectedRangeLow || 0)))}-${Math.round(clamp(Number(aiPrediction.projectedRangeHigh || 0)))}`,
+                    { fg: "#E0F2FE", bg: "rgba(59,130,246,0.12)", border: "rgba(96,165,250,0.30)" }
+                  )}
+                  {playerStatusCardBadgeV1(
+                    `Confiance ${safeTextV1(aiPrediction.confidence)}`,
+                    { fg: "#BBF7D0", bg: "rgba(34,197,94,0.10)", border: "rgba(34,197,94,0.30)" }
+                  )}
+                  {playerStatusCardBadgeV1(
+                    `Risque ${safeTextV1(aiPrediction.riskLevel)}`,
+                    { fg: "#FED7AA", bg: "rgba(251,146,60,0.10)", border: "rgba(251,146,60,0.30)" }
+                  )}
+                </View>
+                <Text numberOfLines={3} ellipsizeMode="tail" style={{ color: "#F8FAFC", fontSize: 12, lineHeight: 17, fontWeight: "800" }}>
+                  {safeTextV1(aiPrediction.why)}
+                </Text>
+                <View style={{ gap: 4 }}>
+                  {(Array.isArray(aiPrediction.positivePoints) ? aiPrediction.positivePoints : []).slice(0, 2).map((item, index) => (
+                    <Text key={`ai-positive-${index}`} numberOfLines={1} ellipsizeMode="tail" style={{ color: "#BBF7D0", fontSize: 11, fontWeight: "800" }}>
+                      + {safeTextV1(item)}
+                    </Text>
+                  ))}
+                  {(Array.isArray(aiPrediction.negativePoints) ? aiPrediction.negativePoints : []).slice(0, 2).map((item, index) => (
+                    <Text key={`ai-negative-${index}`} numberOfLines={1} ellipsizeMode="tail" style={{ color: "#FED7AA", fontSize: 11, fontWeight: "800" }}>
+                      - {safeTextV1(item)}
+                    </Text>
+                  ))}
+                </View>
+                <Text numberOfLines={2} ellipsizeMode="tail" style={{ color: "#CBD5E1", fontSize: 12, lineHeight: 17 }}>
+                  Conseil : {safeTextV1(aiPrediction.actionableAdvice)}
+                </Text>
+              </>
+            ) : null}
+          </View>
+        ) : null}
 
         <View
           style={{

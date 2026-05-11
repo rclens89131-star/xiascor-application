@@ -499,6 +499,86 @@ type XsCardMatchContextV1 = {
   source?: string | null;
 };
 
+type XsAiPlayerScorePredictionV1 = {
+  ok?: boolean;
+  predictionId?: string | null;
+  playerSlug?: string | null;
+  cardId?: string | null;
+  nextMatchKey?: string | null;
+  nextMatchDate?: string | null;
+  opponentName?: string | null;
+  opponentLogoUrl?: string | null;
+  projectedScore?: number | null;
+  projectedRangeLow?: number | null;
+  projectedRangeHigh?: number | null;
+  confidence?: string | null;
+  confidenceScore?: number | null;
+  riskLevel?: string | null;
+  why?: string | null;
+  positivePoints?: string[] | null;
+  negativePoints?: string[] | null;
+  actionableAdvice?: string | null;
+  aiUsed?: boolean;
+  aiError?: string | null;
+  calculationBreakdown?: any;
+};
+
+function xsAiPredictionTextV1(value: any, fallback = ""): string {
+  const s = String(value ?? "").trim();
+  return s || fallback;
+}
+
+function xsAiPredictionCardIdV1(card: any, fallbackId: string): string {
+  return xsAiPredictionTextV1(
+    card?.id ??
+    card?.cardId ??
+    card?.slug ??
+    card?.assetId ??
+    fallbackId,
+    fallbackId
+  );
+}
+
+function xsAiPredictionCardBonusV1(card: any): number | null {
+  const raw =
+    card?.bonus ??
+    card?.bonusTotal ??
+    card?.xpBonus ??
+    card?.seasonBonus ??
+    card?.cardPower ??
+    card?.power ??
+    null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  if (n > 0 && n < 2) return Math.max(0, (n - 1) * 100);
+  return Math.max(0, Math.min(100, n));
+}
+
+function xsAiPredictionMatchKeyV1(playerSlug: string, card: any, matchContext?: XsCardMatchContextV1 | null): string {
+  const direct = xsAiPredictionTextV1(
+    (matchContext as any)?.nextMatchKey ??
+    (matchContext as any)?.matchId ??
+    (matchContext as any)?.gameId ??
+    ""
+  );
+  if (direct) return `${playerSlug}|${xsAiPredictionCardIdV1(card, "")}|${direct}`;
+  return [
+    playerSlug,
+    xsAiPredictionCardIdV1(card, ""),
+    xsAiPredictionTextV1(matchContext?.matchDate, "no-date"),
+    xsAiPredictionTextV1(matchContext?.opponentName, "no-opponent"),
+    xsAiPredictionTextV1(matchContext?.competition, "no-competition")
+  ].join("|").toLowerCase();
+}
+
+function xsAiPredictionMatchIsFutureV1(matchContext?: XsCardMatchContextV1 | null): boolean {
+  const raw = xsAiPredictionTextV1(matchContext?.matchDate);
+  if (!raw) return Boolean(matchContext?.opponentName);
+  const t = Date.parse(raw);
+  if (!Number.isFinite(t)) return Boolean(matchContext?.opponentName);
+  return t > Date.now() - 2 * 3600000;
+}
+
 function xsRadarChartPositionLabelV1(positionUsed: XsRadarPositionV1): "GK" | "DEF" | "MID" | "FWD" | "GEN" {
   return positionUsed === "FW" ? "FWD" : positionUsed;
 }
@@ -2833,6 +2913,9 @@ export default function CardDetailScreen() {
   const [historyChart, setHistoryChart] = useState<any[]>([]); // XS_HISTORY_CHART_LOGOS_LOAD_V1
   const [realMatchContext, setRealMatchContext] = useState<XsCardMatchContextV1 | null>(null); // XS_CARD_REAL_MATCH_CONTEXT_V1
   const [playerStatus, setPlayerStatus] = useState<XsPlayerStatusV1 | null>(null); // XS_PLAYER_STATUS_DECISION_V1
+  const [aiPrediction, setAiPrediction] = useState<XsAiPlayerScorePredictionV1 | null>(null); // XS_AI_PLAYER_SCORE_PREDICTION_V1
+  const [aiPredictionLoading, setAiPredictionLoading] = useState(false); // XS_AI_PLAYER_SCORE_PREDICTION_V1
+  const [aiPredictionError, setAiPredictionError] = useState<string | null>(null); // XS_AI_PLAYER_SCORE_PREDICTION_V1
   const [state, setState] = useState<"idle" | "loading" | "ok" | "err">("idle");
   const [error, setError] = useState("");
   const [activeSeries, setActiveSeries] = useState<"L5" | "L15" | "ALL">("L5");
@@ -3194,6 +3277,85 @@ const avg5 =
     [historyChart, avg5, avg15, avg40, resolvedPosition, positionRawParam, card, perf, radarRange, realMatchContext, playerStatus]
   );
 
+  const aiPredictionMatchKey = useMemo(
+    () => xsAiPredictionMatchKeyV1(playerSlug, card, xsFifaRadar.matchContext),
+    [playerSlug, card, xsFifaRadar.matchContext]
+  );
+  const aiPredictionMatchActive = useMemo(
+    () => xsAiPredictionMatchIsFutureV1(xsFifaRadar.matchContext),
+    [xsFifaRadar.matchContext]
+  );
+
+  useEffect(() => {
+    // XS_AI_PLAYER_SCORE_PREDICTION_V1: reset active prediction when the future match identity changes.
+    setAiPrediction(null);
+    setAiPredictionError(null);
+    setAiPredictionLoading(false);
+  }, [aiPredictionMatchKey]);
+
+  async function handleAiPredictionPress() {
+    if (!playerSlug) {
+      setAiPredictionError("Joueur indisponible pour la prédiction.");
+      return;
+    }
+    if (!aiPredictionMatchActive) {
+      setAiPredictionError("Aucun prochain match actif pour cette prédiction.");
+      return;
+    }
+    setAiPredictionLoading(true);
+    setAiPredictionError(null);
+    try {
+      const base = xsPositionFallbackBaseUrlV1();
+      const deviceId =
+        (await AsyncStorage.getItem("xs_device_id").catch(() => null)) ||
+        (await AsyncStorage.getItem("XS_JWT_DEVICE_ID_V1").catch(() => null)) ||
+        (await AsyncStorage.getItem("xs_device_id_v1").catch(() => null)) ||
+        undefined;
+      const matchContext = xsFifaRadar.matchContext;
+      const historyScores = (Array.isArray(historyChart) ? historyChart : []).slice(0, 40).map((row: any) => ({
+        scoreSorare: asNum(row?.scoreSorare ?? row?.score),
+        score: asNum(row?.scoreSorare ?? row?.score),
+        minutes: asNum(row?.minutes ?? row?.mins),
+        matchDate: row?.matchDate ?? row?.date ?? null,
+        opponent: row?.opponent ?? row?.opponentName ?? null,
+        competition: row?.competition ?? null,
+      }));
+      const resp = await fetch(`${base}/ai/player-score-prediction`, {
+        method: "POST",
+        headers: { accept: "application/json", "content-type": "application/json" },
+        body: JSON.stringify({
+          playerSlug,
+          cardId: xsAiPredictionCardIdV1(card, id),
+          deviceId,
+          nextMatchKey: aiPredictionMatchKey,
+          nextMatchDate: matchContext?.matchDate ?? null,
+          opponentName: matchContext?.opponentName ?? null,
+          opponentLogoUrl: matchContext?.opponentLogoUrl ?? null,
+          homeAway: matchContext?.homeAway ?? "unknown",
+          competition: matchContext?.competition ?? null,
+          difficulty: matchContext?.difficulty ?? "unknown",
+          l5: avg5,
+          l15: avg15,
+          l40: avg40,
+          historyScores,
+          minutes: historyScores.map((row) => row.minutes).filter((n): n is number => typeof n === "number" && Number.isFinite(n)),
+          position: resolvedPosition,
+          cardBonus: xsAiPredictionCardBonusV1(card),
+          playerStatus,
+        }),
+      });
+      const json = await resp.json().catch(() => null);
+      if (!resp.ok || !json?.ok) {
+        throw new Error(String(json?.error || json?.details || `Erreur IA ${resp.status}`));
+      }
+      setAiPrediction(json as XsAiPlayerScorePredictionV1);
+    } catch (e: any) {
+      setAiPredictionError(String(e?.message || e || "Prédiction IA indisponible."));
+    } finally {
+      setAiPredictionLoading(false);
+    }
+  }
+
   function pill(label: "L5" | "L15" | "ALL") {
     const active = activeSeries === label;
 return (
@@ -3329,6 +3491,10 @@ return (
         recommendation={xsFifaRadar.recommendation}
         matchContext={xsFifaRadar.matchContext}
         positionPercentile={xsFifaRadar.positionPercentile}
+        aiPrediction={aiPrediction}
+        aiPredictionLoading={aiPredictionLoading}
+        aiPredictionError={aiPredictionError}
+        onAiPredictionPress={handleAiPredictionPress}
       />
       {/* XS_FIFA_RADAR_CARD_DETAIL_V1_END */}
 
