@@ -134,6 +134,7 @@ function xsNormalizeL5MiniChartOrderV1(
 
 function xsGetL5ScoresV1(card: any): Array<number | null> {
   const sources = [
+    { value: card?.averagesDebug?.l5Scores, order: "newest-first" as const }, /* XS_OFFICIAL_SORARE_AVERAGES_V1 */
     { value: card?.l5Bars, order: "newest-first" as const },
     { value: card?.recentScores, order: "newest-first" as const },
     { value: card?.so5Scores, order: "newest-first" as const },
@@ -308,7 +309,7 @@ export function SorareCardTile(props: any) {
   const width = xsNum(props.width) ?? 170;
   const imageHeight = Math.round(width * 1.16);
   const l5Scores = xsGetL5ScoresV1(c);
-  const l5Avg = xsNum(c?.l5Avg ?? c?.l5) ?? xsAvgV1(l5Scores);
+  const l5Avg = xsNum(c?.averages?.l5 ?? c?.avg5 ?? c?.l5Avg ?? c?.l5) ?? xsAvgV1(l5Scores); /* XS_OFFICIAL_SORARE_AVERAGES_V1 */
   const scoreTone = xsScoreColorV1(l5Avg);
   const pictureUrl = xsGetCardImageV1(c);  const bonusPct = xsCardBonusPctV1(c);
   const scoreCircleSize = Math.max(48, Math.round(width * 0.29));

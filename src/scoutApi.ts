@@ -408,6 +408,9 @@ export type PublicPlayerPerformance = {
   activeClub?: { name?: string | null; slug?: string | null } | null;
   l5?: number | null;
   l15?: number | null;
+  l40?: number | null;
+  averages?: { l5?: number | null; l15?: number | null; l40?: number | null } | null; // XS_OFFICIAL_SORARE_AVERAGES_V1
+  averagesDebug?: any;
   lastScore?: number | null;
   recentScores?: number[];
   recentScores15?: number[];
@@ -568,6 +571,10 @@ export async function publicPlayerPerformance(
         arr.length
           ? Math.round(arr.reduce((sum, n) => sum + n, 0) / arr.length)
           : null;
+      const backendAverages = json?.averages && typeof json.averages === "object" ? json.averages : null; // XS_OFFICIAL_SORARE_AVERAGES_V1
+      const backendL5 = Number.isFinite(Number(backendAverages?.l5)) ? Number(backendAverages.l5) : null;
+      const backendL15 = Number.isFinite(Number(backendAverages?.l15)) ? Number(backendAverages.l15) : null;
+      const backendL40 = Number.isFinite(Number(backendAverages?.l40)) ? Number(backendAverages.l40) : null;
 
       const opponentLogoUrls = normalized.map((x) => x.opponentLogoUrl).slice(0, 5);
       const opponentShort = normalized.map((x) => x.opponentShort).slice(0, 5);
@@ -580,8 +587,11 @@ export async function publicPlayerPerformance(
         playerName: json.playerName || json.name || s,
         position: json.position || null,
         activeClub: json.activeClub || json.club || null,
-        l5: avg(recent5),
-        l15: avg(recent15),
+        l5: backendL5 ?? avg(recent5),
+        l15: backendL15 ?? avg(recent15),
+        l40: backendL40 ?? avg(recent40),
+        averages: backendAverages,
+        averagesDebug: json?.averagesDebug || null,
         lastScore: recent5.length ? recent5[0] : null,
         recentScores: recent5,
         recentScores15: recent15,
@@ -592,8 +602,10 @@ export async function publicPlayerPerformance(
           ...(json.meta || {}),
           source: "history/player-chart",
           marker: "XS_FIX_FRONT_HISTORY_SCORE_MAPPING_V1",
+          averagesMarker: "XS_OFFICIAL_SORARE_AVERAGES_V1",
           count: rawItems.length,
           mappedCount: normalized.length,
+          averages: backendAverages,
         },
         source: "history/player-chart",
       } as PublicPlayerPerformance;

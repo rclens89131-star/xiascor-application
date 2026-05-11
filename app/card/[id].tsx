@@ -2559,12 +2559,15 @@ function xsBuildFifaRadarValuesFromHistoryV1(
     };
   }
 
-  const l5 = xsRadarAvgV1(scores.slice(0, 5)) ?? fallbackAvg?.avg5 ?? fallbackScore;
-  const l15 = xsRadarAvgV1(scores.slice(0, 15)) ?? fallbackAvg?.avg15 ?? fallbackScore;
-  const l40 = xsRadarAvgV1(scores.slice(0, 40)) ?? fallbackAvg?.avg40 ?? fallbackScore;
-  const trendL5 = xsRadarClampV1(fallbackAvg?.avg5 ?? l5);
-  const trendL15 = xsRadarClampV1(fallbackAvg?.avg15 ?? l15);
-  const trendL40 = xsRadarClampV1(fallbackAvg?.avg40 ?? l40);
+  const officialL5 = xsRadarNumV1(fallbackAvg?.avg5);
+  const officialL15 = xsRadarNumV1(fallbackAvg?.avg15);
+  const officialL40 = xsRadarNumV1(fallbackAvg?.avg40);
+  const l5 = officialL5 ?? xsRadarAvgV1(scores.slice(0, 5)) ?? fallbackScore; /* XS_OFFICIAL_SORARE_AVERAGES_V1 */
+  const l15 = officialL15 ?? xsRadarAvgV1(scores.slice(0, 15)) ?? fallbackScore; /* XS_OFFICIAL_SORARE_AVERAGES_V1 */
+  const l40 = officialL40 ?? xsRadarAvgV1(scores.slice(0, 40)) ?? fallbackScore; /* XS_OFFICIAL_SORARE_AVERAGES_V1 */
+  const trendL5 = xsRadarClampV1(l5);
+  const trendL15 = xsRadarClampV1(l15);
+  const trendL40 = xsRadarClampV1(l40);
   const form = xsRadarClampV1(l5 * 0.5 + l15 * 0.3 + l40 * 0.2);
 
   const stdDev = xsRadarStdDevV1(scores);
@@ -3149,9 +3152,24 @@ return () => { cancelled = true; };
     const xsOpponentLogoUrls = xsOppSlice.map((x: any) => xsPickOpponentLogoUrl(x));
   const xsOpponentShort = xsOppSlice.map((x: any) => xsPickOpponentShort(x));
   // XS_FIX_CARD_DETAIL_OPPONENT_LOGOS_NESTED_V1 END
-const avg5 = avgOf(series.l5) ?? asNum((card as any)?.l5) ?? asNum((perf as any)?.l5);
-  const avg15 = avgOf(series.l15) ?? asNum((card as any)?.l15) ?? asNum((perf as any)?.l15);
-  const avg40 = avgOf(series.l40) ?? asNum((card as any)?.l40) ?? asNum((perf as any)?.l40);
+const avg5 =
+  asNum((perf as any)?.averages?.l5) ??
+  asNum((perf as any)?.l5) ??
+  asNum((card as any)?.averages?.l5) ??
+  asNum((card as any)?.l5) ??
+  avgOf(series.l5);
+  const avg15 =
+    asNum((perf as any)?.averages?.l15) ??
+    asNum((perf as any)?.l15) ??
+    asNum((card as any)?.averages?.l15) ??
+    asNum((card as any)?.l15) ??
+    avgOf(series.l15);
+  const avg40 =
+    asNum((perf as any)?.averages?.l40) ??
+    asNum((perf as any)?.l40) ??
+    asNum((card as any)?.averages?.l40) ??
+    asNum((card as any)?.l40) ??
+    avgOf(series.l40);
   const xsFifaRadar = useMemo(
     () =>
       xsBuildFifaRadarValuesFromHistoryV1(
