@@ -50,6 +50,25 @@ type SorareCard = {
   [key: string]: any;
 };
 
+type GameWeekAiPrediction = {
+  ok?: boolean;
+  projectedTotalScore?: number;
+  projectedRangeLow?: number;
+  projectedRangeHigh?: number;
+  confidence?: string;
+  confidenceScore?: number;
+  riskLevel?: string;
+  bestPick?: { name?: string; playerSlug?: string; projectedScore?: number } | null;
+  mostRisky?: { name?: string; playerSlug?: string; riskScore?: number } | null;
+  captainAdvice?: string;
+  actionableAdvice?: string;
+  positivePoints?: string[];
+  negativePoints?: string[];
+  why?: string;
+  aiUsed?: boolean;
+  aiError?: string | null;
+};
+
 async function createLineup(payload: any): Promise<any> {
   console.log("XS_PLAY_LOCAL_CREATE_LINEUP_STUB_V1", payload);
   return { ok: true, local: true, payload };
@@ -91,6 +110,21 @@ function xsPlayBonusLabelV1(card: any): string {
 }
 /* XS_PLAY_APPLY_CARD_BONUS_V1 END */
 
+/* XS_AI_GAMEWEEK_PREDICTION_V1 */
+function xsPlayAiBaseUrlV1(): string {
+  return String(
+    process.env.EXPO_PUBLIC_BASE_URL ||
+    process.env.EXPO_PUBLIC_AUTH_BASE_URL ||
+    "https://xiascor-backend-tssdy62zqa-ez.a.run.app"
+  ).replace(/\/+$/, "");
+}
+
+function xsPlayAiTextV1(value: any, fallback = "—"): string {
+  const s = String(value ?? "").trim();
+  return s || fallback;
+}
+/* XS_AI_GAMEWEEK_PREDICTION_V1_END */
+
 type ModeKey = "classic" | "cap240" | "cap220";
 type StrategyKey = "safe" | "balanced" | "differential";
 type SlotKey = "GK" | "DEF" | "MID" | "FWD" | "FLEX";
@@ -123,6 +157,7 @@ type CoachPlayer = {
   stats: CoachStats;
   colors: [string, string];
   reasons: string[];
+  rawCard?: SorareCard;
 };
 
 type GeneratedLineup = {
@@ -530,6 +565,7 @@ function buildGalleryCandidates(gallery: SorareCard[]): CoachPlayer[] {
         difficulty < 45 ? "Matchup favorable" : "Match difficile compensé par le ceiling",
         ownership < 35 ? "Ownership faible" : "Temps de jeu fiable",
       ],
+      rawCard: card,
     };
   });
 
@@ -622,6 +658,35 @@ function generateLineup(candidates: CoachPlayer[], strategy: StrategyKey, mode: 
 
 function modeToApiMode(mode: ModeKey) {
   return mode === "classic" ? "classic" : "cap";
+}
+
+function xsPlayAiLineupCardsV1(lineup: GeneratedLineup) {
+  return lineup.slots.map((item) => {
+    const card = item.player.rawCard || {};
+    const nextMatch = card.nextMatch && typeof card.nextMatch === "object" ? card.nextMatch : null;
+    return {
+      slot: item.slot,
+      playerSlug: card.playerSlug ?? card.anyPlayer?.slug ?? card.player?.slug ?? item.player.slug,
+      cardId: card.cardId ?? card.id ?? card.slug ?? item.player.id,
+      name: card.playerName ?? card.displayName ?? card.name ?? item.player.name,
+      position: card.position ?? card.positionRaw ?? item.player.position,
+      l5: card.averages?.l5 ?? card.l5 ?? item.player.stats.l5,
+      l15: card.averages?.l15 ?? card.l15 ?? item.player.stats.l15,
+      l40: card.averages?.l40 ?? card.l40 ?? item.player.stats.l40,
+      bonus: xsPlayBonusPctV1(card),
+      status: card.playerStatus?.status ?? card.status ?? "unknown",
+      playerStatus: card.playerStatus ?? { status: card.status ?? "unknown" },
+      nextMatch: card.nextMatch ?? card.upcomingGame ?? null,
+      opponentName: card.nextOpponent ?? card.opponentName ?? (nextMatch as any)?.opponentName ?? item.player.match,
+      homeAway: card.homeAway ?? (nextMatch as any)?.homeAway ?? "unknown",
+      competition: card.competition ?? (nextMatch as any)?.competition ?? null,
+      difficulty: card.difficulty ?? card.fixtureDifficulty ?? item.player.stats.difficulty,
+      minutesAvg: item.player.stats.minutes,
+      expectedMinutes: item.player.stats.minutes,
+      projectedScore: item.player.score,
+      confidence: item.player.confidence,
+    };
+  });
 }
 
 function usePersistedGallery() {
@@ -1151,6 +1216,9 @@ export default function PlayScreen() {
   const [overrides, setOverrides] = useState<Partial<Record<SlotKey, CoachPlayer>>>({});
   const [toast, setToast] = useState("");
   const [saving, setSaving] = useState(false);
+  const [gameweekPrediction, setGameweekPrediction] = useState<GameWeekAiPrediction | null>(null); // XS_AI_GAMEWEEK_PREDICTION_V1
+  const [gameweekPredictionLoading, setGameweekPredictionLoading] = useState(false); // XS_AI_GAMEWEEK_PREDICTION_V1
+  const [gameweekPredictionError, setGameweekPredictionError] = useState(""); // XS_AI_GAMEWEEK_PREDICTION_V1
 
   const fade = useRef(new Animated.Value(0)).current;
   const glow = useRef(new Animated.Value(0)).current;
@@ -1209,6 +1277,44 @@ export default function PlayScreen() {
   const variants = useMemo(() => strategies.map((item) => generateLineup(candidates, item.key, mode)), [candidates, mode]);
   const glowOpacity = glow.interpolate({ inputRange: [0, 1], outputRange: [0.22, 0.72] });
   const pageWidth = Math.min(width, 1024);
+  const gameweekKey = useMemo(() => `GW358|${mode}|${strategy}|${displayLineup.slots.map((item) => item.player.id).join("|")}`, [displayLineup.slots, mode, strategy]);
+
+  useEffect(() => {
+    setGameweekPrediction(null);
+    setGameweekPredictionError("");
+  }, [gameweekKey]);
+
+  async function runGameweekPrediction() {
+    setGameweekPredictionLoading(true);
+    setGameweekPredictionError("");
+    try {
+      const deviceId =
+        (await AsyncStorage.getItem("xs_device_id").catch(() => null)) ||
+        (await AsyncStorage.getItem("XS_JWT_DEVICE_ID_V1").catch(() => null)) ||
+        (await AsyncStorage.getItem("xs_device_id_v1").catch(() => null)) ||
+        undefined;
+      const resp = await fetch(`${xsPlayAiBaseUrlV1()}/ai/gameweek-prediction`, {
+        method: "POST",
+        headers: { accept: "application/json", "content-type": "application/json" },
+        body: JSON.stringify({
+          deviceId,
+          gameweekKey,
+          competition: mode,
+          createdAt: new Date().toISOString(),
+          lineupCards: xsPlayAiLineupCardsV1(displayLineup),
+        }),
+      });
+      const json = await resp.json().catch(() => null);
+      if (!resp.ok || !json?.ok) {
+        throw new Error(String(json?.error || json?.details || `Erreur IA ${resp.status}`));
+      }
+      setGameweekPrediction(json as GameWeekAiPrediction);
+    } catch (e: any) {
+      setGameweekPredictionError(String(e?.message || e || "Prédiction IA Game Week indisponible."));
+    } finally {
+      setGameweekPredictionLoading(false);
+    }
+  }
 
   async function useLineup() {
     try {
@@ -1280,6 +1386,61 @@ export default function PlayScreen() {
                     <Text style={styles.confidenceLabel}>Confiance</Text>
                     <Text style={styles.confidenceValue}>{displayLineup.confidence}%</Text>
                   </View>
+                </View>
+
+                <View style={styles.aiGwBox}>
+                  <View style={styles.aiGwHeader}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.aiGwTitle}>Prédiction IA Game Week</Text>
+                      <Text numberOfLines={1} style={styles.aiGwSubtitle}>
+                        Analyse globale de la composition
+                      </Text>
+                    </View>
+                    <PremiumPressable onPress={runGameweekPrediction} disabled={gameweekPredictionLoading} style={styles.aiGwButton}>
+                      <Text style={styles.aiGwButtonText}>{gameweekPredictionLoading ? "Analyse..." : "Prédire"}</Text>
+                    </PremiumPressable>
+                  </View>
+                  {gameweekPredictionError ? (
+                    <Text style={styles.aiGwError}>{gameweekPredictionError}</Text>
+                  ) : null}
+                  {gameweekPrediction ? (
+                    <View style={styles.aiGwResult}>
+                      <View style={styles.aiGwScoreRow}>
+                        <View>
+                          <Text style={styles.aiGwLabel}>Score projeté GW</Text>
+                          <Text style={styles.aiGwScore}>{Math.round(gameweekPrediction.projectedTotalScore || 0)} pts</Text>
+                        </View>
+                        <View style={{ alignItems: "flex-end", flexShrink: 0 }}>
+                          <Text style={styles.aiGwLabel}>Fourchette</Text>
+                          <Text style={styles.aiGwValue}>
+                            {Math.round(gameweekPrediction.projectedRangeLow || 0)}-{Math.round(gameweekPrediction.projectedRangeHigh || 0)}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.aiGwPills}>
+                        <Text style={styles.aiGwPill}>Confiance {xsPlayAiTextV1(gameweekPrediction.confidence)}</Text>
+                        <Text style={styles.aiGwPill}>Risque {xsPlayAiTextV1(gameweekPrediction.riskLevel)}</Text>
+                      </View>
+                      <Text numberOfLines={2} style={styles.aiGwText}>
+                        Meilleur pick : {xsPlayAiTextV1(gameweekPrediction.bestPick?.name || gameweekPrediction.bestPick?.playerSlug)}
+                      </Text>
+                      <Text numberOfLines={2} style={styles.aiGwText}>
+                        Plus risqué : {xsPlayAiTextV1(gameweekPrediction.mostRisky?.name || gameweekPrediction.mostRisky?.playerSlug)}
+                      </Text>
+                      <Text numberOfLines={2} style={styles.aiGwText}>
+                        {xsPlayAiTextV1(gameweekPrediction.captainAdvice)}
+                      </Text>
+                      <Text numberOfLines={3} style={styles.aiGwAdvice}>
+                        {xsPlayAiTextV1(gameweekPrediction.actionableAdvice)}
+                      </Text>
+                      {(gameweekPrediction.positivePoints || []).slice(0, 2).map((point, index) => (
+                        <Text key={`gw-positive-${index}`} numberOfLines={1} style={styles.aiGwPositive}>+ {point}</Text>
+                      ))}
+                      {(gameweekPrediction.negativePoints || []).slice(0, 2).map((point, index) => (
+                        <Text key={`gw-negative-${index}`} numberOfLines={1} style={styles.aiGwNegative}>- {point}</Text>
+                      ))}
+                    </View>
+                  ) : null}
                 </View>
 
                 <Pitch
@@ -1531,6 +1692,112 @@ const styles = {
     fontSize: 34,
     lineHeight: 38,
     fontWeight: "900" as const,
+  },
+  aiGwBox: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,196,0,0.18)",
+    backgroundColor: "rgba(255,255,255,0.035)",
+    padding: 12,
+    marginBottom: 14,
+    gap: 10,
+  },
+  aiGwHeader: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    gap: 10,
+  },
+  aiGwTitle: {
+    color: TEXT,
+    fontSize: 17,
+    fontWeight: "900" as const,
+  },
+  aiGwSubtitle: {
+    color: MUTED,
+    fontSize: 12,
+    fontWeight: "700" as const,
+    marginTop: 2,
+  },
+  aiGwButton: {
+    borderRadius: 999,
+    backgroundColor: YELLOW,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  aiGwButtonText: {
+    color: "#080808",
+    fontSize: 13,
+    fontWeight: "900" as const,
+  },
+  aiGwError: {
+    color: "#ff9a9a",
+    fontSize: 12,
+    fontWeight: "800" as const,
+  },
+  aiGwResult: {
+    gap: 8,
+  },
+  aiGwScoreRow: {
+    flexDirection: "row" as const,
+    alignItems: "flex-start" as const,
+    justifyContent: "space-between" as const,
+    gap: 10,
+  },
+  aiGwLabel: {
+    color: MUTED,
+    fontSize: 11,
+    fontWeight: "800" as const,
+    textTransform: "uppercase" as const,
+  },
+  aiGwScore: {
+    color: GREEN,
+    fontSize: 28,
+    lineHeight: 32,
+    fontWeight: "900" as const,
+  },
+  aiGwValue: {
+    color: TEXT,
+    fontSize: 18,
+    fontWeight: "900" as const,
+  },
+  aiGwPills: {
+    flexDirection: "row" as const,
+    flexWrap: "wrap" as const,
+    gap: 8,
+  },
+  aiGwPill: {
+    color: TEXT,
+    backgroundColor: "rgba(0,0,0,0.38)",
+    borderColor: "rgba(255,255,255,0.10)",
+    borderWidth: 1,
+    borderRadius: 999,
+    overflow: "hidden" as const,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    fontSize: 11,
+    fontWeight: "900" as const,
+  },
+  aiGwText: {
+    color: "rgba(255,255,255,0.78)",
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "700" as const,
+  },
+  aiGwAdvice: {
+    color: TEXT,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "800" as const,
+  },
+  aiGwPositive: {
+    color: "#b7ffd3",
+    fontSize: 12,
+    fontWeight: "800" as const,
+  },
+  aiGwNegative: {
+    color: "#ffd0a6",
+    fontSize: 12,
+    fontWeight: "800" as const,
   },
   pitchWrap: {
     alignSelf: "center" as const,

@@ -3491,10 +3491,6 @@ return (
         recommendation={xsFifaRadar.recommendation}
         matchContext={xsFifaRadar.matchContext}
         positionPercentile={xsFifaRadar.positionPercentile}
-        aiPrediction={aiPrediction}
-        aiPredictionLoading={aiPredictionLoading}
-        aiPredictionError={aiPredictionError}
-        onAiPredictionPress={handleAiPredictionPress}
       />
       {/* XS_FIFA_RADAR_CARD_DETAIL_V1_END */}
 

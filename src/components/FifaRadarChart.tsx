@@ -485,6 +485,7 @@ export default function FifaRadarChart(props: {
   const aiPredictionLoading = Boolean(props.aiPredictionLoading); /* XS_AI_PLAYER_SCORE_PREDICTION_V1 */
   const aiPredictionError = String(props.aiPredictionError || "").trim(); /* XS_AI_PLAYER_SCORE_PREDICTION_V1 */
   const aiPredictionCanRequest = typeof props.onAiPredictionPress === "function" && !aiPredictionLoading; /* XS_AI_PLAYER_SCORE_PREDICTION_V1 */
+  const aiPredictionVisible = Boolean(props.onAiPredictionPress || aiPrediction || aiPredictionLoading || aiPredictionError); /* XS_AI_GAMEWEEK_PREDICTION_V1 */
   const positionPercentile =
     props.positionPercentile || {
       percentileLabel: "Comparaison poste indisponible",
@@ -1042,24 +1043,26 @@ export default function FifaRadarChart(props: {
               <Text style={{ color: "#60A5FA", fontSize: 15, fontWeight: "900" }}>▦</Text>
               <Text numberOfLines={1} style={{ color: "#60A5FA", fontSize: 15, fontWeight: "900" }}>CONTEXTE MATCH</Text>
             </View>
-            <Text
-              onPress={aiPredictionCanRequest ? () => props.onAiPredictionPress?.() : undefined}
-              numberOfLines={1}
-              style={{
-                color: aiPredictionLoading ? "#94A3B8" : "#E0F2FE",
-                backgroundColor: "rgba(59,130,246,0.16)",
-                borderColor: "rgba(96,165,250,0.36)",
-                borderWidth: 1,
-                borderRadius: 999,
-                overflow: "hidden",
-                paddingHorizontal: 9,
-                paddingVertical: 5,
-                fontSize: 10,
-                fontWeight: "900",
-              }}
-            >
-              {aiPredictionLoading ? "Analyse..." : "Prédiction IA"}
-            </Text>
+            {aiPredictionVisible ? (
+              <Text
+                onPress={aiPredictionCanRequest ? () => props.onAiPredictionPress?.() : undefined}
+                numberOfLines={1}
+                style={{
+                  color: aiPredictionLoading ? "#94A3B8" : "#E0F2FE",
+                  backgroundColor: "rgba(59,130,246,0.16)",
+                  borderColor: "rgba(96,165,250,0.36)",
+                  borderWidth: 1,
+                  borderRadius: 999,
+                  overflow: "hidden",
+                  paddingHorizontal: 9,
+                  paddingVertical: 5,
+                  fontSize: 10,
+                  fontWeight: "900",
+                }}
+              >
+                {aiPredictionLoading ? "Analyse..." : "Prédiction IA"}
+              </Text>
+            ) : null}
           </View>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
             <View
