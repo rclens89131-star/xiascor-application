@@ -110,7 +110,7 @@ export default function RecruiterTabScreen() {
               : "—";
             return (
             <TouchableOpacity
-              onPress={() => { if (!xsSlug) return; router.push({ pathname: "/player/[slug]", params: { slug: xsSlug } }); }}
+              onPress={() => { if (!xsSlug) return; router.push({ pathname: "/recruter/player/[slug]", params: { slug: xsSlug } }); }} // XS_FRONT_RECRUTER_PLAYER_CARDS_V1
               style={{ marginHorizontal: 12, marginBottom: 10, backgroundColor: "#161b22", borderRadius: 12, padding: 10, flexDirection: "row", gap: 10 }}
             >
               <Image
