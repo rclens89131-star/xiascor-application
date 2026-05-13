@@ -2,30 +2,10 @@
 import { ActivityIndicator, FlatList, Image, RefreshControl, SafeAreaView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { apiFetch } from "../../src/api";
-import { scoutRecruter } from "../../src/scoutApi";
+import { scoutRecruter, type RecruterPlayer } from "../../src/scoutApi";
 
-// XS_RECRUTER_TAB_V1_BEGIN
-type RecruterItem = {
-
-  slug: string;
-  displayName?: string | null;
-  team?: string | null;
-  position?: string | null;
-  pictureUrl?: string | null;
-  minEur?: number | null;
-  offersCount?: number | null;
-
-  // XS_RECRUTER_SHAPE_TYPES_V1
-  playerSlug?: string;
-  playerName?: string;
-  minPriceEur?: number;
-  activeClubName?: string;
-  activeClub?: { name?: string };
-  player?: {
-    slug?: string;
-    displayName?: string;
-  };
-};
+// XS_FRONT_RECRUTER_NEW_BACKEND_V1
+type RecruterItem = RecruterPlayer;
 
 function norm(v?: string | null) {
   return String(v || "").trim().toLowerCase();
@@ -48,7 +28,7 @@ export default function RecruiterTabScreen() {
 
       const [dataRes, healthRes] = await Promise.allSettled([
         scoutRecruter({ first: 120 }),
-        apiFetch<{ ok?: boolean }>("/health"),
+        apiFetch<{ ok?: boolean }>("/recruter/health"),
       ]);
 
       if (dataRes.status === "fulfilled") {
@@ -76,7 +56,7 @@ export default function RecruiterTabScreen() {
   const filtered = useMemo(() => {
     const q = norm(query);
     const base = q
-      ? items.filter((p) => [p.displayName, p.slug, p.team, p.position].some((x) => norm(x).includes(q)))
+      ? items.filter((p) => [p.displayName, p.playerName, p.slug, p.clubName, p.position, p.leagueName, p.leagueSlug].some((x) => norm(x).includes(q)))
       : items;
 
     return [...base].sort((a, b) => (a.minEur ?? Number.POSITIVE_INFINITY) - (b.minEur ?? Number.POSITIVE_INFINITY));
@@ -116,17 +96,21 @@ export default function RecruiterTabScreen() {
           contentContainerStyle={{ paddingBottom: 30 }}
           ListEmptyComponent={<Text style={{ color: "#9ba1a6", textAlign: "center", marginTop: 30 }}>Aucun joueur trouvé.</Text>}
           renderItem={({ item }) => {
-            // XS_RECRUTER_SHAPE_COMPAT_V1_BEGIN
-            const xsSlug = String((item?.playerSlug ?? item?.slug ?? item?.player?.slug ?? "") || "").trim();
-            const xsName = String((item?.playerName ?? item?.displayName ?? item?.player?.displayName ?? "—") || "—");
+            // XS_FRONT_RECRUTER_NEW_BACKEND_V1
+            const xsSlug = String((item?.slug ?? item?.playerSlug ?? "") || "").trim();
+            const xsName = String((item?.displayName ?? item?.playerName ?? "—") || "—");
             const xsMin = (typeof item?.minPriceEur === "number")
               ? item.minPriceEur
               : ((typeof item?.minEur === "number") ? item.minEur : null);
-            const xsTeam = String((item?.team ?? item?.activeClubName ?? item?.activeClub?.name ?? "") || "").trim();
-            // XS_RECRUTER_SHAPE_COMPAT_V1_END
+            const xsClub = String((item?.clubName ?? item?.activeClubName ?? item?.activeClub?.name ?? "") || "").trim();
+            const xsLeague = String((item?.leagueName ?? item?.leagueSlug ?? "") || "").trim();
+            const xsCards = Number(item?.cardsCount ?? item?.offersCount ?? item?.offerCount ?? 0) || 0;
+            const xsRarities = Array.isArray(item?.rarities) && item.rarities.length
+              ? item.rarities.map((x) => String(x || "").toUpperCase()).join(", ")
+              : "—";
             return (
             <TouchableOpacity
-              onPress={() => { const s = String(xsSlug || (item as any)?.slug || "").trim(); if (!s) return; router.push({ pathname: "/player/[slug]", params: { slug: s } }); }}
+              onPress={() => { if (!xsSlug) return; router.push({ pathname: "/player/[slug]", params: { slug: xsSlug } }); }}
               style={{ marginHorizontal: 12, marginBottom: 10, backgroundColor: "#161b22", borderRadius: 12, padding: 10, flexDirection: "row", gap: 10 }}
             >
               <Image
@@ -135,11 +119,12 @@ export default function RecruiterTabScreen() {
               />
               <View style={{ flex: 1, justifyContent: "center", gap: 4 }}>
                 <Text style={{ color: "#fff", fontWeight: "700" }} numberOfLines={1}>{xsName || xsSlug || "—"}</Text>
-                <Text style={{ color: "#9ba1a6" }} numberOfLines={1}>{(xsTeam || "Club inconnu")} · {(item.position || "N/A")}</Text>
+                <Text style={{ color: "#9ba1a6" }} numberOfLines={1}>{(xsClub || "Club inconnu")} · {(item.position || "N/A")}</Text>
+                <Text style={{ color: "#8b949e" }} numberOfLines={1}>{xsLeague || "Ligue inconnue"}</Text>
                 <Text style={{ color: "#58a6ff", fontWeight: "800" }}>
                   Prix min {typeof xsMin === "number" ? `€${xsMin.toFixed(2)}` : "—"}
                 </Text>
-                <Text style={{ color: "#8b949e" }}>{item.offersCount || 0} offre(s)</Text>
+                <Text style={{ color: "#8b949e" }}>{xsCards} carte(s) · {xsRarities}</Text>
               </View>
             </TouchableOpacity>
           );

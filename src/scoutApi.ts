@@ -8,6 +8,7 @@ const BASE_URL =
   process.env.EXPO_PUBLIC_BASE_URL ??
   "https://xiascor-backend-tssdy62zqa-ez.a.run.app";
 
+const XS_FRONT_RECRUTER_NEW_BACKEND_MARKER_V1 = "XS_FRONT_RECRUTER_NEW_BACKEND_V1";
 
 export type ScoutOffer = {
   offerId: string;
@@ -27,6 +28,198 @@ export type ScoutOffersResponse = {
   pageInfo?: PageInfo;
   note?: string;
 };
+
+export type RecruterOffer = {
+  id?: string | null;
+  offerId?: string | null;
+  cardId?: string | null;
+  cardSlug?: string | null;
+  playerSlug?: string | null;
+  playerName?: string | null;
+  pictureUrl?: string | null;
+  rarity?: string | null;
+  season?: number | null;
+  serialNumber?: number | null;
+  position?: string | null;
+  clubName?: string | null;
+  clubSlug?: string | null;
+  leagueName?: string | null;
+  leagueSlug?: string | null;
+  price?: {
+    eur?: number | null;
+    eurCents?: number | null;
+    text?: string | null;
+    wei?: string | null;
+  } | null;
+  seller?: any;
+  raw?: any;
+};
+
+export type RecruterPlayer = {
+  slug: string;
+  displayName?: string | null;
+  pictureUrl?: string | null;
+  position?: string | null;
+  clubName?: string | null;
+  clubSlug?: string | null;
+  leagueName?: string | null;
+  leagueSlug?: string | null;
+  cardsCount?: number | null;
+  minEur?: number | null;
+  rarities?: string[] | null;
+  playerSlug?: string | null;
+  playerName?: string | null;
+  activeClubName?: string | null;
+  activeClub?: { name?: string | null; slug?: string | null } | null;
+  minPriceEur?: number | null;
+  offerCount?: number | null;
+  offersCount?: number | null;
+  leagues?: string[] | null;
+};
+
+export type RecruterPlayersResponse = {
+  ok?: boolean;
+  league?: string | null;
+  count?: number;
+  items: RecruterPlayer[];
+};
+
+export type RecruterOffersResponse = {
+  ok?: boolean;
+  count?: number;
+  fromCache?: boolean;
+  pageInfo?: PageInfo;
+  items: RecruterOffer[];
+};
+
+export type RecruterPlayerCardsResponse = {
+  ok?: boolean;
+  playerSlug?: string;
+  count?: number;
+  items: RecruterOffer[];
+  player?: {
+    slug?: string | null;
+    displayName?: string | null;
+    position?: string | null;
+    activeClub?: { name?: string | null; slug?: string | null } | null;
+    pictureUrl?: string | null;
+  } | null;
+  offers?: any[];
+};
+
+export type RecruterCardResponse = {
+  ok?: boolean;
+  item?: RecruterOffer | null;
+};
+
+function xsRecruterTailV1(qs: URLSearchParams) {
+  const s = qs.toString();
+  return s ? `?${s}` : "";
+}
+
+function xsRecruterNormV1(v: unknown) {
+  return String(v ?? "").trim().toLowerCase();
+}
+
+function xsRecruterPlayerCompatV1(item: RecruterPlayer): RecruterPlayer {
+  const slug = String(item?.slug || item?.playerSlug || "").trim();
+  const displayName = item?.displayName ?? item?.playerName ?? slug;
+  const clubName = item?.clubName ?? item?.activeClubName ?? item?.activeClub?.name ?? null;
+  const clubSlug = item?.clubSlug ?? item?.activeClub?.slug ?? null;
+  const minEur = typeof item?.minEur === "number" ? item.minEur : (typeof item?.minPriceEur === "number" ? item.minPriceEur : null);
+  const cardsCount = typeof item?.cardsCount === "number" ? item.cardsCount : (typeof item?.offersCount === "number" ? item.offersCount : (typeof item?.offerCount === "number" ? item.offerCount : 0));
+  const leagues = item?.leagues ?? (item?.leagueSlug ? [item.leagueSlug] : []);
+
+  return {
+    ...item,
+    slug,
+    displayName,
+    clubName,
+    clubSlug,
+    minEur,
+    cardsCount,
+    playerSlug: item?.playerSlug ?? slug,
+    playerName: item?.playerName ?? displayName,
+    activeClubName: item?.activeClubName ?? clubName,
+    activeClub: item?.activeClub ?? (clubName || clubSlug ? { name: clubName, slug: clubSlug } : null),
+    minPriceEur: item?.minPriceEur ?? minEur,
+    offerCount: item?.offerCount ?? cardsCount,
+    offersCount: item?.offersCount ?? cardsCount,
+    leagues,
+  };
+}
+
+function xsRecruterOfferToScoutOfferV1(item: RecruterOffer): ScoutOffer {
+  const eur = typeof item?.price?.eur === "number" ? item.price.eur : null;
+  return {
+    offerId: String(item?.offerId || item?.id || item?.cardId || item?.cardSlug || ""),
+    slug: String(item?.cardSlug || item?.playerSlug || item?.cardId || ""),
+    rarity: item?.rarity ?? null,
+    seasonYear: typeof item?.season === "number" ? item.season : null,
+    pictureUrl: item?.pictureUrl ?? null,
+    eur,
+    priceText: item?.price?.text ?? (eur != null ? `€${eur.toFixed(2)}` : null),
+  };
+}
+
+export async function recruterPlayers(params?: { first?: number; league?: string; q?: string; signal?: AbortSignal }): Promise<RecruterPlayersResponse> {
+  const qs = new URLSearchParams();
+  if (params?.league) qs.set("league", params.league);
+  if (params?.first != null) qs.set("first", String(params.first));
+
+  const res = await apiFetch<RecruterPlayersResponse>(`/recruter/players${xsRecruterTailV1(qs)}`, { signal: params?.signal });
+  const q = xsRecruterNormV1(params?.q);
+  let items = Array.isArray(res?.items) ? res.items.map(xsRecruterPlayerCompatV1) : [];
+  if (q) {
+    items = items.filter((p) =>
+      [p.slug, p.displayName, p.playerName, p.clubName, p.position, p.leagueName, p.leagueSlug]
+        .some((x) => xsRecruterNormV1(x).includes(q))
+    );
+  }
+  if (params?.first != null && Number.isFinite(Number(params.first))) {
+    items = items.slice(0, Math.max(1, Number(params.first)));
+  }
+  return { ...res, ok: res?.ok ?? true, count: items.length, items };
+}
+
+export async function recruterOffers(params?: { first?: number; force?: boolean; signal?: AbortSignal }): Promise<RecruterOffersResponse> {
+  const qs = new URLSearchParams();
+  qs.set("first", String(params?.first ?? 50));
+  if (params?.force) qs.set("force", "1");
+  const res = await apiFetch<RecruterOffersResponse>(`/recruter/offers${xsRecruterTailV1(qs)}`, { signal: params?.signal });
+  return { ...res, items: Array.isArray(res?.items) ? res.items : [] };
+}
+
+export async function recruterPlayerCards(slug: string, params?: { first?: number; signal?: AbortSignal }): Promise<RecruterPlayerCardsResponse> {
+  const s = String(slug || "").trim();
+  if (!s) throw new Error("missing player slug");
+  const qs = new URLSearchParams();
+  if (params?.first != null) qs.set("first", String(params.first));
+  const res = await apiFetch<RecruterPlayerCardsResponse>(`/recruter/player/${encodeURIComponent(s)}/cards${xsRecruterTailV1(qs)}`, { signal: params?.signal });
+  const items = Array.isArray(res?.items) ? res.items : [];
+  const firstOffer = items[0] || null;
+  const player = res?.player ?? {
+    slug: res?.playerSlug || s,
+    displayName: firstOffer?.playerName || s,
+    position: firstOffer?.position || null,
+    activeClub: firstOffer?.clubName || firstOffer?.clubSlug ? { name: firstOffer?.clubName || null, slug: firstOffer?.clubSlug || null } : null,
+    pictureUrl: firstOffer?.pictureUrl || null,
+  };
+  const offers = items.map((item) => ({
+    ...item,
+    slug: item.cardSlug || item.playerSlug || item.cardId,
+    eur: typeof item?.price?.eur === "number" ? item.price.eur : null,
+    priceText: item?.price?.text || null,
+  }));
+  return { ...res, playerSlug: res?.playerSlug || s, count: items.length, items, player, offers };
+}
+
+export async function recruterCard(cardId: string, params?: { signal?: AbortSignal }): Promise<RecruterCardResponse> {
+  const id = String(cardId || "").trim();
+  if (!id) throw new Error("missing card id");
+  return apiFetch<RecruterCardResponse>(`/recruter/card/${encodeURIComponent(id)}`, { signal: params?.signal });
+}
+
 export async function fetchScoutCards(params: {
   first?: number;
   after?: string | null;
@@ -35,57 +228,54 @@ export async function fetchScoutCards(params: {
   ts?: number;
   signal?: AbortSignal;
 }) {
-  const qs = new URLSearchParams();
-  qs.set("first", String(params.first ?? 20));
-  if (params.after) qs.set("after", params.after);
-  if (params.eurOnly) {
-    qs.set("eurOnly", "1");
-    qs.set("allowUnknownPrices", "1"); // XS_ALLOW_UNKNOWN_PRICES_APP_V1
-  }
-  if (params.maxEur != null && !Number.isNaN(params.maxEur)) qs.set("maxEur", String(params.maxEur));
-  qs.set("ts", String(params.ts ?? Date.now()));
-  return apiFetch<ScoutOffersResponse>(`/scout/cards?${qs.toString()}`, { signal: params.signal });
+  const out = await recruterOffers({ first: params.first ?? 20, signal: params.signal });
+  let items = out.items.map(xsRecruterOfferToScoutOfferV1);
+  if (params.eurOnly) items = items.filter((x) => typeof x.eur === "number");
+  if (params.maxEur != null && !Number.isNaN(params.maxEur)) items = items.filter((x) => typeof x.eur === "number" && x.eur <= Number(params.maxEur));
+  return {
+    items,
+    pageInfo: out.pageInfo,
+    note: XS_FRONT_RECRUTER_NEW_BACKEND_MARKER_V1,
+  };
 }
-// Watchlist Scout
+// Watchlist compatibility kept local: backend legacy endpoints were removed.
 export type WatchItem = { slug: string; addedAt: string };
+const xsScoutWatchlistCompatV1: WatchItem[] = [];
 export async function getScoutWatchlist() {
-  return apiFetch<{ items: WatchItem[] }>(`/scout/watchlist`);
+  return { items: xsScoutWatchlistCompatV1 };
 }
 export async function addScoutWatchlist(slug: string) {
-  return apiFetch<{ ok: boolean; items: WatchItem[] }>(`/scout/watchlist`, {
-    method: "POST",
-    body: JSON.stringify({ slug }),
-  });
+  const s = String(slug || "").trim();
+  if (s && !xsScoutWatchlistCompatV1.some((x) => x.slug === s)) xsScoutWatchlistCompatV1.push({ slug: s, addedAt: new Date().toISOString() });
+  return { ok: true, items: xsScoutWatchlistCompatV1 };
 }
 export async function removeScoutWatchlist(slug: string) {
-  return apiFetch<{ ok: boolean; items: WatchItem[] }>(`/scout/watchlist`, {
-    method: "DELETE",
-    body: JSON.stringify({ slug }),
-  });
+  const s = String(slug || "").trim();
+  const next = xsScoutWatchlistCompatV1.filter((x) => x.slug !== s);
+  xsScoutWatchlistCompatV1.splice(0, xsScoutWatchlistCompatV1.length, ...next);
+  return { ok: true, items: xsScoutWatchlistCompatV1 };
 }
 
-// Alertes Scout
+// Alerts compatibility kept local: backend legacy endpoints were removed.
 export type AlertItem = { id: string; slug: string; maxEur: number; createdAt: string; isEnabled: boolean };
+const xsScoutAlertsCompatV1: AlertItem[] = [];
 export async function getScoutAlerts() {
-  return apiFetch<{ items: AlertItem[] }>(`/scout/alerts`);
+  return { items: xsScoutAlertsCompatV1 };
 }
 export async function addScoutAlert(slug: string, maxEur: number) {
-  return apiFetch<{ ok: boolean; items: AlertItem[] }>(`/scout/alerts`, {
-    method: "POST",
-    body: JSON.stringify({ slug, maxEur }),
-  });
+  const item = { id: `${String(slug || "").trim()}-${Date.now()}`, slug: String(slug || "").trim(), maxEur, createdAt: new Date().toISOString(), isEnabled: true };
+  if (item.slug) xsScoutAlertsCompatV1.push(item);
+  return { ok: true, items: xsScoutAlertsCompatV1 };
 }
 export async function toggleScoutAlert(id: string, isEnabled: boolean) {
-  return apiFetch<{ ok: boolean; items: AlertItem[] }>(`/scout/alerts`, {
-    method: "PATCH",
-    body: JSON.stringify({ id, isEnabled }),
-  });
+  const item = xsScoutAlertsCompatV1.find((x) => x.id === id);
+  if (item) item.isEnabled = isEnabled;
+  return { ok: true, items: xsScoutAlertsCompatV1 };
 }
 export async function deleteScoutAlert(id: string) {
-  return apiFetch<{ ok: boolean; items: AlertItem[] }>(`/scout/alerts`, {
-    method: "DELETE",
-    body: JSON.stringify({ id }),
-  });
+  const next = xsScoutAlertsCompatV1.filter((x) => x.id !== id);
+  xsScoutAlertsCompatV1.splice(0, xsScoutAlertsCompatV1.length, ...next);
+  return { ok: true, items: xsScoutAlertsCompatV1 };
 }
 
 
@@ -93,42 +283,15 @@ export async function deleteScoutAlert(id: string) {
 
 
 
-/* XS_SCOUT_RECRUTER_API_V1: helpers for /scout/recruter and /scout/player/:slug */
-export type RecruiterRow = {
-  playerSlug: string;
-  playerName?: string | null;
-  position?: string | null;
-  activeClub?: { name?: string | null; slug?: string | null } | null;
-  minPriceEur?: number | null;
-  offerCount?: number | null;
-  leagues?: string[] | null;
-};
-export type RecruiterPlayer = {
-  playerSlug: string;
-  playerName?: string | null;
-  position?: string | null;
-  activeClub?: { name?: string | null; slug?: string | null } | null;
-  offersByLeague?: Record<string, any[]> | null;
-  offers?: any[] | null;
-};
+/* XS_FRONT_RECRUTER_NEW_BACKEND_V1: compatibility aliases over the new Recruter backend. */
+export type RecruiterRow = RecruterPlayer;
+export type RecruiterPlayer = RecruterPlayerCardsResponse;
 export async function scoutRecruter(params?: { first?: number; q?: string }) {
-  const qs = new URLSearchParams();
-  qs.set("first", String(params?.first ?? 40));
-  if (params?.q) qs.set("q", params.q);
-
-  const url = `${BASE_URL}/scout/recruter?${qs.toString()}`;
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`scoutRecruter HTTP ${r.status}`);
-  return (await r.json()) as { items: RecruiterRow[]; meta?: any };
+  const res = await recruterPlayers({ first: params?.first ?? 40, q: params?.q });
+  return { items: res.items, meta: { marker: XS_FRONT_RECRUTER_NEW_BACKEND_MARKER_V1, count: res.count ?? res.items.length } };
 }
 export async function scoutPlayer(slug: string, params?: { first?: number }) {
-  const qs = new URLSearchParams();
-  qs.set("first", String(params?.first ?? 50));
-
-  const url = `${BASE_URL}/scout/player2/${encodeURIComponent(slug)}?${qs.toString()}`;
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`scoutPlayer HTTP ${r.status}`);
-  return (await r.json()) as RecruiterPlayer;
+  return recruterPlayerCards(slug, { first: params?.first ?? 50 });
 }
 
 
@@ -143,11 +306,7 @@ export async function scoutPlayer2(
   slug: string,
   params?: { first?: number; allowUnknownPrices?: boolean }
 ) {
-  const qs = new URLSearchParams();
-  if (params?.first != null) qs.set("first", String(params.first));
-  if (params?.allowUnknownPrices) qs.set("allowUnknownPrices", "1");
-  const tail = qs.toString() ? `?${qs.toString()}` : "";
-  return apiFetch<any>(`/scout/player2/${encodeURIComponent(String(slug || ""))}${tail}`);
+  return recruterPlayerCards(slug, { first: params?.first ?? 50 });
 }
 /* XS_SCOUT_PLAYER2_API_V2_END */
 
