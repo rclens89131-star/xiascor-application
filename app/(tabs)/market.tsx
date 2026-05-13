@@ -1,24 +1,61 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, RefreshControl, SafeAreaView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, FlatList, Image, RefreshControl, SafeAreaView, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { apiFetch } from "../../src/api";
-import { recruterIndex, recruterLeagues, type RecruterIndexResponse, type RecruterLeague } from "../../src/scoutApi";
+import {
+  recruterPlayers,
+  recruterPlayersIndexBuild,
+  recruterSaleStatus,
+  type RecruterPlayer,
+  type RecruterPlayersIndexBuildResponse,
+} from "../../src/scoutApi";
 
-// XS_FRONT_RECRUTER_BOARD_V1
-function norm(v?: string | null) {
-  return String(v || "").trim().toLowerCase();
+// XS_FRONT_RECRUTER_PLAYERS_INDEX_V1
+function text(v: unknown, fallback = "") {
+  const s = String(v ?? "").trim();
+  return s || fallback;
 }
+
+function norm(v: unknown) {
+  return String(v ?? "").trim().toLowerCase();
+}
+
+function saleBadge(player: RecruterPlayer) {
+  const status = recruterSaleStatus(player);
+  if (status === "for_sale") return { label: "En vente", color: "#72e6a2", border: "#245b39", background: "#102219" };
+  if (status === "no_sale") return { label: "Aucune vente", color: "#c4cad3", border: "#343a45", background: "#171b22" };
+  return { label: "Vente à vérifier", color: "#ffd18a", border: "#5a3f16", background: "#241a0b" };
+}
+
+function collectOptions(items: RecruterPlayer[], type: "league" | "club") {
+  const map = new Map<string, { slug: string; name: string; count: number }>();
+  for (const item of items) {
+    const slug = type === "league" ? item.leagueSlug : item.clubSlug;
+    const name = type === "league" ? item.leagueName : item.clubName;
+    const key = text(slug).toLowerCase();
+    if (!key) continue;
+    const row = map.get(key) || { slug: key, name: text(name, key), count: 0 };
+    row.count += 1;
+    map.set(key, row);
+  }
+  return Array.from(map.values()).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+}
+
+const POSITIONS = ["GK", "DEF", "MID", "FW"];
 
 export default function RecruiterTabScreen() {
   const router = useRouter();
-  const [items, setItems] = useState<RecruterLeague[]>([]);
+  const [items, setItems] = useState<RecruterPlayer[]>([]);
   const [query, setQuery] = useState("");
+  const [selectedLeague, setSelectedLeague] = useState("");
+  const [selectedClub, setSelectedClub] = useState("");
+  const [selectedPosition, setSelectedPosition] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [indexing, setIndexing] = useState(false);
+  const [building, setBuilding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [health, setHealth] = useState<"idle" | "ok" | "ko">("idle");
-  const [indexMeta, setIndexMeta] = useState<RecruterIndexResponse | null>(null);
+  const [buildMeta, setBuildMeta] = useState<RecruterPlayersIndexBuildResponse | null>(null);
 
   const load = useCallback(async (isRefresh = false) => {
     try {
@@ -26,15 +63,15 @@ export default function RecruiterTabScreen() {
       else setLoading(true);
       setError(null);
 
-      const [leaguesRes, healthRes] = await Promise.allSettled([
-        recruterLeagues(),
+      const [playersRes, healthRes] = await Promise.allSettled([
+        recruterPlayers(),
         apiFetch<{ ok?: boolean }>("/recruter/health"),
       ]);
 
-      if (leaguesRes.status === "fulfilled") {
-        setItems(Array.isArray(leaguesRes.value.items) ? leaguesRes.value.items : []);
+      if (playersRes.status === "fulfilled") {
+        setItems(Array.isArray(playersRes.value.items) ? playersRes.value.items : []);
       } else {
-        throw leaguesRes.reason;
+        throw playersRes.reason;
       }
 
       setHealth(healthRes.status === "fulfilled" && healthRes.value?.ok ? "ok" : "ko");
@@ -46,17 +83,17 @@ export default function RecruiterTabScreen() {
     }
   }, []);
 
-  const refreshMarket = useCallback(async () => {
+  const continueIndex = useCallback(async () => {
     try {
-      setIndexing(true);
+      setBuilding(true);
       setError(null);
-      const res = await recruterIndex({ pages: 5, first: 50, force: true });
-      setIndexMeta(res);
+      const res = await recruterPlayersIndexBuild({ limitTeams: 20 });
+      setBuildMeta(res);
       await load(true);
     } catch (e: any) {
-      setError(e?.message || "Erreur actualisation marché");
+      setError(e?.message || "Erreur index joueurs");
     } finally {
-      setIndexing(false);
+      setBuilding(false);
     }
   }, [load]);
 
@@ -66,44 +103,93 @@ export default function RecruiterTabScreen() {
     }, [load]),
   );
 
+  const leagues = useMemo(() => collectOptions(items, "league"), [items]);
+  const clubs = useMemo(() => {
+    const base = selectedLeague ? items.filter((item) => norm(item.leagueSlug) === selectedLeague) : items;
+    return collectOptions(base, "club");
+  }, [items, selectedLeague]);
+
   const filtered = useMemo(() => {
     const q = norm(query);
-    const base = q
-      ? items.filter((league) => [league.name, league.slug].some((x) => norm(x).includes(q)))
-      : items;
+    return items.filter((item) => {
+      if (selectedLeague && norm(item.leagueSlug) !== selectedLeague) return false;
+      if (selectedClub && norm(item.clubSlug) !== selectedClub) return false;
+      if (selectedPosition && norm(item.position) !== selectedPosition.toLowerCase()) return false;
+      if (!q) return true;
+      return [item.displayName, item.playerName, item.playerSlug, item.clubName, item.clubSlug, item.leagueName, item.leagueSlug, item.position]
+        .some((value) => norm(value).includes(q));
+    });
+  }, [items, query, selectedClub, selectedLeague, selectedPosition]);
 
-    return [...base].sort((a, b) => (Number(b.cardsCount || 0) - Number(a.cardsCount || 0)));
-  }, [items, query]);
+  const summary = useMemo(() => {
+    const forSale = filtered.filter((item) => recruterSaleStatus(item) === "for_sale").length;
+    return { total: filtered.length, forSale, leagues: leagues.length, clubs: clubs.length };
+  }, [clubs.length, filtered, leagues.length]);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#08090d" }}>
       <View style={{ padding: 12, gap: 10, backgroundColor: "#0d0f14", borderBottomWidth: 1, borderBottomColor: "#251016" }}>
         <Text style={{ color: "white", fontSize: 24, fontWeight: "900" }}>Recruter</Text>
         <Text style={{ color: "#a8b0ba" }}>
-          Ligues avec cartes en vente · santé API: {health === "ok" ? "OK" : health === "ko" ? "KO" : "..."}
+          Index joueurs · santé API: {health === "ok" ? "OK" : health === "ko" ? "KO" : "..."}
         </Text>
 
         <TouchableOpacity
-          onPress={refreshMarket}
-          disabled={indexing}
-          style={{ backgroundColor: indexing ? "#60202a" : "#c92a3d", borderRadius: 9, paddingHorizontal: 12, paddingVertical: 10, alignItems: "center" }}
+          onPress={continueIndex}
+          disabled={building}
+          style={{ backgroundColor: building ? "#60202a" : "#c92a3d", borderRadius: 9, paddingHorizontal: 12, paddingVertical: 10, alignItems: "center" }}
         >
-          <Text style={{ color: "white", fontWeight: "900" }}>{indexing ? "Actualisation..." : "Actualiser le marché"}</Text>
+          <Text style={{ color: "white", fontWeight: "900" }}>{building ? "Indexation..." : "Continuer l'index joueurs"}</Text>
         </TouchableOpacity>
 
-        {indexMeta?.summary ? (
+        {buildMeta?.summary ? (
           <Text style={{ color: "#ff9aa8" }}>
-            Index: {indexMeta.summary.offersCount ?? 0} offres · {indexMeta.summary.playersCount ?? 0} joueurs · {indexMeta.summary.leaguesCount ?? 0} ligues
+            Cache: {buildMeta.summary.playersCount ?? 0} joueurs · {buildMeta.summary.clubsCount ?? 0} clubs · {buildMeta.summary.leaguesCount ?? 0} ligues
           </Text>
-        ) : null}
+        ) : (
+          <Text style={{ color: "#ff9aa8" }}>{summary.total} joueurs · {summary.clubs} clubs · {summary.leagues} ligues · {summary.forSale} en vente</Text>
+        )}
 
         <TextInput
-          placeholder="Rechercher une ligue"
+          placeholder="Rechercher joueur, club, ligue"
           placeholderTextColor="#70757a"
           value={query}
           onChangeText={setQuery}
           style={{ backgroundColor: "#171a22", color: "#fff", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 }}
         />
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+          <TouchableOpacity onPress={() => setSelectedPosition("")} style={{ borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: selectedPosition ? "#141821" : "#c92a3d" }}>
+            <Text style={{ color: "white", fontWeight: "800" }}>Tous</Text>
+          </TouchableOpacity>
+          {POSITIONS.map((pos) => (
+            <TouchableOpacity key={pos} onPress={() => setSelectedPosition(pos)} style={{ borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: selectedPosition === pos ? "#c92a3d" : "#141821", borderWidth: 1, borderColor: "#2a1218" }}>
+              <Text style={{ color: "white", fontWeight: "800" }}>{pos}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+          <TouchableOpacity onPress={() => { setSelectedLeague(""); setSelectedClub(""); }} style={{ borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: selectedLeague ? "#141821" : "#c92a3d" }}>
+            <Text style={{ color: "white", fontWeight: "800" }}>Ligues</Text>
+          </TouchableOpacity>
+          {leagues.slice(0, 24).map((league) => (
+            <TouchableOpacity key={league.slug} onPress={() => { setSelectedLeague(league.slug); setSelectedClub(""); }} style={{ borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: selectedLeague === league.slug ? "#c92a3d" : "#141821", borderWidth: 1, borderColor: "#2a1218" }}>
+              <Text style={{ color: "white", fontWeight: "800" }}>{league.name} ({league.count})</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+          <TouchableOpacity onPress={() => setSelectedClub("")} style={{ borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: selectedClub ? "#141821" : "#c92a3d" }}>
+            <Text style={{ color: "white", fontWeight: "800" }}>Clubs</Text>
+          </TouchableOpacity>
+          {clubs.slice(0, 24).map((club) => (
+            <TouchableOpacity key={club.slug} onPress={() => setSelectedClub(club.slug)} style={{ borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: selectedClub === club.slug ? "#c92a3d" : "#141821", borderWidth: 1, borderColor: "#2a1218" }}>
+              <Text style={{ color: "white", fontWeight: "800" }}>{club.name} ({club.count})</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
 
       {loading ? (
@@ -120,27 +206,36 @@ export default function RecruiterTabScreen() {
       ) : (
         <FlatList
           data={filtered}
-          keyExtractor={(item) => item.slug}
+          keyExtractor={(item, index) => String(item.slug || item.playerSlug || index)}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor="#ff5d73" />}
           contentContainerStyle={{ padding: 12, paddingBottom: 30 }}
-          ListEmptyComponent={<Text style={{ color: "#9ba1a6", textAlign: "center", marginTop: 30 }}>Aucune ligue trouvée.</Text>}
+          ListEmptyComponent={<Text style={{ color: "#9ba1a6", textAlign: "center", marginTop: 30 }}>Aucun joueur trouvé dans l'index.</Text>}
           renderItem={({ item }) => {
-            const slug = String(item.slug || "").trim();
-            const name = String(item.name || item.slug || "Ligue inconnue");
-            const cardsCount = Number(item.cardsCount || 0);
-            const playersCount = Number(item.playersCount || 0);
-            const minEur = typeof item.minEur === "number" ? item.minEur : null;
+            const slug = text(item.slug || item.playerSlug);
+            const displayName = text(item.displayName || item.playerName, slug || "Joueur");
+            const clubName = text(item.clubName, "Club inconnu");
+            const leagueName = text(item.leagueName, "Ligue inconnue");
+            const badge = saleBadge(item);
 
             return (
               <TouchableOpacity
-                onPress={() => { if (!slug) return; router.push({ pathname: "/recruter/league/[slug]", params: { slug, name } }); }}
-                style={{ marginBottom: 10, backgroundColor: "#12151c", borderRadius: 12, borderWidth: 1, borderColor: "#2a1218", padding: 13 }}
+                onPress={() => { if (!slug) return; router.push({ pathname: "/recruter/player/[slug]", params: { slug } }); }}
+                style={{ flexDirection: "row", gap: 12, marginBottom: 10, backgroundColor: "#12151c", borderRadius: 12, borderWidth: 1, borderColor: "#2a1218", padding: 12 }}
               >
-                <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }} numberOfLines={1}>{name}</Text>
-                <Text style={{ color: "#b8bec8", marginTop: 6 }}>{playersCount} joueur(s) · {cardsCount} carte(s)</Text>
-                <Text style={{ color: "#ff5d73", fontWeight: "900", marginTop: 6 }}>
-                  Prix min {minEur != null ? `€${minEur.toFixed(2)}` : "—"}
-                </Text>
+                <Image
+                  source={{ uri: item.pictureUrl || "https://frontend-assets.sorare.com/placeholders/player-v2.png" }}
+                  style={{ width: 64, height: 64, borderRadius: 8, backgroundColor: "#050509" }}
+                />
+                <View style={{ flex: 1, justifyContent: "center", gap: 5 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16, flex: 1 }} numberOfLines={1}>{displayName}</Text>
+                    <View style={{ backgroundColor: badge.background, borderColor: badge.border, borderWidth: 1, borderRadius: 7, paddingHorizontal: 8, paddingVertical: 4 }}>
+                      <Text style={{ color: badge.color, fontWeight: "900", fontSize: 12 }}>{badge.label}</Text>
+                    </View>
+                  </View>
+                  <Text style={{ color: "#b8bec8" }} numberOfLines={1}>{clubName} · {leagueName}</Text>
+                  <Text style={{ color: "#8b949e" }}>{text(item.position, "N/A")} · {item.age != null ? `${item.age} ans` : "Age inconnu"}</Text>
+                </View>
               </TouchableOpacity>
             );
           }}

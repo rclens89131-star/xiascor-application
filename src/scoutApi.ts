@@ -10,6 +10,7 @@ const BASE_URL =
 
 const XS_FRONT_RECRUTER_NEW_BACKEND_MARKER_V1 = "XS_FRONT_RECRUTER_NEW_BACKEND_V1";
 const XS_FRONT_RECRUTER_BOARD_MARKER_V1 = "XS_FRONT_RECRUTER_BOARD_V1";
+const XS_FRONT_RECRUTER_PLAYERS_INDEX_MARKER_V1 = "XS_FRONT_RECRUTER_PLAYERS_INDEX_V1";
 
 export type ScoutOffer = {
   offerId: string;
@@ -59,6 +60,8 @@ export type RecruterOffer = {
 export type RecruterPlayer = {
   slug: string;
   displayName?: string | null;
+  age?: number | null;
+  birthDate?: string | null;
   pictureUrl?: string | null;
   position?: string | null;
   clubName?: string | null;
@@ -66,6 +69,10 @@ export type RecruterPlayer = {
   leagueName?: string | null;
   leagueSlug?: string | null;
   cardsCount?: number | null;
+  salesCount?: number | null;
+  hasSale?: boolean | null;
+  lastKnownSaleStatus?: string | null;
+  saleStatus?: string | null;
   minEur?: number | null;
   rarities?: string[] | null;
   playerSlug?: string | null;
@@ -77,6 +84,8 @@ export type RecruterPlayer = {
   offersCount?: number | null;
   leagues?: string[] | null;
 };
+
+export type RecruterSaleStatus = "unknown" | "for_sale" | "no_sale";
 
 export type RecruterLeague = {
   slug: string;
@@ -102,6 +111,35 @@ export type RecruterIndexResponse = {
   } | null;
 };
 
+export type RecruterPlayersIndexBuildResponse = {
+  ok?: boolean;
+  marker?: string | null;
+  cacheFile?: string | null;
+  status?: string | null;
+  updatedAt?: string | null;
+  warning?: string | null;
+  summary?: {
+    playersCount?: number;
+    teamsCount?: number;
+    clubsCount?: number;
+    leaguesCount?: number;
+    teamsPagesFetched?: number;
+    teamsProcessed?: number;
+    status?: string | null;
+    hasNextPage?: boolean;
+    endCursor?: string | null;
+  } | null;
+  run?: {
+    teamsProcessed?: number;
+    teamsPagesFetched?: number;
+    playersTouched?: number;
+  } | null;
+  pageInfo?: {
+    hasNextPage?: boolean;
+    endCursor?: string | null;
+  } | null;
+};
+
 export type RecruterLeaguesResponse = {
   ok?: boolean;
   fromIndex?: boolean;
@@ -112,8 +150,13 @@ export type RecruterLeaguesResponse = {
 
 export type RecruterPlayersResponse = {
   ok?: boolean;
+  marker?: string | null;
+  fromPlayersIndex?: boolean;
   league?: string | null;
+  status?: string | null;
   count?: number;
+  total?: number;
+  summary?: RecruterPlayersIndexBuildResponse["summary"];
   items: RecruterPlayer[];
 };
 
@@ -127,16 +170,14 @@ export type RecruterOffersResponse = {
 
 export type RecruterPlayerCardsResponse = {
   ok?: boolean;
+  fromIndex?: boolean;
   playerSlug?: string;
+  saleStatus?: string | null;
   count?: number;
   items: RecruterOffer[];
-  player?: {
-    slug?: string | null;
-    displayName?: string | null;
-    position?: string | null;
+  player?: (Partial<RecruterPlayer> & {
     activeClub?: { name?: string | null; slug?: string | null } | null;
-    pictureUrl?: string | null;
-  } | null;
+  }) | null;
   offers?: any[];
 };
 
@@ -154,6 +195,14 @@ function xsRecruterNormV1(v: unknown) {
   return String(v ?? "").trim().toLowerCase();
 }
 
+export function recruterSaleStatus(player: Partial<RecruterPlayer> | null | undefined): RecruterSaleStatus {
+  const raw = xsRecruterNormV1(player?.saleStatus || player?.lastKnownSaleStatus);
+  const count = Number(player?.salesCount ?? player?.cardsCount ?? player?.offersCount ?? player?.offerCount ?? 0);
+  if (player?.hasSale || count > 0 || raw === "available" || raw === "for_sale") return "for_sale";
+  if (raw === "no_sale" || raw === "none_seen" || raw === "none" || raw === "no_sales") return "no_sale";
+  return "unknown";
+}
+
 function xsRecruterPlayerCompatV1(item: RecruterPlayer): RecruterPlayer {
   const slug = String(item?.slug || item?.playerSlug || "").trim();
   const displayName = item?.displayName ?? item?.playerName ?? slug;
@@ -161,7 +210,9 @@ function xsRecruterPlayerCompatV1(item: RecruterPlayer): RecruterPlayer {
   const clubSlug = item?.clubSlug ?? item?.activeClub?.slug ?? null;
   const minEur = typeof item?.minEur === "number" ? item.minEur : (typeof item?.minPriceEur === "number" ? item.minPriceEur : null);
   const cardsCount = typeof item?.cardsCount === "number" ? item.cardsCount : (typeof item?.offersCount === "number" ? item.offersCount : (typeof item?.offerCount === "number" ? item.offerCount : 0));
+  const salesCount = typeof item?.salesCount === "number" ? item.salesCount : cardsCount;
   const leagues = item?.leagues ?? (item?.leagueSlug ? [item.leagueSlug] : []);
+  const saleStatus = recruterSaleStatus({ ...item, cardsCount, salesCount });
 
   return {
     ...item,
@@ -171,6 +222,9 @@ function xsRecruterPlayerCompatV1(item: RecruterPlayer): RecruterPlayer {
     clubSlug,
     minEur,
     cardsCount,
+    salesCount,
+    saleStatus,
+    hasSale: item?.hasSale ?? saleStatus === "for_sale",
     playerSlug: item?.playerSlug ?? slug,
     playerName: item?.playerName ?? displayName,
     activeClubName: item?.activeClubName ?? clubName,
@@ -195,13 +249,28 @@ function xsRecruterOfferToScoutOfferV1(item: RecruterOffer): ScoutOffer {
   };
 }
 
-export async function recruterPlayers(params?: { first?: number; league?: string; q?: string; signal?: AbortSignal }): Promise<RecruterPlayersResponse> {
+export async function recruterPlayers(params?: {
+  first?: number;
+  league?: string;
+  leagueSlug?: string;
+  club?: string;
+  clubSlug?: string;
+  position?: string;
+  q?: string;
+  search?: string;
+  signal?: AbortSignal;
+}): Promise<RecruterPlayersResponse> {
   const qs = new URLSearchParams();
-  if (params?.league) qs.set("league", params.league);
+  if (params?.league || params?.leagueSlug) qs.set("league", String(params.league || params.leagueSlug));
+  if (params?.club || params?.clubSlug) qs.set("club", String(params.club || params.clubSlug));
+  if (params?.position) qs.set("position", params.position);
+  if (params?.q || params?.search) qs.set("q", String(params.q || params.search));
   if (params?.first != null) qs.set("first", String(params.first));
 
   const res = await apiFetch<RecruterPlayersResponse>(`/recruter/players${xsRecruterTailV1(qs)}`, { signal: params?.signal });
-  const q = xsRecruterNormV1(params?.q);
+  const q = xsRecruterNormV1(params?.q || params?.search);
+  const club = xsRecruterNormV1(params?.club || params?.clubSlug);
+  const position = xsRecruterNormV1(params?.position);
   let items = Array.isArray(res?.items) ? res.items.map(xsRecruterPlayerCompatV1) : [];
   if (q) {
     items = items.filter((p) =>
@@ -209,10 +278,30 @@ export async function recruterPlayers(params?: { first?: number; league?: string
         .some((x) => xsRecruterNormV1(x).includes(q))
     );
   }
+  if (club) items = items.filter((p) => xsRecruterNormV1(p.clubSlug) === club);
+  if (position) items = items.filter((p) => xsRecruterNormV1(p.position) === position);
   if (params?.first != null && Number.isFinite(Number(params.first))) {
     items = items.slice(0, Math.max(1, Number(params.first)));
   }
   return { ...res, ok: res?.ok ?? true, count: items.length, items };
+}
+
+export async function recruterPlayersIndexBuild(params?: {
+  limitTeams?: number;
+  teamsFirst?: number;
+  playersFirst?: number;
+  delayMs?: number;
+  force?: boolean;
+  signal?: AbortSignal;
+}): Promise<RecruterPlayersIndexBuildResponse> {
+  const qs = new URLSearchParams();
+  qs.set("limitTeams", String(params?.limitTeams ?? 20));
+  if (params?.teamsFirst != null) qs.set("teamsFirst", String(params.teamsFirst));
+  if (params?.playersFirst != null) qs.set("playersFirst", String(params.playersFirst));
+  if (params?.delayMs != null) qs.set("delayMs", String(params.delayMs));
+  if (params?.force) qs.set("force", "1");
+  const res = await apiFetch<RecruterPlayersIndexBuildResponse>(`/recruter/players-index/build${xsRecruterTailV1(qs)}`, { signal: params?.signal });
+  return { ...res, marker: res?.marker || XS_FRONT_RECRUTER_PLAYERS_INDEX_MARKER_V1 };
 }
 
 export async function recruterIndex(params?: { pages?: number; first?: number; force?: boolean; signal?: AbortSignal }): Promise<RecruterIndexResponse> {
@@ -246,20 +335,34 @@ export async function recruterPlayerCards(slug: string, params?: { first?: numbe
   const res = await apiFetch<RecruterPlayerCardsResponse>(`/recruter/player/${encodeURIComponent(s)}/cards${xsRecruterTailV1(qs)}`, { signal: params?.signal });
   const items = Array.isArray(res?.items) ? res.items : [];
   const firstOffer = items[0] || null;
-  const player = res?.player ?? {
+  const rawPlayer = res?.player ?? {
     slug: res?.playerSlug || s,
     displayName: firstOffer?.playerName || s,
     position: firstOffer?.position || null,
+    clubName: firstOffer?.clubName || null,
+    clubSlug: firstOffer?.clubSlug || null,
+    leagueName: firstOffer?.leagueName || null,
+    leagueSlug: firstOffer?.leagueSlug || null,
+    saleStatus: res?.saleStatus || (items.length ? "for_sale" : "no_sale"),
     activeClub: firstOffer?.clubName || firstOffer?.clubSlug ? { name: firstOffer?.clubName || null, slug: firstOffer?.clubSlug || null } : null,
     pictureUrl: firstOffer?.pictureUrl || null,
   };
+  const player = xsRecruterPlayerCompatV1({
+    ...(rawPlayer as any),
+    slug: String((rawPlayer as any)?.slug || (rawPlayer as any)?.playerSlug || res?.playerSlug || s),
+    playerSlug: String((rawPlayer as any)?.playerSlug || (rawPlayer as any)?.slug || res?.playerSlug || s),
+    saleStatus: res?.saleStatus || (rawPlayer as any)?.saleStatus || (items.length ? "for_sale" : "no_sale"),
+    salesCount: typeof (rawPlayer as any)?.salesCount === "number" ? (rawPlayer as any).salesCount : items.length,
+    cardsCount: typeof (rawPlayer as any)?.cardsCount === "number" ? (rawPlayer as any).cardsCount : items.length,
+    hasSale: Boolean((rawPlayer as any)?.hasSale || items.length > 0),
+  });
   const offers = items.map((item) => ({
     ...item,
     slug: item.cardSlug || item.playerSlug || item.cardId,
     eur: typeof item?.price?.eur === "number" ? item.price.eur : null,
     priceText: item?.price?.text || null,
   }));
-  return { ...res, playerSlug: res?.playerSlug || s, count: items.length, items, player, offers };
+  return { ...res, playerSlug: res?.playerSlug || s, saleStatus: res?.saleStatus || player.saleStatus, count: items.length, items, player, offers };
 }
 
 export async function recruterCard(cardId: string, params?: { signal?: AbortSignal }): Promise<RecruterCardResponse> {
