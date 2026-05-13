@@ -9,6 +9,7 @@ const BASE_URL =
   "https://xiascor-backend-tssdy62zqa-ez.a.run.app";
 
 const XS_FRONT_RECRUTER_NEW_BACKEND_MARKER_V1 = "XS_FRONT_RECRUTER_NEW_BACKEND_V1";
+const XS_FRONT_RECRUTER_BOARD_MARKER_V1 = "XS_FRONT_RECRUTER_BOARD_V1";
 
 export type ScoutOffer = {
   offerId: string;
@@ -75,6 +76,38 @@ export type RecruterPlayer = {
   offerCount?: number | null;
   offersCount?: number | null;
   leagues?: string[] | null;
+};
+
+export type RecruterLeague = {
+  slug: string;
+  name?: string | null;
+  playersCount?: number | null;
+  cardsCount?: number | null;
+  minEur?: number | null;
+};
+
+export type RecruterIndexResponse = {
+  ok?: boolean;
+  marker?: string | null;
+  fromCache?: boolean;
+  stale?: boolean;
+  warning?: string | null;
+  fetchedAt?: string | null;
+  ageMs?: number | null;
+  summary?: {
+    offersCount?: number;
+    playersCount?: number;
+    leaguesCount?: number;
+    pagesFetched?: number;
+  } | null;
+};
+
+export type RecruterLeaguesResponse = {
+  ok?: boolean;
+  fromIndex?: boolean;
+  indexFetchedAt?: string | null;
+  count?: number;
+  items: RecruterLeague[];
 };
 
 export type RecruterPlayersResponse = {
@@ -180,6 +213,21 @@ export async function recruterPlayers(params?: { first?: number; league?: string
     items = items.slice(0, Math.max(1, Number(params.first)));
   }
   return { ...res, ok: res?.ok ?? true, count: items.length, items };
+}
+
+export async function recruterIndex(params?: { pages?: number; first?: number; force?: boolean; signal?: AbortSignal }): Promise<RecruterIndexResponse> {
+  const qs = new URLSearchParams();
+  qs.set("pages", String(params?.pages ?? 5));
+  qs.set("first", String(params?.first ?? 50));
+  if (params?.force) qs.set("force", "1");
+  const res = await apiFetch<RecruterIndexResponse>(`/recruter/index${xsRecruterTailV1(qs)}`, { signal: params?.signal });
+  return { ...res, marker: res?.marker || XS_FRONT_RECRUTER_BOARD_MARKER_V1 };
+}
+
+export async function recruterLeagues(params?: { signal?: AbortSignal }): Promise<RecruterLeaguesResponse> {
+  const res = await apiFetch<RecruterLeaguesResponse>("/recruter/leagues", { signal: params?.signal });
+  const items = Array.isArray(res?.items) ? res.items : [];
+  return { ...res, ok: res?.ok ?? true, count: res?.count ?? items.length, items };
 }
 
 export async function recruterOffers(params?: { first?: number; force?: boolean; signal?: AbortSignal }): Promise<RecruterOffersResponse> {

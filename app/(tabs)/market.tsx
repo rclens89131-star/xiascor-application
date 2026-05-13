@@ -1,24 +1,24 @@
-﻿import React, { useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Image, RefreshControl, SafeAreaView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import React, { useCallback, useMemo, useState } from "react";
+import { ActivityIndicator, FlatList, RefreshControl, SafeAreaView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { apiFetch } from "../../src/api";
-import { scoutRecruter, type RecruterPlayer } from "../../src/scoutApi";
+import { recruterIndex, recruterLeagues, type RecruterIndexResponse, type RecruterLeague } from "../../src/scoutApi";
 
-// XS_FRONT_RECRUTER_NEW_BACKEND_V1
-type RecruterItem = RecruterPlayer;
-
+// XS_FRONT_RECRUTER_BOARD_V1
 function norm(v?: string | null) {
   return String(v || "").trim().toLowerCase();
 }
 
 export default function RecruiterTabScreen() {
   const router = useRouter();
-  const [items, setItems] = useState<RecruterItem[]>([]);
+  const [items, setItems] = useState<RecruterLeague[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [indexing, setIndexing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [health, setHealth] = useState<"idle" | "ok" | "ko">("idle");
+  const [indexMeta, setIndexMeta] = useState<RecruterIndexResponse | null>(null);
 
   const load = useCallback(async (isRefresh = false) => {
     try {
@@ -26,16 +26,15 @@ export default function RecruiterTabScreen() {
       else setLoading(true);
       setError(null);
 
-      const [dataRes, healthRes] = await Promise.allSettled([
-        scoutRecruter({ first: 120 }),
+      const [leaguesRes, healthRes] = await Promise.allSettled([
+        recruterLeagues(),
         apiFetch<{ ok?: boolean }>("/recruter/health"),
       ]);
 
-      if (dataRes.status === "fulfilled") {
-        const raw = (dataRes.value as any)?.items;
-        setItems(Array.isArray(raw) ? (raw as RecruterItem[]) : []);
+      if (leaguesRes.status === "fulfilled") {
+        setItems(Array.isArray(leaguesRes.value.items) ? leaguesRes.value.items : []);
       } else {
-        throw dataRes.reason;
+        throw leaguesRes.reason;
       }
 
       setHealth(healthRes.status === "fulfilled" && healthRes.value?.ok ? "ok" : "ko");
@@ -47,6 +46,20 @@ export default function RecruiterTabScreen() {
     }
   }, []);
 
+  const refreshMarket = useCallback(async () => {
+    try {
+      setIndexing(true);
+      setError(null);
+      const res = await recruterIndex({ pages: 5, first: 50, force: true });
+      setIndexMeta(res);
+      await load(true);
+    } catch (e: any) {
+      setError(e?.message || "Erreur actualisation marché");
+    } finally {
+      setIndexing(false);
+    }
+  }, [load]);
+
   useFocusEffect(
     useCallback(() => {
       load(false);
@@ -56,87 +69,83 @@ export default function RecruiterTabScreen() {
   const filtered = useMemo(() => {
     const q = norm(query);
     const base = q
-      ? items.filter((p) => [p.displayName, p.playerName, p.slug, p.clubName, p.position, p.leagueName, p.leagueSlug].some((x) => norm(x).includes(q)))
+      ? items.filter((league) => [league.name, league.slug].some((x) => norm(x).includes(q)))
       : items;
 
-    return [...base].sort((a, b) => (a.minEur ?? Number.POSITIVE_INFINITY) - (b.minEur ?? Number.POSITIVE_INFINITY));
+    return [...base].sort((a, b) => (Number(b.cardsCount || 0) - Number(a.cardsCount || 0)));
   }, [items, query]);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#0f1115" }}>
-      <View style={{ padding: 12, gap: 10 }}>
-        <Text style={{ color: "white", fontSize: 24, fontWeight: "800" }}>Recruter</Text>
-        <Text style={{ color: "#9ba1a6" }}>Marché public · santé API: {health === "ok" ? "OK" : health === "ko" ? "KO" : "…"}</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#08090d" }}>
+      <View style={{ padding: 12, gap: 10, backgroundColor: "#0d0f14", borderBottomWidth: 1, borderBottomColor: "#251016" }}>
+        <Text style={{ color: "white", fontSize: 24, fontWeight: "900" }}>Recruter</Text>
+        <Text style={{ color: "#a8b0ba" }}>
+          Ligues avec cartes en vente · santé API: {health === "ok" ? "OK" : health === "ko" ? "KO" : "..."}
+        </Text>
+
+        <TouchableOpacity
+          onPress={refreshMarket}
+          disabled={indexing}
+          style={{ backgroundColor: indexing ? "#60202a" : "#c92a3d", borderRadius: 9, paddingHorizontal: 12, paddingVertical: 10, alignItems: "center" }}
+        >
+          <Text style={{ color: "white", fontWeight: "900" }}>{indexing ? "Actualisation..." : "Actualiser le marché"}</Text>
+        </TouchableOpacity>
+
+        {indexMeta?.summary ? (
+          <Text style={{ color: "#ff9aa8" }}>
+            Index: {indexMeta.summary.offersCount ?? 0} offres · {indexMeta.summary.playersCount ?? 0} joueurs · {indexMeta.summary.leaguesCount ?? 0} ligues
+          </Text>
+        ) : null}
 
         <TextInput
-          placeholder="Rechercher joueur, club, position"
+          placeholder="Rechercher une ligue"
           placeholderTextColor="#70757a"
           value={query}
           onChangeText={setQuery}
-          style={{ backgroundColor: "#1a1d24", color: "#fff", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 }}
+          style={{ backgroundColor: "#171a22", color: "#fff", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 }}
         />
       </View>
 
       {loading ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <ActivityIndicator color="#58a6ff" />
+          <ActivityIndicator color="#ff5d73" />
         </View>
       ) : error ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <Text style={{ color: "#ff7b72", textAlign: "center", marginBottom: 8 }}>{error}</Text>
-          <TouchableOpacity onPress={() => load(false)} style={{ backgroundColor: "#1f6feb", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }}>
-            <Text style={{ color: "white", fontWeight: "700" }}>Réessayer</Text>
+          <Text style={{ color: "#ff9aa8", textAlign: "center", marginBottom: 10 }}>{error}</Text>
+          <TouchableOpacity onPress={() => load(false)} style={{ backgroundColor: "#c92a3d", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }}>
+            <Text style={{ color: "white", fontWeight: "800" }}>Réessayer</Text>
           </TouchableOpacity>
         </View>
       ) : (
         <FlatList
           data={filtered}
           keyExtractor={(item) => item.slug}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor="#58a6ff" />}
-          contentContainerStyle={{ paddingBottom: 30 }}
-          ListEmptyComponent={<Text style={{ color: "#9ba1a6", textAlign: "center", marginTop: 30 }}>Aucun joueur trouvé.</Text>}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor="#ff5d73" />}
+          contentContainerStyle={{ padding: 12, paddingBottom: 30 }}
+          ListEmptyComponent={<Text style={{ color: "#9ba1a6", textAlign: "center", marginTop: 30 }}>Aucune ligue trouvée.</Text>}
           renderItem={({ item }) => {
-            // XS_FRONT_RECRUTER_NEW_BACKEND_V1
-            const xsSlug = String((item?.slug ?? item?.playerSlug ?? "") || "").trim();
-            const xsName = String((item?.displayName ?? item?.playerName ?? "—") || "—");
-            const xsMin = (typeof item?.minPriceEur === "number")
-              ? item.minPriceEur
-              : ((typeof item?.minEur === "number") ? item.minEur : null);
-            const xsClub = String((item?.clubName ?? item?.activeClubName ?? item?.activeClub?.name ?? "") || "").trim();
-            const xsLeague = String((item?.leagueName ?? item?.leagueSlug ?? "") || "").trim();
-            const xsCards = Number(item?.cardsCount ?? item?.offersCount ?? item?.offerCount ?? 0) || 0;
-            const xsRarities = Array.isArray(item?.rarities) && item.rarities.length
-              ? item.rarities.map((x) => String(x || "").toUpperCase()).join(", ")
-              : "—";
+            const slug = String(item.slug || "").trim();
+            const name = String(item.name || item.slug || "Ligue inconnue");
+            const cardsCount = Number(item.cardsCount || 0);
+            const playersCount = Number(item.playersCount || 0);
+            const minEur = typeof item.minEur === "number" ? item.minEur : null;
+
             return (
-            <TouchableOpacity
-              onPress={() => { if (!xsSlug) return; router.push({ pathname: "/recruter/player/[slug]", params: { slug: xsSlug } }); }} // XS_FRONT_RECRUTER_PLAYER_CARDS_V1
-              style={{ marginHorizontal: 12, marginBottom: 10, backgroundColor: "#161b22", borderRadius: 12, padding: 10, flexDirection: "row", gap: 10 }}
-            >
-              <Image
-                source={{ uri: item.pictureUrl || "https://via.placeholder.com/120x160.png?text=Card" }}
-                style={{ width: 62, height: 82, borderRadius: 8, backgroundColor: "#0d1117" }}
-              />
-              <View style={{ flex: 1, justifyContent: "center", gap: 4 }}>
-                <Text style={{ color: "#fff", fontWeight: "700" }} numberOfLines={1}>{xsName || xsSlug || "—"}</Text>
-                <Text style={{ color: "#9ba1a6" }} numberOfLines={1}>{(xsClub || "Club inconnu")} · {(item.position || "N/A")}</Text>
-                <Text style={{ color: "#8b949e" }} numberOfLines={1}>{xsLeague || "Ligue inconnue"}</Text>
-                <Text style={{ color: "#58a6ff", fontWeight: "800" }}>
-                  Prix min {typeof xsMin === "number" ? `€${xsMin.toFixed(2)}` : "—"}
+              <TouchableOpacity
+                onPress={() => { if (!slug) return; router.push({ pathname: "/recruter/league/[slug]", params: { slug, name } }); }}
+                style={{ marginBottom: 10, backgroundColor: "#12151c", borderRadius: 12, borderWidth: 1, borderColor: "#2a1218", padding: 13 }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }} numberOfLines={1}>{name}</Text>
+                <Text style={{ color: "#b8bec8", marginTop: 6 }}>{playersCount} joueur(s) · {cardsCount} carte(s)</Text>
+                <Text style={{ color: "#ff5d73", fontWeight: "900", marginTop: 6 }}>
+                  Prix min {minEur != null ? `€${minEur.toFixed(2)}` : "—"}
                 </Text>
-                <Text style={{ color: "#8b949e" }}>{xsCards} carte(s) · {xsRarities}</Text>
-              </View>
-            </TouchableOpacity>
-          );
-        }}
+              </TouchableOpacity>
+            );
+          }}
         />
       )}
     </SafeAreaView>
   );
 }
-// XS_RECRUTER_TAB_V1_END
-
-
-
-
-
