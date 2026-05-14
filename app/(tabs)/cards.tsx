@@ -468,7 +468,7 @@ const [loading, setLoading] = useState(true);
 const [loadingMore, setLoadingMore] = useState(false);
 const [syncing, setSyncing] = useState(false);
 const [error, setError] = useState("");
-const [historySyncStatus, setHistorySyncStatus] = useState(""); // XS_MYCARDS_FAST_HISTORY_BACKGROUND_V1
+const [historySyncStatus, setHistorySyncStatus] = useState(""); // XS_MYCARDS_FAST_HISTORY_BACKGROUND_V1 XS_AUTO_FORCE_RECENT_HISTORY_SYNC_V1
   /* XS_UI_LAST_SYNC_LABEL_V1 */
 const [lastSync, setLastSync] = useState<string>("");
 const loadingMoreRef = useRef(false);
@@ -570,10 +570,10 @@ const onSync = useCallback(async () => {
           } else {
             setHistorySyncStatus("Performances en attente : mise à jour différée");
           }
-          console.log("[XS_MYCARDS_FAST_HISTORY_BACKGROUND_V1] done", { synced, skipped, failed, ok: !!json?.ok });
+          console.log("[XS_MYCARDS_FAST_HISTORY_BACKGROUND_V1 XS_AUTO_FORCE_RECENT_HISTORY_SYNC_V1] done", { synced, skipped, failed, ok: !!json?.ok });
         }).catch((e: any) => {
           setHistorySyncStatus("Performances en attente : mise à jour différée");
-          console.log("[XS_MYCARDS_FAST_HISTORY_BACKGROUND_V1] warning", String(e?.message || e));
+          console.log("[XS_MYCARDS_FAST_HISTORY_BACKGROUND_V1 XS_AUTO_FORCE_RECENT_HISTORY_SYNC_V1] warning", String(e?.message || e));
         });
       }
     } catch (e: any) {
@@ -733,6 +733,7 @@ const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
   );
   /* XS_MY_CARDS_UI_V1_END */
 }
+
 
 
 
