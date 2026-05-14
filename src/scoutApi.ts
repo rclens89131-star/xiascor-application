@@ -845,14 +845,17 @@ export async function publicPlayerPerformance(
           const score = toFiniteScore(item);
           if (score == null) return null;
 
+          // XS_FIX_L5_TABLE_OPPONENT_MAPPING_V2 BEGIN
           const opponentShort =
             String(
               item?.opponentShort ??
+              (typeof item?.opponent === "string" ? item.opponent : null) ??
               item?.opponent?.shortName ??
               item?.opponent?.name ??
               item?.against ??
               ""
             ).trim();
+          // XS_FIX_L5_TABLE_OPPONENT_MAPPING_V2 END
 
           const opponentLogoUrl =
             item?.opponentLogoUrl ??
@@ -1012,4 +1015,5 @@ export async function syncMyCardsHistoryBatch(deviceId: string, cards: any[], op
     return { ok: false, error: String(e?.message || e) };
   }
 }
+
 
