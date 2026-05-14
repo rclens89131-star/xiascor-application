@@ -2822,6 +2822,7 @@ const XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1 = "XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1
 const XS_RECRUTER_HYBRID_INDEX_MODE_V1 = "XS_RECRUTER_HYBRID_INDEX_MODE_V1";
 const XS_RECRUTER_AUTO_INDEX_RUNNER_V1 = "XS_RECRUTER_AUTO_INDEX_RUNNER_V1";
 const XS_RECRUTER_CARDS_CACHE_WARMUP_V1 = "XS_RECRUTER_CARDS_CACHE_WARMUP_V1";
+const XS_RECRUTER_CARDS_ENRICHED_V1 = "XS_RECRUTER_CARDS_ENRICHED_V1";
 const XS_RECRUTER_INDEX_FILE = dataFile("recruter_players_index.json");
 const XS_RECRUTER_CARDS_CACHE_DIR = dataFile("recruter_cards_cache");
 const XS_RECRUTER_CARDS_CACHE_META_FILE = require("path").join(XS_RECRUTER_CARDS_CACHE_DIR, "_meta.json");
@@ -2851,7 +2852,7 @@ function xsRecruterEmptyIndex() {
     lastError: null,
     retryAfterUntil: null,
     authMode: "public",
-    patches: [XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1, XS_RECRUTER_HYBRID_INDEX_MODE_V1, XS_RECRUTER_AUTO_INDEX_RUNNER_V1, XS_RECRUTER_CARDS_CACHE_WARMUP_V1],
+    patches: [XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1, XS_RECRUTER_HYBRID_INDEX_MODE_V1, XS_RECRUTER_AUTO_INDEX_RUNNER_V1, XS_RECRUTER_CARDS_CACHE_WARMUP_V1, XS_RECRUTER_CARDS_ENRICHED_V1],
     lastBuildOptions: null,
     progress: {
       phase: "idle",
@@ -2891,6 +2892,7 @@ function xsRecruterReadIndex() {
     XS_RECRUTER_HYBRID_INDEX_MODE_V1,
     XS_RECRUTER_AUTO_INDEX_RUNNER_V1,
     XS_RECRUTER_CARDS_CACHE_WARMUP_V1,
+    XS_RECRUTER_CARDS_ENRICHED_V1,
   ]));
   return { ...base, ...idx, patches, totals: { ...base.totals, ...idx.totals } };
 }
@@ -3567,7 +3569,8 @@ function xsRecruterIndexSummary(idx) {
     hybridPatch: XS_RECRUTER_HYBRID_INDEX_MODE_V1,
     autoRunnerPatch: XS_RECRUTER_AUTO_INDEX_RUNNER_V1,
     cardsCachePatch: XS_RECRUTER_CARDS_CACHE_WARMUP_V1,
-    patches: Array.isArray(idx.patches) ? idx.patches : [XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1, XS_RECRUTER_HYBRID_INDEX_MODE_V1, XS_RECRUTER_AUTO_INDEX_RUNNER_V1, XS_RECRUTER_CARDS_CACHE_WARMUP_V1],
+    cardsEnrichedPatch: XS_RECRUTER_CARDS_ENRICHED_V1,
+    patches: Array.isArray(idx.patches) ? idx.patches : [XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1, XS_RECRUTER_HYBRID_INDEX_MODE_V1, XS_RECRUTER_AUTO_INDEX_RUNNER_V1, XS_RECRUTER_CARDS_CACHE_WARMUP_V1, XS_RECRUTER_CARDS_ENRICHED_V1],
     mode: idx.authMode || "public",
     status: idx.status,
     startedAt: idx.startedAt || null,
@@ -3699,6 +3702,7 @@ function xsRecruterCardsCacheEntry(slug) {
 
 function xsRecruterCardsCacheIsFresh(entry, ttlMs, first, after) {
   if (!entry || !entry.cachedAt || !entry.response) return false;
+  if (entry.enrichedMarker !== XS_RECRUTER_CARDS_ENRICHED_V1) return false;
   if (Number(entry.first || 0) !== Number(first || 0)) return false;
   if (String(entry.after || "") !== String(after || "")) return false;
   const cachedAt = Date.parse(String(entry.cachedAt));
@@ -3721,6 +3725,7 @@ function xsRecruterWriteCardsCache(slug, first, after, ttlMs, response) {
   const cachedAt = xsRecruterNowIso();
   const entry = {
     marker: XS_RECRUTER_CARDS_CACHE_WARMUP_V1,
+    enrichedMarker: XS_RECRUTER_CARDS_ENRICHED_V1,
     playerSlug: slug,
     first,
     after: after || null,
@@ -3753,7 +3758,7 @@ function xsRecruterCardsCacheStatus(req) {
   for (const file of files) {
     const entry = readJson(file, null);
     const cachedAt = Date.parse(String(entry && entry.cachedAt ? entry.cachedAt : ""));
-    if (!Number.isFinite(cachedAt) || (Date.now() - cachedAt) >= ttlMs) staleCacheCount += 1;
+    if (entry?.enrichedMarker !== XS_RECRUTER_CARDS_ENRICHED_V1 || !Number.isFinite(cachedAt) || (Date.now() - cachedAt) >= ttlMs) staleCacheCount += 1;
   }
   return {
     ok: true,
@@ -3827,10 +3832,17 @@ async function xsRecruterFetchPlayerCardsPayload(slug, first, after, auth) {
             totalCount
             nodes {
               id
+              status
               endDate
+              sender {
+                __typename
+                ... on User { slug nickname }
+              }
               senderSide {
                 amounts { eurCents wei }
                 anyCards {
+                  id
+                  assetId
                   slug
                   name
                   pictureUrl
@@ -3839,6 +3851,9 @@ async function xsRecruterFetchPlayerCardsPayload(slug, first, after, auth) {
                   serialNumber
                   anyPositions
                   anyTeam { slug name }
+                  xp
+                  power
+                  bonuses { __typename }
                 }
               }
               receiverSide { amounts { eurCents wei } }
@@ -3853,6 +3868,8 @@ async function xsRecruterFetchPlayerCardsPayload(slug, first, after, auth) {
   const conn = data?.tokens?.liveSingleSaleOffers || {};
   const cards = (conn.nodes || []).map((offer) => {
     const card = offer?.senderSide?.anyCards?.[0] || {};
+    const seller = offer?.sender && typeof offer.sender === "object" ? offer.sender : null;
+    const team = card.anyTeam ? { slug: card.anyTeam.slug || null, name: card.anyTeam.name || null } : null;
     const amounts = offer?.receiverSide?.amounts || offer?.senderSide?.amounts || {};
     const eur = typeof amounts.eurCents === "number" ? amounts.eurCents / 100 : null;
     const wei = amounts.wei === null || amounts.wei === undefined ? null : String(amounts.wei);
@@ -3860,24 +3877,57 @@ async function xsRecruterFetchPlayerCardsPayload(slug, first, after, auth) {
     const priceText = typeof eur === "number" && Number.isFinite(eur)
       ? ("€" + (xsSafeToFixed(eur, 2) ?? String(eur)))
       : (eth ? ("Ξ" + String(eth)) : (wei ? ("wei " + wei) : "Prix indisponible"));
+    const bonusTypes = Array.isArray(card.bonuses) ? card.bonuses.map((b) => b && b.__typename).filter(Boolean) : [];
     return {
+      id: card.id || card.assetId || card.slug || null,
+      cardId: card.id || null,
+      assetId: card.assetId || null,
       offerId: offer.id,
       endDate: offer.endDate || null,
+      status: offer.status || null,
+      saleStatus: offer.status || null,
       cardSlug: card.slug || null,
       slug: card.slug || null,
       cardName: card.name || null,
       name: card.name || null,
       pictureUrl: card.pictureUrl || null,
       rarity: card.rarityTyped || null,
+      season: typeof card.seasonYear === "number" ? card.seasonYear : null,
       seasonYear: typeof card.seasonYear === "number" ? card.seasonYear : null,
       serialNumber: typeof card.serialNumber === "number" ? card.serialNumber : null,
+      playerName: player?.displayName || slug,
       positions: Array.isArray(card.anyPositions) ? card.anyPositions : [],
       position: xsRecruterPosition(card.anyPositions),
-      team: card.anyTeam ? { slug: card.anyTeam.slug || null, name: card.anyTeam.name || null } : null,
+      team,
+      clubSlug: team ? team.slug : null,
+      clubName: team ? team.name : null,
+      seller: seller ? {
+        type: seller.__typename || null,
+        slug: seller.slug || null,
+        nickname: seller.nickname || null,
+      } : null,
+      sellerSlug: seller?.slug || null,
+      sellerNickname: seller?.nickname || null,
+      owner: seller ? {
+        type: seller.__typename || null,
+        slug: seller.slug || null,
+        nickname: seller.nickname || null,
+      } : null,
+      ownerSlug: seller?.slug || null,
+      ownerNickname: seller?.nickname || null,
+      price: eur,
+      priceEur: eur,
       eur,
       wei,
       eth,
       priceText,
+      xp: typeof card.xp === "number" ? card.xp : null,
+      level: null,
+      power: card.power === null || card.power === undefined ? null : String(card.power),
+      cardPower: card.power === null || card.power === undefined ? null : String(card.power),
+      bonuses: Array.isArray(card.bonuses) ? card.bonuses : [],
+      bonusTypes,
+      cardBonus: bonusTypes.length ? bonusTypes.join(",") : null,
     };
   });
   const minPrice = cards.reduce((min, card) => (
@@ -3896,6 +3946,7 @@ async function xsRecruterFetchPlayerCardsPayload(slug, first, after, auth) {
     ok: true,
     marker: XS_RECRUTER_ALL_LEAGUES_CLUBS_V1,
     cardsCachePatch: XS_RECRUTER_CARDS_CACHE_WARMUP_V1,
+    cardsEnrichedPatch: XS_RECRUTER_CARDS_ENRICHED_V1,
     playerSlug: playerOut.playerSlug,
     playerName: playerOut.playerName,
     position: playerOut.position || null,
