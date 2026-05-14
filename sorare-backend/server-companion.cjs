@@ -2812,6 +2812,716 @@ return res.json({
 });
 // XS_RECRUTER_ENDPOINT_V1_END
 
+/* XS_RECRUTER_ALL_LEAGUES_CLUBS_V1_BEGIN
+   Build a resumable football index from Sorare official GraphQL schema:
+   football.leaguesOpenForGameStats -> competition.teams -> team.activePlayers.
+   Cards/offers stay lazy and are fetched only by /recruter/player/:slug/cards.
+*/
+const XS_RECRUTER_ALL_LEAGUES_CLUBS_V1 = "XS_RECRUTER_ALL_LEAGUES_CLUBS_V1";
+const XS_RECRUTER_INDEX_FILE = dataFile("recruter_players_index.json");
+
+function xsRecruterNowIso() {
+  return new Date().toISOString();
+}
+
+function xsRecruterEmptyIndex() {
+  return {
+    marker: XS_RECRUTER_ALL_LEAGUES_CLUBS_V1,
+    version: 1,
+    status: "empty",
+    startedAt: null,
+    updatedAt: null,
+    completedAt: null,
+    stopReason: null,
+    lastError: null,
+    progress: {
+      phase: "idle",
+      leagueSlug: null,
+      clubSlug: null,
+      playersAfter: null,
+    },
+    totals: {
+      leagues: 0,
+      clubs: 0,
+      players: 0,
+      rows: 0,
+      calls: 0,
+    },
+    leagues: [],
+    clubs: {},
+    rows: {},
+    errors: [],
+  };
+}
+
+function xsRecruterReadIndex() {
+  const idx = readJson(XS_RECRUTER_INDEX_FILE, null);
+  if (!idx || idx.marker !== XS_RECRUTER_ALL_LEAGUES_CLUBS_V1) return xsRecruterEmptyIndex();
+  idx.leagues = Array.isArray(idx.leagues) ? idx.leagues : [];
+  idx.clubs = idx.clubs && typeof idx.clubs === "object" ? idx.clubs : {};
+  idx.rows = idx.rows && typeof idx.rows === "object" ? idx.rows : {};
+  idx.errors = Array.isArray(idx.errors) ? idx.errors : [];
+  idx.totals = idx.totals && typeof idx.totals === "object" ? idx.totals : {};
+  idx.progress = idx.progress && typeof idx.progress === "object" ? idx.progress : {};
+  return { ...xsRecruterEmptyIndex(), ...idx, totals: { ...xsRecruterEmptyIndex().totals, ...idx.totals } };
+}
+
+function xsRecruterWriteIndex(idx) {
+  const fs = require("fs");
+  const path = require("path");
+  const dir = path.dirname(XS_RECRUTER_INDEX_FILE);
+  fs.mkdirSync(dir, { recursive: true });
+  idx.updatedAt = xsRecruterNowIso();
+  idx.totals = idx.totals || {};
+  idx.totals.leagues = Array.isArray(idx.leagues) ? idx.leagues.length : 0;
+  idx.totals.clubs = Object.values(idx.clubs || {}).reduce((sum, bucket) => (
+    sum + (Array.isArray(bucket && bucket.items) ? bucket.items.length : 0)
+  ), 0);
+  idx.totals.rows = Object.keys(idx.rows || {}).length;
+  idx.totals.players = new Set(Object.values(idx.rows || {}).map((row) => row && row.playerSlug).filter(Boolean)).size;
+  const tmp = XS_RECRUTER_INDEX_FILE + ".tmp";
+  fs.writeFileSync(tmp, JSON.stringify(idx, null, 2), "utf8");
+  fs.renameSync(tmp, XS_RECRUTER_INDEX_FILE);
+}
+
+function xsRecruterInt(value, fallback, min, max) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(n)));
+}
+
+function xsRecruterOptionalInt(value, min, max) {
+  if (value === null || value === undefined || String(value).trim() === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(min, Math.min(max, Math.floor(n)));
+}
+
+function xsRecruterBool(value) {
+  const s = String(value || "").trim().toLowerCase();
+  return s === "1" || s === "true" || s === "yes";
+}
+
+function xsRecruterRateDelayMs(req) {
+  const fromQuery = xsRecruterOptionalInt(req && req.query ? req.query.rateDelayMs : null, 0, 10000);
+  if (fromQuery !== null) return fromQuery;
+  const fromEnv = xsRecruterOptionalInt(process.env.XS_RECRUTER_RATE_DELAY_MS, 0, 10000);
+  if (fromEnv !== null) return fromEnv;
+  if (SORARE_APIKEY) return 150;
+  if (hasSorareAuth()) return 1100;
+  return 3200;
+}
+
+function xsRecruterBuildOptions(req) {
+  return {
+    force: xsRecruterBool(req.query.force || req.query.reset),
+    refreshLeagues: xsRecruterBool(req.query.refreshLeagues),
+    maxCalls: xsRecruterInt(req.query.maxCalls, 25, 1, 500),
+    leagueLimit: xsRecruterOptionalInt(req.query.limitLeagues || req.query.leaguesLimit, 1, 1000),
+    clubLimit: xsRecruterOptionalInt(req.query.limitClubs || req.query.clubsLimit, 1, 5000),
+    playerLimit: xsRecruterOptionalInt(req.query.limitPlayers || req.query.playersLimit, 1, 200000),
+    teamPageSize: xsRecruterInt(req.query.teamPageSize || req.query.clubPageSize || req.query.pageSize, 50, 1, 80),
+    playerPageSize: xsRecruterInt(req.query.playerPageSize || req.query.pageSize, 40, 1, 80),
+    rateDelayMs: xsRecruterRateDelayMs(req),
+  };
+}
+
+function xsRecruterSleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms || 0))));
+}
+
+function xsRecruterPosition(anyPositions) {
+  const raw = Array.isArray(anyPositions) ? String(anyPositions[0] || "") : String(anyPositions || "");
+  const s = raw.trim().toLowerCase();
+  if (s === "goalkeeper" || s === "gk") return "GK";
+  if (s === "defender" || s === "def") return "DEF";
+  if (s === "midfielder" || s === "mid") return "MID";
+  if (s === "forward" || s === "fwd") return "FWD";
+  return raw || null;
+}
+
+async function xsRecruterGraphQL(query, variables) {
+  const response = await fetch(SORARE_GQL, {
+    method: "POST",
+    headers: sorareHeaders(),
+    body: JSON.stringify({ query, variables: variables || {} }),
+  });
+  const text = await response.text();
+  let json = null;
+  try { json = text ? JSON.parse(text) : null; } catch {}
+  if (!response.ok) {
+    const err = new Error((json && json.errors && json.errors[0] && json.errors[0].message) || ("Sorare HTTP " + response.status));
+    err.status = response.status;
+    err.retryAfter = response.headers && response.headers.get ? response.headers.get("retry-after") : null;
+    err.graphQLErrors = json && json.errors ? json.errors : null;
+    err.body = text ? text.slice(0, 2000) : null;
+    throw err;
+  }
+  if (json && json.errors && json.errors.length) {
+    const err = new Error(json.errors[0]?.message || "Sorare GraphQL error");
+    err.graphQLErrors = json.errors;
+    err.data = json.data;
+    throw err;
+  }
+  return json ? json.data : null;
+}
+
+async function xsRecruterCall(ctx, query, variables) {
+  if (ctx.calls >= ctx.opts.maxCalls) {
+    const err = new Error("maxCalls reached");
+    err.code = "XS_RECRUTER_MAX_CALLS";
+    throw err;
+  }
+  if (ctx.calls > 0 && ctx.opts.rateDelayMs > 0) await xsRecruterSleep(ctx.opts.rateDelayMs);
+  ctx.calls += 1;
+  ctx.index.totals.calls = Number(ctx.index.totals.calls || 0) + 1;
+  return xsRecruterGraphQL(query, variables);
+}
+
+function xsRecruterCanContinue(ctx) {
+  if (ctx.calls >= ctx.opts.maxCalls) {
+    ctx.stopReason = "maxCalls";
+    return false;
+  }
+  if (ctx.opts.playerLimit !== null && ctx.playersTouched >= ctx.opts.playerLimit) {
+    ctx.stopReason = "limitPlayers";
+    return false;
+  }
+  return true;
+}
+
+async function xsRecruterEnsureLeagues(ctx) {
+  const idx = ctx.index;
+  if (Array.isArray(idx.leagues) && idx.leagues.length && !ctx.opts.refreshLeagues) return;
+  idx.progress = { phase: "leagues", leagueSlug: null, clubSlug: null, playersAfter: null };
+  xsRecruterWriteIndex(idx);
+
+  const data = await xsRecruterCall(ctx, `
+    query XSRecruterLeagues {
+      football {
+        leaguesOpenForGameStats {
+          slug
+          name
+          displayName
+          type
+          released
+          openForGameStats
+        }
+      }
+    }
+  `, {});
+
+  const oldBySlug = new Map((idx.leagues || []).map((l) => [l.leagueSlug || l.slug, l]));
+  const leagues = data?.football?.leaguesOpenForGameStats || [];
+  idx.leagues = leagues
+    .filter((l) => l && l.slug)
+    .map((l) => {
+      const prev = oldBySlug.get(l.slug) || {};
+      return {
+        ...prev,
+        leagueSlug: l.slug,
+        leagueName: l.displayName || l.name || l.slug,
+        type: l.type || null,
+        released: !!l.released,
+        openForGameStats: !!l.openForGameStats,
+        teamsDone: !!prev.teamsDone,
+        status: prev.status || "pending",
+      };
+    });
+  idx.status = "running";
+  xsRecruterWriteIndex(idx);
+}
+
+async function xsRecruterFetchLeagueTeams(ctx, league) {
+  const idx = ctx.index;
+  const leagueSlug = league.leagueSlug;
+  idx.clubs[leagueSlug] = idx.clubs[leagueSlug] || { leagueSlug, after: null, teamsDone: false, items: [] };
+  const bucket = idx.clubs[leagueSlug];
+  bucket.items = Array.isArray(bucket.items) ? bucket.items : [];
+  const seen = new Set(bucket.items.map((c) => c && c.clubSlug).filter(Boolean));
+
+  while (!bucket.teamsDone) {
+    if (ctx.calls >= ctx.opts.maxCalls) {
+      ctx.stopReason = "maxCalls";
+      return;
+    }
+    idx.progress = { phase: "clubs", leagueSlug, clubSlug: null, playersAfter: null };
+    xsRecruterWriteIndex(idx);
+
+    const data = await xsRecruterCall(ctx, `
+      query XSRecruterLeagueTeams($slug: String!, $first: Int!, $after: String) {
+        football {
+          competition(slug: $slug) {
+            slug
+            name
+            displayName
+            teams(first: $first, after: $after) {
+              nodes {
+                __typename
+                slug
+                name
+              }
+              pageInfo { hasNextPage endCursor }
+            }
+          }
+        }
+      }
+    `, { slug: leagueSlug, first: ctx.opts.teamPageSize, after: bucket.after || null });
+
+    const comp = data?.football?.competition;
+    const teams = comp?.teams?.nodes || [];
+    for (const team of teams) {
+      if (!team || !team.slug || seen.has(team.slug)) continue;
+      seen.add(team.slug);
+      bucket.items.push({
+        clubSlug: team.slug,
+        clubName: team.name || team.slug,
+        teamType: team.__typename || null,
+        playersAfter: null,
+        playersDone: false,
+        playersCount: 0,
+        status: "pending",
+      });
+    }
+    const pageInfo = comp?.teams?.pageInfo || {};
+    bucket.after = pageInfo.endCursor || null;
+    bucket.teamsDone = !pageInfo.hasNextPage;
+    league.leagueName = comp?.displayName || comp?.name || league.leagueName;
+    league.teamsDone = bucket.teamsDone;
+    league.status = bucket.teamsDone ? "teams_done" : "teams_running";
+    xsRecruterWriteIndex(idx);
+  }
+}
+
+function xsRecruterUpsertPlayerRow(idx, league, club, player) {
+  if (!player || !player.slug) return false;
+  const key = [league.leagueSlug, club.clubSlug, player.slug].join("|");
+  const picture = player.avatarPictureUrl || player.fullPictureUrl || null;
+  const row = {
+    rowKey: key,
+    leagueSlug: league.leagueSlug,
+    leagueName: league.leagueName,
+    clubSlug: club.clubSlug,
+    clubName: club.clubName,
+    teamType: club.teamType || null,
+    playerSlug: player.slug,
+    playerName: player.displayName || player.slug,
+    position: xsRecruterPosition(player.anyPositions),
+    age: typeof player.age === "number" ? player.age : null,
+    avatar: picture,
+    picture: picture,
+    pictureUrl: picture,
+    activeClub: player.activeClub ? {
+      slug: player.activeClub.slug || null,
+      name: player.activeClub.name || null,
+    } : null,
+    activeLeague: {
+      slug: league.leagueSlug,
+      name: league.leagueName,
+    },
+    salesCount: null,
+    minPrice: null,
+    minPriceEur: null,
+    offerCount: null,
+    slug: player.slug,
+    displayName: player.displayName || player.slug,
+    team: club.clubName,
+    teamSlug: club.clubSlug,
+    updatedAt: xsRecruterNowIso(),
+  };
+  const isNew = !idx.rows[key];
+  idx.rows[key] = { ...(idx.rows[key] || {}), ...row };
+  return isNew;
+}
+
+async function xsRecruterFetchClubPlayers(ctx, league, club) {
+  const idx = ctx.index;
+  while (!club.playersDone) {
+    if (!xsRecruterCanContinue(ctx)) return;
+    const remaining = ctx.opts.playerLimit === null ? ctx.opts.playerPageSize : (ctx.opts.playerLimit - ctx.playersTouched);
+    if (remaining <= 0) {
+      ctx.stopReason = "limitPlayers";
+      return;
+    }
+    const first = Math.max(1, Math.min(ctx.opts.playerPageSize, remaining));
+    idx.progress = { phase: "players", leagueSlug: league.leagueSlug, clubSlug: club.clubSlug, playersAfter: club.playersAfter || null };
+    xsRecruterWriteIndex(idx);
+
+    const data = await xsRecruterCall(ctx, `
+      query XSRecruterTeamPlayers($slug: String!, $first: Int!, $after: String) {
+        team(slug: $slug) {
+          __typename
+          slug
+          name
+          activePlayers(first: $first, after: $after) {
+            nodes {
+              slug
+              displayName
+              age
+              anyPositions
+              avatarPictureUrl
+              fullPictureUrl
+              activeClub { slug name }
+            }
+            pageInfo { hasNextPage endCursor }
+          }
+        }
+      }
+    `, { slug: club.clubSlug, first, after: club.playersAfter || null });
+
+    const team = data?.team;
+    if (team && team.name) club.clubName = team.name;
+    if (team && team.__typename) club.teamType = team.__typename;
+    const players = team?.activePlayers?.nodes || [];
+    for (const player of players) {
+      xsRecruterUpsertPlayerRow(idx, league, club, player);
+      ctx.playersTouched += 1;
+      club.playersCount = Number(club.playersCount || 0) + 1;
+    }
+    const pageInfo = team?.activePlayers?.pageInfo || {};
+    club.playersAfter = pageInfo.endCursor || null;
+    club.playersDone = !pageInfo.hasNextPage;
+    club.status = club.playersDone ? "complete" : "running";
+    xsRecruterWriteIndex(idx);
+  }
+}
+
+async function xsRecruterBuildIndex(req) {
+  const opts = xsRecruterBuildOptions(req);
+  const index = opts.force ? xsRecruterEmptyIndex() : xsRecruterReadIndex();
+  const ctx = {
+    opts,
+    index,
+    calls: 0,
+    leaguesTouched: 0,
+    clubsTouched: 0,
+    playersTouched: 0,
+    stopReason: null,
+  };
+
+  index.marker = XS_RECRUTER_ALL_LEAGUES_CLUBS_V1;
+  index.status = "running";
+  index.startedAt = index.startedAt || xsRecruterNowIso();
+  index.completedAt = null;
+  index.stopReason = null;
+  index.lastError = null;
+  xsRecruterWriteIndex(index);
+
+  await xsRecruterEnsureLeagues(ctx);
+
+  for (const league of index.leagues) {
+    if (league.status === "complete" || league.status === "error") continue;
+    if (!xsRecruterCanContinue(ctx)) break;
+    if (ctx.opts.leagueLimit !== null && ctx.leaguesTouched >= ctx.opts.leagueLimit) {
+      ctx.stopReason = "limitLeagues";
+      break;
+    }
+    if (league.status !== "complete") ctx.leaguesTouched += 1;
+    try {
+      await xsRecruterFetchLeagueTeams(ctx, league);
+    } catch (e) {
+      if (e && (e.status === 429 || e.code === "XS_RECRUTER_MAX_CALLS")) throw e;
+      league.status = "error";
+      league.error = String(e?.message || e);
+      index.errors.push({ at: xsRecruterNowIso(), phase: "clubs", leagueSlug: league.leagueSlug, error: league.error });
+      xsRecruterWriteIndex(index);
+      continue;
+    }
+    if (ctx.stopReason || !xsRecruterCanContinue(ctx)) break;
+
+    const bucket = index.clubs[league.leagueSlug] || { items: [] };
+    for (const club of (bucket.items || [])) {
+      if (club.playersDone) continue;
+      if (!xsRecruterCanContinue(ctx)) break;
+      if (ctx.opts.clubLimit !== null && ctx.clubsTouched >= ctx.opts.clubLimit) {
+        ctx.stopReason = "limitClubs";
+        break;
+      }
+      ctx.clubsTouched += 1;
+      try {
+        await xsRecruterFetchClubPlayers(ctx, league, club);
+      } catch (e) {
+        if (e && (e.status === 429 || e.code === "XS_RECRUTER_MAX_CALLS")) throw e;
+        club.status = "error";
+        club.error = String(e?.message || e);
+        index.errors.push({ at: xsRecruterNowIso(), phase: "players", leagueSlug: league.leagueSlug, clubSlug: club.clubSlug, error: club.error });
+        xsRecruterWriteIndex(index);
+      }
+      if (ctx.stopReason || !xsRecruterCanContinue(ctx)) break;
+    }
+
+    const allClubsDone = (bucket.items || []).every((club) => club.playersDone || club.status === "error");
+    if (bucket.teamsDone && allClubsDone) {
+      league.status = "complete";
+      league.completedAt = xsRecruterNowIso();
+      xsRecruterWriteIndex(index);
+    }
+  }
+
+  const complete = index.leagues.length > 0 && index.leagues.every((league) => league.status === "complete" || league.status === "error");
+  index.status = complete ? "complete" : "partial";
+  index.completedAt = complete ? xsRecruterNowIso() : null;
+  index.stopReason = ctx.stopReason;
+  if (!complete && !index.stopReason) index.stopReason = "more_work";
+  xsRecruterWriteIndex(index);
+
+  return { index, calls: ctx.calls, options: opts };
+}
+
+function xsRecruterIndexSummary(idx) {
+  const leaguesDone = (idx.leagues || []).filter((l) => l.status === "complete").length;
+  return {
+    marker: XS_RECRUTER_ALL_LEAGUES_CLUBS_V1,
+    status: idx.status,
+    startedAt: idx.startedAt || null,
+    updatedAt: idx.updatedAt || null,
+    completedAt: idx.completedAt || null,
+    stopReason: idx.stopReason || null,
+    lastError: idx.lastError || null,
+    progress: idx.progress || {},
+    totals: idx.totals || {},
+    leaguesDone,
+    leaguesTotal: Array.isArray(idx.leagues) ? idx.leagues.length : 0,
+    errorsCount: Array.isArray(idx.errors) ? idx.errors.length : 0,
+  };
+}
+
+function xsRecruterRowsPage(req, rows) {
+  const q = String(req.query.q || "").trim().toLowerCase();
+  const league = String(req.query.league || req.query.leagueSlug || "").trim().toLowerCase();
+  const club = String(req.query.club || req.query.clubSlug || "").trim().toLowerCase();
+  const position = String(req.query.position || "").trim().toUpperCase();
+  const first = xsRecruterInt(req.query.first || req.query.limit, 200, 1, 1000);
+  const after = xsParseAfterOffset(req.query.after || req.query.offset || 0);
+  let items = Array.isArray(rows) ? rows : [];
+
+  if (q) {
+    items = items.filter((row) => {
+      const hay = [
+        row.playerName, row.playerSlug, row.clubName, row.clubSlug, row.leagueName, row.leagueSlug,
+      ].map((v) => String(v || "").toLowerCase()).join(" ");
+      return hay.includes(q);
+    });
+  }
+  if (league) items = items.filter((row) => String(row.leagueSlug || "").toLowerCase() === league || String(row.leagueName || "").toLowerCase().includes(league));
+  if (club) items = items.filter((row) => String(row.clubSlug || "").toLowerCase() === club || String(row.clubName || "").toLowerCase().includes(club));
+  if (["GK", "DEF", "MID", "FWD"].includes(position)) items = items.filter((row) => String(row.position || "").toUpperCase() === position);
+
+  items.sort((a, b) => String(a.playerName || "").localeCompare(String(b.playerName || "")));
+  const page = xsPaginateArray(items, first, after);
+  return { total: items.length, items: page.slice, pageInfo: page.pageInfo };
+}
+
+function xsRecruterCatalog(idx, selectedLeague) {
+  const leagues = (idx.leagues || []).map((l) => ({
+    leagueSlug: l.leagueSlug,
+    leagueName: l.leagueName,
+    type: l.type || null,
+    released: !!l.released,
+    status: l.status || "pending",
+  }));
+  const seen = new Set();
+  const clubs = [];
+  for (const [leagueSlug, bucket] of Object.entries(idx.clubs || {})) {
+    if (selectedLeague && leagueSlug !== selectedLeague) continue;
+    for (const club of (bucket && bucket.items) || []) {
+      const key = leagueSlug + "|" + club.clubSlug;
+      if (!club.clubSlug || seen.has(key)) continue;
+      seen.add(key);
+      clubs.push({
+        leagueSlug,
+        clubSlug: club.clubSlug,
+        clubName: club.clubName,
+        teamType: club.teamType || null,
+        status: club.status || "pending",
+      });
+    }
+  }
+  clubs.sort((a, b) => String(a.clubName || "").localeCompare(String(b.clubName || "")));
+  return { leagues, clubs };
+}
+
+app.get("/recruter/health", (req, res) => {
+  const idx = xsRecruterReadIndex();
+  res.json({
+    ok: true,
+    route: "/recruter/health",
+    cacheFile: "data/recruter_players_index.json",
+    ...xsRecruterIndexSummary(idx),
+  });
+});
+
+app.get("/recruter/players-index/build", async (req, res) => {
+  try {
+    const out = await xsRecruterBuildIndex(req);
+    const summary = xsRecruterIndexSummary(out.index);
+    res.json({
+      ok: true,
+      ...summary,
+      callsThisRun: out.calls,
+      nextBuildUrl: summary.status === "complete" ? null : "/recruter/players-index/build?maxCalls=" + encodeURIComponent(String(out.options.maxCalls)),
+      note: "Index resumable: relance cette route tant que status != complete. Les cartes restent chargees au clic via /recruter/player/:slug/cards.",
+    });
+  } catch (e) {
+    const idx = xsRecruterReadIndex();
+    idx.status = e && e.status === 429 ? "paused" : "error";
+    idx.stopReason = e && e.status === 429 ? "rate_limit" : (e && e.code === "XS_RECRUTER_MAX_CALLS" ? "maxCalls" : "error");
+    idx.lastError = {
+      at: xsRecruterNowIso(),
+      message: String(e?.message || e),
+      status: e?.status || null,
+      retryAfter: e?.retryAfter || null,
+      graphQLErrors: e?.graphQLErrors || null,
+    };
+    xsRecruterWriteIndex(idx);
+    const status = e && e.status === 429 ? 429 : (e && e.code === "XS_RECRUTER_MAX_CALLS" ? 200 : 502);
+    res.status(status).json({
+      ok: status === 200,
+      ...xsRecruterIndexSummary(idx),
+      error: String(e?.message || e),
+      retryAfter: e?.retryAfter || null,
+    });
+  }
+});
+
+app.get("/recruter/players", (req, res) => {
+  const idx = xsRecruterReadIndex();
+  const rows = Object.values(idx.rows || {});
+  const page = xsRecruterRowsPage(req, rows);
+  const selectedLeague = String(req.query.league || req.query.leagueSlug || "").trim();
+  const catalog = xsRecruterCatalog(idx, selectedLeague || null);
+  res.json({
+    ok: true,
+    marker: XS_RECRUTER_ALL_LEAGUES_CLUBS_V1,
+    status: idx.status,
+    count: page.items.length,
+    total: page.total,
+    items: page.items,
+    pageInfo: page.pageInfo,
+    leagues: catalog.leagues,
+    clubs: catalog.clubs,
+    meta: xsRecruterIndexSummary(idx),
+  });
+});
+
+app.get("/recruter/player/:slug/cards", async (req, res) => {
+  try {
+    const slug = String(req.params.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "slug missing" });
+    const first = xsRecruterInt(req.query.first, 30, 1, 50);
+    const after = req.query.after ? String(req.query.after) : null;
+
+    const data = await xsRecruterGraphQL(`
+      query XSRecruterPlayerCards($playerSlug: String!, $first: Int!, $after: String) {
+        anyPlayer(slug: $playerSlug) {
+          slug
+          displayName
+          age
+          anyPositions
+          avatarPictureUrl
+          activeClub { slug name }
+        }
+        tokens {
+          liveSingleSaleOffers(playerSlug: $playerSlug, sport: FOOTBALL, first: $first, after: $after) {
+            totalCount
+            nodes {
+              id
+              endDate
+              senderSide {
+                amounts { eurCents wei }
+                anyCards {
+                  slug
+                  name
+                  pictureUrl
+                  rarityTyped
+                  seasonYear
+                  serialNumber
+                  anyPositions
+                  anyTeam { slug name }
+                }
+              }
+              receiverSide { amounts { eurCents wei } }
+            }
+            pageInfo { hasNextPage endCursor }
+          }
+        }
+      }
+    `, { playerSlug: slug, first, after });
+
+    const player = data?.anyPlayer || null;
+    const conn = data?.tokens?.liveSingleSaleOffers || {};
+    const cards = (conn.nodes || []).map((offer) => {
+      const card = offer?.senderSide?.anyCards?.[0] || {};
+      const amounts = offer?.receiverSide?.amounts || offer?.senderSide?.amounts || {};
+      const eur = typeof amounts.eurCents === "number" ? amounts.eurCents / 100 : null;
+      const wei = amounts.wei === null || amounts.wei === undefined ? null : String(amounts.wei);
+      const eth = wei && typeof xsWeiToEthStrScoutV3c === "function" ? xsWeiToEthStrScoutV3c(wei) : null;
+      const priceText = typeof eur === "number" && Number.isFinite(eur)
+        ? ("€" + (xsSafeToFixed(eur, 2) ?? String(eur)))
+        : (eth ? ("Ξ" + String(eth)) : (wei ? ("wei " + wei) : "Prix indisponible"));
+      return {
+        offerId: offer.id,
+        endDate: offer.endDate || null,
+        cardSlug: card.slug || null,
+        slug: card.slug || null,
+        cardName: card.name || null,
+        name: card.name || null,
+        pictureUrl: card.pictureUrl || null,
+        rarity: card.rarityTyped || null,
+        seasonYear: typeof card.seasonYear === "number" ? card.seasonYear : null,
+        serialNumber: typeof card.serialNumber === "number" ? card.serialNumber : null,
+        positions: Array.isArray(card.anyPositions) ? card.anyPositions : [],
+        position: xsRecruterPosition(card.anyPositions),
+        team: card.anyTeam ? { slug: card.anyTeam.slug || null, name: card.anyTeam.name || null } : null,
+        eur,
+        wei,
+        eth,
+        priceText,
+      };
+    });
+    const minPrice = cards.reduce((min, card) => (
+      typeof card.eur === "number" && Number.isFinite(card.eur) ? Math.min(min, card.eur) : min
+    ), Infinity);
+    const playerOut = player ? {
+      playerSlug: player.slug || slug,
+      playerName: player.displayName || slug,
+      position: xsRecruterPosition(player.anyPositions),
+      age: typeof player.age === "number" ? player.age : null,
+      pictureUrl: player.avatarPictureUrl || null,
+      activeClub: player.activeClub || null,
+    } : { playerSlug: slug, playerName: slug };
+
+    res.json({
+      ok: true,
+      marker: XS_RECRUTER_ALL_LEAGUES_CLUBS_V1,
+      playerSlug: playerOut.playerSlug,
+      playerName: playerOut.playerName,
+      position: playerOut.position || null,
+      activeClub: playerOut.activeClub || null,
+      player: playerOut,
+      count: cards.length,
+      totalCount: typeof conn.totalCount === "number" ? conn.totalCount : cards.length,
+      salesCount: typeof conn.totalCount === "number" ? conn.totalCount : cards.length,
+      minPrice: Number.isFinite(minPrice) ? minPrice : null,
+      minPriceEur: Number.isFinite(minPrice) ? minPrice : null,
+      cards,
+      offers: cards,
+      pageInfo: conn.pageInfo || { hasNextPage: false, endCursor: null },
+      message: cards.length ? null : "aucune carte en vente",
+    });
+  } catch (e) {
+    const status = e && e.status === 429 ? 429 : 502;
+    res.status(status).json({
+      ok: false,
+      marker: XS_RECRUTER_ALL_LEAGUES_CLUBS_V1,
+      error: String(e?.message || e),
+      retryAfter: e?.retryAfter || null,
+      graphQLErrors: e?.graphQLErrors || null,
+    });
+  }
+});
+/* XS_RECRUTER_ALL_LEAGUES_CLUBS_V1_END */
+
 const WATCHLIST_FILE = dataFile("scout_watchlist.json");
 const ALERTS_FILE = dataFile("scout_alerts.json");
 

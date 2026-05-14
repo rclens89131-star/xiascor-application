@@ -93,10 +93,20 @@ export async function deleteScoutAlert(id: string) {
 export type RecruiterRow = {
   playerSlug: string;
   playerName?: string | null;
+  leagueSlug?: string | null;
+  leagueName?: string | null;
+  clubSlug?: string | null;
+  clubName?: string | null;
   position?: string | null;
   activeClub?: { name?: string | null; slug?: string | null } | null;
+  activeLeague?: { name?: string | null; slug?: string | null } | null;
+  age?: number | null;
+  pictureUrl?: string | null;
+  avatar?: string | null;
   minPriceEur?: number | null;
+  minPrice?: number | null;
   offerCount?: number | null;
+  salesCount?: number | null;
   leagues?: string[] | null;
 };
 export type RecruiterPlayer = {
@@ -107,21 +117,24 @@ export type RecruiterPlayer = {
   offersByLeague?: Record<string, any[]> | null;
   offers?: any[] | null;
 };
-export async function scoutRecruter(params?: { first?: number; q?: string }) {
+export async function scoutRecruter(params?: { first?: number; q?: string; league?: string; club?: string; position?: string }) {
   const qs = new URLSearchParams();
   qs.set("first", String(params?.first ?? 40));
   if (params?.q) qs.set("q", params.q);
+  if (params?.league) qs.set("league", params.league);
+  if (params?.club) qs.set("club", params.club);
+  if (params?.position) qs.set("position", params.position);
 
-  const url = `${BASE_URL}/scout/recruter?${qs.toString()}`;
+  const url = `${BASE_URL}/recruter/players?${qs.toString()}`;
   const r = await fetch(url);
   if (!r.ok) throw new Error(`scoutRecruter HTTP ${r.status}`);
-  return (await r.json()) as { items: RecruiterRow[]; meta?: any };
+  return (await r.json()) as { items: RecruiterRow[]; meta?: any; leagues?: any[]; clubs?: any[] };
 }
 export async function scoutPlayer(slug: string, params?: { first?: number }) {
   const qs = new URLSearchParams();
   qs.set("first", String(params?.first ?? 50));
 
-  const url = `${BASE_URL}/scout/player2/${encodeURIComponent(slug)}?${qs.toString()}`;
+  const url = `${BASE_URL}/recruter/player/${encodeURIComponent(slug)}/cards?${qs.toString()}`;
   const r = await fetch(url);
   if (!r.ok) throw new Error(`scoutPlayer HTTP ${r.status}`);
   return (await r.json()) as RecruiterPlayer;
