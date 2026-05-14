@@ -2926,6 +2926,25 @@ export default function CardDetailScreen() {
   const [error, setError] = useState("");
   const [activeSeries, setActiveSeries] = useState<"L5" | "L15" | "ALL">("L5");
   const [radarRange, setRadarRange] = useState<XsRadarRangeV1>("L15");
+  const perfAuditSlugRef = React.useRef("");
+  const perfAuditStartedAtRef = React.useRef(Date.now());
+  const perfAuditRenderCountRef = React.useRef(0);
+  const perfAuditFirstTableLoggedRef = React.useRef(false);
+  const perfAuditTotalReadyLoggedRef = React.useRef(false);
+
+  if (perfAuditSlugRef.current !== playerSlug) {
+    perfAuditSlugRef.current = playerSlug;
+    perfAuditStartedAtRef.current = Date.now();
+    perfAuditRenderCountRef.current = 0;
+    perfAuditFirstTableLoggedRef.current = false;
+    perfAuditTotalReadyLoggedRef.current = false;
+  }
+  perfAuditRenderCountRef.current += 1;
+  console.log("[XS_CARD_PERF_AUDIT_V1] render_count", {
+    playerSlug: playerSlug || null,
+    renders: perfAuditRenderCountRef.current,
+    ms: Date.now() - perfAuditStartedAtRef.current,
+  });
 
   /* XS_CARD_FAST_TABLE_HISTORY_V1 */
   useEffect(() => {
@@ -2958,6 +2977,7 @@ export default function CardDetailScreen() {
     let fastPromise = XS_CARD_FAST_TABLE_HISTORY_INFLIGHT_V1.get(slug);
     if (!fastPromise) {
       fastPromise = (async () => {
+        const fastStartedAt = Date.now();
         const base = XS_HISTORY_CHART_CLOUDRUN_V2.replace(/\/+$/, "");
         const histUrl = `${base}/history/player-chart/${encodeURIComponent(slug)}?limit=15`;
         console.log("[XS_CARD_FAST_TABLE_HISTORY_V1] fast_fetch_start", {
@@ -2972,6 +2992,11 @@ export default function CardDetailScreen() {
         const items = Array.isArray(histJson?.items) ? histJson.items : [];
         console.log("[XS_CARD_FAST_TABLE_HISTORY_V1] fast_fetch_success", {
           playerSlug: slug,
+          count: items.length,
+        });
+        console.log("[XS_CARD_PERF_AUDIT_V1] fast_history_ms", {
+          playerSlug: slug,
+          ms: Date.now() - fastStartedAt,
           count: items.length,
         });
         return items;
@@ -3227,6 +3252,7 @@ return () => { cancelled = true; };
           hasDeviceId: Boolean(deviceId),
         });
 
+        const syncStartedAt = Date.now();
         const syncResp = await fetch(syncUrl, {
           method: "POST",
           headers: { accept: "application/json" },
@@ -3235,15 +3261,26 @@ return () => { cancelled = true; };
         if (!syncResp.ok || syncJson?.ok === false) {
           throw new Error(String(syncJson?.error || syncJson?.details || `sync_http_${syncResp.status}`));
         }
+        console.log("[XS_CARD_PERF_AUDIT_V1] sync_ms", {
+          playerSlug: slug,
+          ms: Date.now() - syncStartedAt,
+        });
 
         const chartBase = XS_HISTORY_CHART_CLOUDRUN_V2.replace(/\/+$/, "");
         const histUrl = `${chartBase}/history/player-chart/${encodeURIComponent(slug)}?limit=50`;
+        const reloadStartedAt = Date.now();
         const histResp = await fetch(histUrl, { headers: { accept: "application/json" } });
         const histJson = await histResp.json().catch(() => null);
         const items = Array.isArray(histJson?.items) ? histJson.items : [];
         if (!cancelled) setHistoryChart(items);
         console.log("[XS_CARD_FAST_TABLE_HISTORY_V1] sync_reload_success", {
           playerSlug: slug,
+          count: items.length,
+        });
+        console.log("[XS_CARD_PERF_AUDIT_V1] total_ready_ms", {
+          playerSlug: slug,
+          ms: Date.now() - syncStartedAt,
+          reloadMs: Date.now() - reloadStartedAt,
           count: items.length,
         });
 
@@ -3387,6 +3424,28 @@ return () => { cancelled = true; };
     const xsOpponentLogoUrls = xsOppSlice.map((x: any) => xsPickOpponentLogoUrl(x));
   const xsOpponentShort = xsOppSlice.map((x: any) => xsPickOpponentShort(x));
   // XS_FIX_CARD_DETAIL_OPPONENT_LOGOS_NESTED_V1 END
+  useEffect(() => {
+    const tableCount = Array.isArray(xsDisplayScores) ? xsDisplayScores.length : 0;
+    if (tableCount > 0 && !perfAuditFirstTableLoggedRef.current) {
+      perfAuditFirstTableLoggedRef.current = true;
+      console.log("[XS_CARD_PERF_AUDIT_V1] first_table_ms", {
+        playerSlug: playerSlug || null,
+        ms: Date.now() - perfAuditStartedAtRef.current,
+        tableCount,
+        renders: perfAuditRenderCountRef.current,
+      });
+    }
+    if (tableCount > 0 && state === "ok" && !historyFastLoading && !perfAuditTotalReadyLoggedRef.current) {
+      perfAuditTotalReadyLoggedRef.current = true;
+      console.log("[XS_CARD_PERF_AUDIT_V1] total_ready_ms", {
+        playerSlug: playerSlug || null,
+        phase: "initial_ready",
+        ms: Date.now() - perfAuditStartedAtRef.current,
+        tableCount,
+        renders: perfAuditRenderCountRef.current,
+      });
+    }
+  }, [historyFastLoading, playerSlug, state, xsDisplayScores.length]);
 const avg5 =
   asNum((perf as any)?.averages?.l5) ??
   asNum((perf as any)?.l5) ??
