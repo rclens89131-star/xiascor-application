@@ -2821,7 +2821,10 @@ const XS_RECRUTER_ALL_LEAGUES_CLUBS_V1 = "XS_RECRUTER_ALL_LEAGUES_CLUBS_V1";
 const XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1 = "XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1";
 const XS_RECRUTER_HYBRID_INDEX_MODE_V1 = "XS_RECRUTER_HYBRID_INDEX_MODE_V1";
 const XS_RECRUTER_AUTO_INDEX_RUNNER_V1 = "XS_RECRUTER_AUTO_INDEX_RUNNER_V1";
+const XS_RECRUTER_CARDS_CACHE_WARMUP_V1 = "XS_RECRUTER_CARDS_CACHE_WARMUP_V1";
 const XS_RECRUTER_INDEX_FILE = dataFile("recruter_players_index.json");
+const XS_RECRUTER_CARDS_CACHE_DIR = dataFile("recruter_cards_cache");
+const XS_RECRUTER_CARDS_CACHE_META_FILE = require("path").join(XS_RECRUTER_CARDS_CACHE_DIR, "_meta.json");
 const XS_RECRUTER_JWT_DEVICE_TOKENS_FILE = dataFile("jwt_device_tokens.json");
 const XS_RECRUTER_JWT_DEVICES_FILE = dataFile("jwt_devices.json");
 const XS_RECRUTER_OAUTH_DEVICES_FILE = dataFile("oauth_devices.json");
@@ -2848,7 +2851,7 @@ function xsRecruterEmptyIndex() {
     lastError: null,
     retryAfterUntil: null,
     authMode: "public",
-    patches: [XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1, XS_RECRUTER_HYBRID_INDEX_MODE_V1, XS_RECRUTER_AUTO_INDEX_RUNNER_V1],
+    patches: [XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1, XS_RECRUTER_HYBRID_INDEX_MODE_V1, XS_RECRUTER_AUTO_INDEX_RUNNER_V1, XS_RECRUTER_CARDS_CACHE_WARMUP_V1],
     lastBuildOptions: null,
     progress: {
       phase: "idle",
@@ -2887,6 +2890,7 @@ function xsRecruterReadIndex() {
     ...(Array.isArray(idx.patches) ? idx.patches : []),
     XS_RECRUTER_HYBRID_INDEX_MODE_V1,
     XS_RECRUTER_AUTO_INDEX_RUNNER_V1,
+    XS_RECRUTER_CARDS_CACHE_WARMUP_V1,
   ]));
   return { ...base, ...idx, patches, totals: { ...base.totals, ...idx.totals } };
 }
@@ -3027,6 +3031,22 @@ function xsRecruterGraphQLHeaders(auth) {
   return h;
 }
 
+function xsRecruterPublicAuthState() {
+  return {
+    mode: "public",
+    hasApiKey: false,
+    hasServerJwt: false,
+    hasUserJwtAvailable: false,
+    userToken: null,
+  };
+}
+
+function xsRecruterShouldFallbackPublic(auth, err) {
+  if (!auth || auth.mode !== "userJwt" || auth.userToken || auth.hasApiKey || !auth.hasServerJwt) return false;
+  const text = String(err?.message || "") + " " + JSON.stringify(err?.graphQLErrors || null) + " " + String(err?.body || "");
+  return /unauthorized|wrong aud/i.test(text);
+}
+
 function xsRecruterModeLimits(auth) {
   const mode = auth && auth.mode ? auth.mode : "public";
   if (mode === "apiKey") {
@@ -3130,6 +3150,7 @@ async function xsRecruterGraphQLWithAuth(query, variables, auth) {
     err.graphQLErrors = json && json.errors ? json.errors : null;
     err.body = text ? text.slice(0, 2000) : null;
     err.isComplexity = /complexity/i.test(String(err.message || "") + " " + String(err.body || ""));
+    if (xsRecruterShouldFallbackPublic(auth, err)) return xsRecruterGraphQLWithAuth(query, variables, xsRecruterPublicAuthState());
     throw err;
   }
   if (json && json.errors && json.errors.length) {
@@ -3137,6 +3158,7 @@ async function xsRecruterGraphQLWithAuth(query, variables, auth) {
     err.graphQLErrors = json.errors;
     err.data = json.data;
     err.isComplexity = /complexity/i.test(JSON.stringify(json.errors));
+    if (xsRecruterShouldFallbackPublic(auth, err)) return xsRecruterGraphQLWithAuth(query, variables, xsRecruterPublicAuthState());
     throw err;
   }
   return json ? json.data : null;
@@ -3544,7 +3566,8 @@ function xsRecruterIndexSummary(idx) {
     patch: XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1,
     hybridPatch: XS_RECRUTER_HYBRID_INDEX_MODE_V1,
     autoRunnerPatch: XS_RECRUTER_AUTO_INDEX_RUNNER_V1,
-    patches: Array.isArray(idx.patches) ? idx.patches : [XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1, XS_RECRUTER_HYBRID_INDEX_MODE_V1, XS_RECRUTER_AUTO_INDEX_RUNNER_V1],
+    cardsCachePatch: XS_RECRUTER_CARDS_CACHE_WARMUP_V1,
+    patches: Array.isArray(idx.patches) ? idx.patches : [XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1, XS_RECRUTER_HYBRID_INDEX_MODE_V1, XS_RECRUTER_AUTO_INDEX_RUNNER_V1, XS_RECRUTER_CARDS_CACHE_WARMUP_V1],
     mode: idx.authMode || "public",
     status: idx.status,
     startedAt: idx.startedAt || null,
@@ -3621,6 +3644,305 @@ function xsRecruterAutoRunReq(req) {
   const buildReq = Object.create(req);
   buildReq.query = query;
   return buildReq;
+}
+
+function xsRecruterCardsCacheTtlMs(req) {
+  const fromQuery = xsRecruterOptionalInt(req && req.query ? (req.query.ttlMs || req.query.cardsTtlMs) : null, 60000, 7 * 24 * 60 * 60 * 1000);
+  if (fromQuery !== null) return fromQuery;
+  const fromEnvMs = xsRecruterOptionalInt(process.env.XS_RECRUTER_CARDS_CACHE_TTL_MS, 60000, 7 * 24 * 60 * 60 * 1000);
+  if (fromEnvMs !== null) return fromEnvMs;
+  const fromEnvHours = xsRecruterOptionalInt(process.env.XS_RECRUTER_CARDS_CACHE_TTL_HOURS, 1, 168);
+  return (fromEnvHours || 6) * 60 * 60 * 1000;
+}
+
+function xsRecruterCardsFirst(req, auth) {
+  const hasApiKey = !!(auth && auth.hasApiKey);
+  return xsRecruterInt(req && req.query ? req.query.first : null, hasApiKey ? 30 : 5, 1, hasApiKey ? 50 : 5);
+}
+
+function xsRecruterSafeCacheSlug(slug) {
+  return String(slug || "").trim().toLowerCase().replace(/[^a-z0-9_\-]/g, "_").slice(0, 160);
+}
+
+function xsRecruterCardsCacheFile(slug) {
+  return require("path").join(XS_RECRUTER_CARDS_CACHE_DIR, xsRecruterSafeCacheSlug(slug) + ".json");
+}
+
+function xsRecruterCardsCacheMeta() {
+  const meta = readJson(XS_RECRUTER_CARDS_CACHE_META_FILE, {});
+  return {
+    marker: XS_RECRUTER_CARDS_CACHE_WARMUP_V1,
+    lastRunAt: null,
+    retryAfterUntil: null,
+    cursorSlug: null,
+    errors: [],
+    ...(meta && typeof meta === "object" ? meta : {}),
+  };
+}
+
+function xsRecruterWriteCardsCacheMeta(meta) {
+  const next = {
+    marker: XS_RECRUTER_CARDS_CACHE_WARMUP_V1,
+    ...(meta && typeof meta === "object" ? meta : {}),
+    updatedAt: xsRecruterNowIso(),
+  };
+  next.errors = Array.isArray(next.errors) ? next.errors.slice(-100) : [];
+  writeJson(XS_RECRUTER_CARDS_CACHE_META_FILE, next);
+  return next;
+}
+
+function xsRecruterCardsCacheEntry(slug) {
+  const entry = readJson(xsRecruterCardsCacheFile(slug), null);
+  if (!entry || entry.marker !== XS_RECRUTER_CARDS_CACHE_WARMUP_V1 || entry.playerSlug !== slug) return null;
+  return entry;
+}
+
+function xsRecruterCardsCacheIsFresh(entry, ttlMs, first, after) {
+  if (!entry || !entry.cachedAt || !entry.response) return false;
+  if (Number(entry.first || 0) !== Number(first || 0)) return false;
+  if (String(entry.after || "") !== String(after || "")) return false;
+  const cachedAt = Date.parse(String(entry.cachedAt));
+  return Number.isFinite(cachedAt) && (Date.now() - cachedAt) < ttlMs;
+}
+
+function xsRecruterCardsCacheInfo(entry, ttlMs) {
+  const cachedAtMs = Date.parse(String(entry && entry.cachedAt ? entry.cachedAt : ""));
+  const ageMs = Number.isFinite(cachedAtMs) ? Math.max(0, Date.now() - cachedAtMs) : null;
+  return {
+    marker: XS_RECRUTER_CARDS_CACHE_WARMUP_V1,
+    cachedAt: entry && entry.cachedAt ? entry.cachedAt : null,
+    expiresAt: Number.isFinite(cachedAtMs) ? new Date(cachedAtMs + ttlMs).toISOString() : null,
+    ageMs,
+    ttlMs,
+  };
+}
+
+function xsRecruterWriteCardsCache(slug, first, after, ttlMs, response) {
+  const cachedAt = xsRecruterNowIso();
+  const entry = {
+    marker: XS_RECRUTER_CARDS_CACHE_WARMUP_V1,
+    playerSlug: slug,
+    first,
+    after: after || null,
+    cachedAt,
+    expiresAt: new Date(Date.parse(cachedAt) + ttlMs).toISOString(),
+    response,
+  };
+  writeJson(xsRecruterCardsCacheFile(slug), entry);
+  return entry;
+}
+
+function xsRecruterCardsCacheFiles() {
+  try {
+    const fs = require("fs");
+    if (!fs.existsSync(XS_RECRUTER_CARDS_CACHE_DIR)) return [];
+    return fs.readdirSync(XS_RECRUTER_CARDS_CACHE_DIR)
+      .filter((name) => name.endsWith(".json") && name !== "_meta.json")
+      .map((name) => require("path").join(XS_RECRUTER_CARDS_CACHE_DIR, name));
+  } catch {
+    return [];
+  }
+}
+
+function xsRecruterCardsCacheStatus(req) {
+  const ttlMs = xsRecruterCardsCacheTtlMs(req);
+  const idx = xsRecruterReadIndex();
+  const meta = xsRecruterCardsCacheMeta();
+  const files = xsRecruterCardsCacheFiles();
+  let staleCacheCount = 0;
+  for (const file of files) {
+    const entry = readJson(file, null);
+    const cachedAt = Date.parse(String(entry && entry.cachedAt ? entry.cachedAt : ""));
+    if (!Number.isFinite(cachedAt) || (Date.now() - cachedAt) >= ttlMs) staleCacheCount += 1;
+  }
+  return {
+    ok: true,
+    marker: XS_RECRUTER_CARDS_CACHE_WARMUP_V1,
+    totalPlayersIndexed: (idx.totals && typeof idx.totals.players === "number") ? idx.totals.players : 0,
+    playersWithCardsCache: files.length,
+    staleCacheCount,
+    lastRunAt: meta.lastRunAt || null,
+    retryAfterUntil: meta.retryAfterUntil || null,
+    errorsCount: Array.isArray(meta.errors) ? meta.errors.length : 0,
+    ttlMs,
+  };
+}
+
+function xsRecruterCardsRememberError(meta, slug, e) {
+  meta.errors = Array.isArray(meta.errors) ? meta.errors : [];
+  meta.errors.push({
+    at: xsRecruterNowIso(),
+    playerSlug: slug || null,
+    status: e?.status || null,
+    retryAfter: e?.retryAfter || null,
+    message: String(e?.message || e),
+  });
+  if (e && e.status === 429) meta.retryAfterUntil = xsRecruterRetryAfterUntil(e.retryAfter);
+  xsRecruterWriteCardsCacheMeta(meta);
+}
+
+function xsRecruterPlayerSlugsForWarmup(req, idx, meta, ttlMs, maxPlayers, first, after) {
+  const body = req && req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+  const raw = body.playerSlugs || body.players || (req.query && (req.query.playerSlugs || req.query.players || req.query.slugs));
+  const explicit = Array.isArray(raw) ? raw : String(raw || "").split(",");
+  const explicitSlugs = explicit.map((s) => String(s || "").trim()).filter(Boolean);
+  if (explicitSlugs.length) return Array.from(new Set(explicitSlugs)).slice(0, maxPlayers);
+
+  const seen = new Set();
+  const rows = Object.values(idx.rows || {})
+    .filter((row) => row && row.playerSlug)
+    .sort((a, b) => String(a.playerName || a.playerSlug).localeCompare(String(b.playerName || b.playerSlug)));
+  const slugs = [];
+  for (const row of rows) {
+    if (seen.has(row.playerSlug)) continue;
+    seen.add(row.playerSlug);
+    slugs.push(row.playerSlug);
+  }
+  if (!slugs.length) return [];
+  const start = meta.cursorSlug && slugs.includes(meta.cursorSlug) ? slugs.indexOf(meta.cursorSlug) + 1 : 0;
+  const ordered = slugs.slice(start).concat(slugs.slice(0, start));
+  const picked = [];
+  for (const slug of ordered) {
+    const entry = xsRecruterCardsCacheEntry(slug);
+    if (xsRecruterCardsCacheIsFresh(entry, ttlMs, first, after)) continue;
+    picked.push(slug);
+    if (picked.length >= maxPlayers) break;
+  }
+  return picked;
+}
+
+async function xsRecruterFetchPlayerCardsPayload(slug, first, after, auth) {
+  const data = await xsRecruterGraphQLWithAuth(`
+      query XSRecruterPlayerCards($playerSlug: String!, $first: Int!, $after: String) {
+        anyPlayer(slug: $playerSlug) {
+          slug
+          displayName
+          age
+          anyPositions
+          avatarPictureUrl
+          activeClub { slug name }
+        }
+        tokens {
+          liveSingleSaleOffers(playerSlug: $playerSlug, sport: FOOTBALL, first: $first, after: $after) {
+            totalCount
+            nodes {
+              id
+              endDate
+              senderSide {
+                amounts { eurCents wei }
+                anyCards {
+                  slug
+                  name
+                  pictureUrl
+                  rarityTyped
+                  seasonYear
+                  serialNumber
+                  anyPositions
+                  anyTeam { slug name }
+                }
+              }
+              receiverSide { amounts { eurCents wei } }
+            }
+            pageInfo { hasNextPage endCursor }
+          }
+        }
+      }
+    `, { playerSlug: slug, first, after }, auth);
+
+  const player = data?.anyPlayer || null;
+  const conn = data?.tokens?.liveSingleSaleOffers || {};
+  const cards = (conn.nodes || []).map((offer) => {
+    const card = offer?.senderSide?.anyCards?.[0] || {};
+    const amounts = offer?.receiverSide?.amounts || offer?.senderSide?.amounts || {};
+    const eur = typeof amounts.eurCents === "number" ? amounts.eurCents / 100 : null;
+    const wei = amounts.wei === null || amounts.wei === undefined ? null : String(amounts.wei);
+    const eth = wei && typeof xsWeiToEthStrScoutV3c === "function" ? xsWeiToEthStrScoutV3c(wei) : null;
+    const priceText = typeof eur === "number" && Number.isFinite(eur)
+      ? ("€" + (xsSafeToFixed(eur, 2) ?? String(eur)))
+      : (eth ? ("Ξ" + String(eth)) : (wei ? ("wei " + wei) : "Prix indisponible"));
+    return {
+      offerId: offer.id,
+      endDate: offer.endDate || null,
+      cardSlug: card.slug || null,
+      slug: card.slug || null,
+      cardName: card.name || null,
+      name: card.name || null,
+      pictureUrl: card.pictureUrl || null,
+      rarity: card.rarityTyped || null,
+      seasonYear: typeof card.seasonYear === "number" ? card.seasonYear : null,
+      serialNumber: typeof card.serialNumber === "number" ? card.serialNumber : null,
+      positions: Array.isArray(card.anyPositions) ? card.anyPositions : [],
+      position: xsRecruterPosition(card.anyPositions),
+      team: card.anyTeam ? { slug: card.anyTeam.slug || null, name: card.anyTeam.name || null } : null,
+      eur,
+      wei,
+      eth,
+      priceText,
+    };
+  });
+  const minPrice = cards.reduce((min, card) => (
+    typeof card.eur === "number" && Number.isFinite(card.eur) ? Math.min(min, card.eur) : min
+  ), Infinity);
+  const playerOut = player ? {
+    playerSlug: player.slug || slug,
+    playerName: player.displayName || slug,
+    position: xsRecruterPosition(player.anyPositions),
+    age: typeof player.age === "number" ? player.age : null,
+    pictureUrl: player.avatarPictureUrl || null,
+    activeClub: player.activeClub || null,
+  } : { playerSlug: slug, playerName: slug };
+
+  return {
+    ok: true,
+    marker: XS_RECRUTER_ALL_LEAGUES_CLUBS_V1,
+    cardsCachePatch: XS_RECRUTER_CARDS_CACHE_WARMUP_V1,
+    playerSlug: playerOut.playerSlug,
+    playerName: playerOut.playerName,
+    position: playerOut.position || null,
+    activeClub: playerOut.activeClub || null,
+    player: playerOut,
+    count: cards.length,
+    totalCount: typeof conn.totalCount === "number" ? conn.totalCount : cards.length,
+    salesCount: typeof conn.totalCount === "number" ? conn.totalCount : cards.length,
+    minPrice: Number.isFinite(minPrice) ? minPrice : null,
+    minPriceEur: Number.isFinite(minPrice) ? minPrice : null,
+    cards,
+    offers: cards,
+    pageInfo: conn.pageInfo || { hasNextPage: false, endCursor: null },
+    message: cards.length ? null : "aucune carte en vente",
+  };
+}
+
+async function xsRecruterCardsReadThroughCache(req, slug, auth) {
+  const ttlMs = xsRecruterCardsCacheTtlMs(req);
+  const first = xsRecruterCardsFirst(req, auth);
+  const after = req.query.after ? String(req.query.after) : null;
+  const forceRefresh = xsRecruterBool(req.query.refresh || req.query.forceRefresh);
+  const meta = xsRecruterCardsCacheMeta();
+  const entry = xsRecruterCardsCacheEntry(slug);
+  if (!forceRefresh && xsRecruterCardsCacheIsFresh(entry, ttlMs, first, after)) {
+    return {
+      ...entry.response,
+      cache: { ...xsRecruterCardsCacheInfo(entry, ttlMs), hit: true, stale: false },
+    };
+  }
+  const activeRetry = xsRecruterActiveRetryAfter(meta);
+  if (activeRetry) {
+    const err = new Error("Sorare Retry-After still active for cards cache");
+    err.status = 429;
+    err.retryAfter = String(activeRetry);
+    throw err;
+  }
+  const response = await xsRecruterFetchPlayerCardsPayload(slug, first, after, auth);
+  const written = xsRecruterWriteCardsCache(slug, first, after, ttlMs, response);
+  meta.lastPlayerSlug = slug;
+  meta.lastRunAt = xsRecruterNowIso();
+  meta.retryAfterUntil = null;
+  xsRecruterWriteCardsCacheMeta(meta);
+  return {
+    ...response,
+    cache: { ...xsRecruterCardsCacheInfo(written, ttlMs), hit: false, stale: !!entry },
+  };
 }
 
 function xsRecruterRowsPage(req, rows) {
@@ -3783,6 +4105,98 @@ app.post("/recruter/players-index/auto-run", async (req, res) => {
   }
 });
 
+app.get("/recruter/cards-cache/status", (req, res) => {
+  res.json({
+    route: "/recruter/cards-cache/status",
+    ...xsRecruterCardsCacheStatus(req),
+  });
+});
+
+app.post("/recruter/cards-cache/warmup", async (req, res) => {
+  const auth = xsRecruterAuthState(req);
+  const idx = xsRecruterReadIndex();
+  const meta = xsRecruterCardsCacheMeta();
+  const activeRetry = xsRecruterActiveRetryAfter(meta);
+  if (activeRetry) {
+    return res.status(429).json({
+      ok: false,
+      route: "/recruter/cards-cache/warmup",
+      marker: XS_RECRUTER_CARDS_CACHE_WARMUP_V1,
+      retryAfter: String(activeRetry),
+      retryAfterUntil: meta.retryAfterUntil || null,
+      warmedCount: 0,
+      callsThisRun: 0,
+    });
+  }
+
+  const ttlMs = xsRecruterCardsCacheTtlMs(req);
+  const maxPlayers = xsRecruterInt(req.query.maxPlayers, 5, 1, 20);
+  const maxCalls = xsRecruterInt(req.query.maxCalls, 10, 1, 50);
+  const rateDelayMs = xsRecruterInt(req.query.rateDelayMs, 1000, 1000, 30000);
+  const first = xsRecruterCardsFirst(req, auth);
+  const after = req.query.after ? String(req.query.after) : null;
+  const slugs = xsRecruterPlayerSlugsForWarmup(req, idx, meta, ttlMs, maxPlayers, first, after);
+  const warmed = [];
+  const skipped = [];
+  const errors = [];
+  let calls = 0;
+  let stoppedBy = null;
+
+  for (const slug of slugs) {
+    if (calls >= maxCalls) {
+      stoppedBy = "maxCalls";
+      break;
+    }
+    const entry = xsRecruterCardsCacheEntry(slug);
+    if (xsRecruterCardsCacheIsFresh(entry, ttlMs, first, after) && !xsRecruterBool(req.query.refresh || req.query.forceRefresh)) {
+      skipped.push({ playerSlug: slug, reason: "fresh_cache" });
+      meta.cursorSlug = slug;
+      continue;
+    }
+    if (calls > 0) await xsRecruterSleep(rateDelayMs);
+    try {
+      calls += 1;
+      const response = await xsRecruterFetchPlayerCardsPayload(slug, first, after, auth);
+      xsRecruterWriteCardsCache(slug, first, after, ttlMs, response);
+      warmed.push({ playerSlug: slug, count: response.count, totalCount: response.totalCount });
+      meta.cursorSlug = slug;
+      meta.lastPlayerSlug = slug;
+      meta.retryAfterUntil = null;
+      xsRecruterWriteCardsCacheMeta(meta);
+    } catch (e) {
+      xsRecruterCardsRememberError(meta, slug, e);
+      errors.push({ playerSlug: slug, status: e?.status || null, message: String(e?.message || e), retryAfter: e?.retryAfter || null });
+      if (e && e.status === 429) {
+        stoppedBy = "rate_limit";
+        break;
+      }
+    }
+  }
+
+  meta.lastRunAt = xsRecruterNowIso();
+  xsRecruterWriteCardsCacheMeta(meta);
+  const status = xsRecruterCardsCacheStatus(req);
+  const httpStatus = stoppedBy === "rate_limit" ? 429 : 200;
+  res.status(httpStatus).json({
+    ok: httpStatus === 200,
+    route: "/recruter/cards-cache/warmup",
+    marker: XS_RECRUTER_CARDS_CACHE_WARMUP_V1,
+    mode: auth.mode,
+    hasApiKey: auth.hasApiKey,
+    hasServerJwt: auth.hasServerJwt,
+    selectedPlayers: slugs.length,
+    warmedCount: warmed.length,
+    skippedCount: skipped.length,
+    callsThisRun: calls,
+    stoppedBy,
+    warmed,
+    skipped,
+    errors,
+    retryAfterUntil: meta.retryAfterUntil || null,
+    status,
+  });
+});
+
 app.get("/recruter/players", (req, res) => {
   const idx = xsRecruterReadIndex();
   const rows = Object.values(idx.rows || {});
@@ -3808,112 +4222,17 @@ app.get("/recruter/player/:slug/cards", async (req, res) => {
     const auth = xsRecruterAuthState(req);
     const slug = String(req.params.slug || "").trim();
     if (!slug) return res.status(400).json({ ok: false, error: "slug missing" });
-    const first = xsRecruterInt(req.query.first, 30, 1, 50);
-    const after = req.query.after ? String(req.query.after) : null;
-
-    const data = await xsRecruterGraphQLWithAuth(`
-      query XSRecruterPlayerCards($playerSlug: String!, $first: Int!, $after: String) {
-        anyPlayer(slug: $playerSlug) {
-          slug
-          displayName
-          age
-          anyPositions
-          avatarPictureUrl
-          activeClub { slug name }
-        }
-        tokens {
-          liveSingleSaleOffers(playerSlug: $playerSlug, sport: FOOTBALL, first: $first, after: $after) {
-            totalCount
-            nodes {
-              id
-              endDate
-              senderSide {
-                amounts { eurCents wei }
-                anyCards {
-                  slug
-                  name
-                  pictureUrl
-                  rarityTyped
-                  seasonYear
-                  serialNumber
-                  anyPositions
-                  anyTeam { slug name }
-                }
-              }
-              receiverSide { amounts { eurCents wei } }
-            }
-            pageInfo { hasNextPage endCursor }
-          }
-        }
-      }
-    `, { playerSlug: slug, first, after }, auth);
-
-    const player = data?.anyPlayer || null;
-    const conn = data?.tokens?.liveSingleSaleOffers || {};
-    const cards = (conn.nodes || []).map((offer) => {
-      const card = offer?.senderSide?.anyCards?.[0] || {};
-      const amounts = offer?.receiverSide?.amounts || offer?.senderSide?.amounts || {};
-      const eur = typeof amounts.eurCents === "number" ? amounts.eurCents / 100 : null;
-      const wei = amounts.wei === null || amounts.wei === undefined ? null : String(amounts.wei);
-      const eth = wei && typeof xsWeiToEthStrScoutV3c === "function" ? xsWeiToEthStrScoutV3c(wei) : null;
-      const priceText = typeof eur === "number" && Number.isFinite(eur)
-        ? ("€" + (xsSafeToFixed(eur, 2) ?? String(eur)))
-        : (eth ? ("Ξ" + String(eth)) : (wei ? ("wei " + wei) : "Prix indisponible"));
-      return {
-        offerId: offer.id,
-        endDate: offer.endDate || null,
-        cardSlug: card.slug || null,
-        slug: card.slug || null,
-        cardName: card.name || null,
-        name: card.name || null,
-        pictureUrl: card.pictureUrl || null,
-        rarity: card.rarityTyped || null,
-        seasonYear: typeof card.seasonYear === "number" ? card.seasonYear : null,
-        serialNumber: typeof card.serialNumber === "number" ? card.serialNumber : null,
-        positions: Array.isArray(card.anyPositions) ? card.anyPositions : [],
-        position: xsRecruterPosition(card.anyPositions),
-        team: card.anyTeam ? { slug: card.anyTeam.slug || null, name: card.anyTeam.name || null } : null,
-        eur,
-        wei,
-        eth,
-        priceText,
-      };
-    });
-    const minPrice = cards.reduce((min, card) => (
-      typeof card.eur === "number" && Number.isFinite(card.eur) ? Math.min(min, card.eur) : min
-    ), Infinity);
-    const playerOut = player ? {
-      playerSlug: player.slug || slug,
-      playerName: player.displayName || slug,
-      position: xsRecruterPosition(player.anyPositions),
-      age: typeof player.age === "number" ? player.age : null,
-      pictureUrl: player.avatarPictureUrl || null,
-      activeClub: player.activeClub || null,
-    } : { playerSlug: slug, playerName: slug };
-
-    res.json({
-      ok: true,
-      marker: XS_RECRUTER_ALL_LEAGUES_CLUBS_V1,
-      playerSlug: playerOut.playerSlug,
-      playerName: playerOut.playerName,
-      position: playerOut.position || null,
-      activeClub: playerOut.activeClub || null,
-      player: playerOut,
-      count: cards.length,
-      totalCount: typeof conn.totalCount === "number" ? conn.totalCount : cards.length,
-      salesCount: typeof conn.totalCount === "number" ? conn.totalCount : cards.length,
-      minPrice: Number.isFinite(minPrice) ? minPrice : null,
-      minPriceEur: Number.isFinite(minPrice) ? minPrice : null,
-      cards,
-      offers: cards,
-      pageInfo: conn.pageInfo || { hasNextPage: false, endCursor: null },
-      message: cards.length ? null : "aucune carte en vente",
-    });
+    const payload = await xsRecruterCardsReadThroughCache(req, slug, auth);
+    res.json(payload);
   } catch (e) {
+    if (e && e.status === 429) {
+      try { xsRecruterCardsRememberError(xsRecruterCardsCacheMeta(), req.params.slug, e); } catch {}
+    }
     const status = e && e.status === 429 ? 429 : 502;
     res.status(status).json({
       ok: false,
       marker: XS_RECRUTER_ALL_LEAGUES_CLUBS_V1,
+      cardsCachePatch: XS_RECRUTER_CARDS_CACHE_WARMUP_V1,
       error: String(e?.message || e),
       retryAfter: e?.retryAfter || null,
       graphQLErrors: e?.graphQLErrors || null,
