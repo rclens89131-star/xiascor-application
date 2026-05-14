@@ -4535,7 +4535,7 @@ try {
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: form.toString(),
     });
-  const raw = (o && typeof o.priceEur === "number" && Number.isFinite(o.priceEur)) ? (o.priceEur.toFixed(2) + " €") : "";
+    const raw = await r.text();
     if (!r.ok) return res.status(500).send("Token exchange failed: " + r.status + "\n" + raw);
 
     const token = JSON.parse(raw);
