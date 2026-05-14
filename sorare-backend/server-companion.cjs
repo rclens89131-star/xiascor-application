@@ -2820,10 +2820,17 @@ return res.json({
 const XS_RECRUTER_ALL_LEAGUES_CLUBS_V1 = "XS_RECRUTER_ALL_LEAGUES_CLUBS_V1";
 const XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1 = "XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1";
 const XS_RECRUTER_HYBRID_INDEX_MODE_V1 = "XS_RECRUTER_HYBRID_INDEX_MODE_V1";
+const XS_RECRUTER_AUTO_INDEX_RUNNER_V1 = "XS_RECRUTER_AUTO_INDEX_RUNNER_V1";
 const XS_RECRUTER_INDEX_FILE = dataFile("recruter_players_index.json");
 const XS_RECRUTER_JWT_DEVICE_TOKENS_FILE = dataFile("jwt_device_tokens.json");
 const XS_RECRUTER_JWT_DEVICES_FILE = dataFile("jwt_devices.json");
 const XS_RECRUTER_OAUTH_DEVICES_FILE = dataFile("oauth_devices.json");
+const XS_RECRUTER_AUTO_DEFAULTS = Object.freeze({
+  maxCalls: 120,
+  teamPageSize: 10,
+  playerPageSize: 20,
+  rateDelayMs: 900,
+});
 
 function xsRecruterNowIso() {
   return new Date().toISOString();
@@ -2841,7 +2848,7 @@ function xsRecruterEmptyIndex() {
     lastError: null,
     retryAfterUntil: null,
     authMode: "public",
-    patches: [XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1, XS_RECRUTER_HYBRID_INDEX_MODE_V1],
+    patches: [XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1, XS_RECRUTER_HYBRID_INDEX_MODE_V1, XS_RECRUTER_AUTO_INDEX_RUNNER_V1],
     lastBuildOptions: null,
     progress: {
       phase: "idle",
@@ -2879,6 +2886,7 @@ function xsRecruterReadIndex() {
     ...base.patches,
     ...(Array.isArray(idx.patches) ? idx.patches : []),
     XS_RECRUTER_HYBRID_INDEX_MODE_V1,
+    XS_RECRUTER_AUTO_INDEX_RUNNER_V1,
   ]));
   return { ...base, ...idx, patches, totals: { ...base.totals, ...idx.totals } };
 }
@@ -3535,7 +3543,8 @@ function xsRecruterIndexSummary(idx) {
     marker: XS_RECRUTER_ALL_LEAGUES_CLUBS_V1,
     patch: XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1,
     hybridPatch: XS_RECRUTER_HYBRID_INDEX_MODE_V1,
-    patches: Array.isArray(idx.patches) ? idx.patches : [XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1, XS_RECRUTER_HYBRID_INDEX_MODE_V1],
+    autoRunnerPatch: XS_RECRUTER_AUTO_INDEX_RUNNER_V1,
+    patches: Array.isArray(idx.patches) ? idx.patches : [XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1, XS_RECRUTER_HYBRID_INDEX_MODE_V1, XS_RECRUTER_AUTO_INDEX_RUNNER_V1],
     mode: idx.authMode || "public",
     status: idx.status,
     startedAt: idx.startedAt || null,
@@ -3556,6 +3565,62 @@ function xsRecruterIndexSummary(idx) {
     errorsCount: Array.isArray(idx.errors) ? idx.errors.length : 0,
     failedClubsCount: Array.isArray(idx.failedClubs) ? idx.failedClubs.length : 0,
   };
+}
+
+function xsRecruterAutoDelayMs() {
+  return xsRecruterOptionalInt(process.env.XS_RECRUTER_AUTO_NEXT_DELAY_MS, 1000, 3600000) || 60000;
+}
+
+function xsRecruterNextRecommendedRunAt(idx) {
+  const retryAfter = xsRecruterActiveRetryAfter(idx);
+  if (retryAfter && idx.retryAfterUntil) return idx.retryAfterUntil;
+  if (idx && idx.status === "complete") return null;
+  return new Date(Date.now() + xsRecruterAutoDelayMs()).toISOString();
+}
+
+function xsRecruterNeedsResume(idx) {
+  if (!idx || idx.status === "complete") return false;
+  if (xsRecruterActiveRetryAfter(idx)) return false;
+  return ["maxCalls", "more_work", "limitPlayers", "limitClubs", "limitLeagues"].includes(String(idx.stopReason || ""));
+}
+
+function xsRecruterAutoStatusPayload(idx, auth) {
+  const summary = xsRecruterIndexSummary(idx);
+  return {
+    ok: true,
+    marker: XS_RECRUTER_ALL_LEAGUES_CLUBS_V1,
+    autoRunnerPatch: XS_RECRUTER_AUTO_INDEX_RUNNER_V1,
+    ...xsRecruterAuthPublic(auth),
+    mode: auth && auth.mode ? auth.mode : summary.mode,
+    playersCount: summary.playersCount,
+    clubsCount: summary.clubsCount,
+    leaguesCount: summary.leaguesCount,
+    status: summary.status,
+    stopReason: summary.stopReason,
+    progress: summary.progress,
+    retryAfterUntil: summary.retryAfterUntil,
+    nextRecommendedRunAt: xsRecruterNextRecommendedRunAt(idx),
+    errorsCount: summary.errorsCount,
+    failedClubsCount: summary.failedClubsCount,
+    needsResume: xsRecruterNeedsResume(idx),
+    complete: summary.status === "complete",
+    updatedAt: summary.updatedAt,
+    lastError: summary.lastError,
+  };
+}
+
+function xsRecruterAutoRunReq(req) {
+  const query = { ...(req.query || {}) };
+  const body = req && req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+  for (const [key, value] of Object.entries(body)) {
+    if (query[key] === undefined && value !== undefined && value !== null) query[key] = value;
+  }
+  for (const [key, value] of Object.entries(XS_RECRUTER_AUTO_DEFAULTS)) {
+    if (query[key] === undefined || query[key] === null || query[key] === "") query[key] = String(value);
+  }
+  const buildReq = Object.create(req);
+  buildReq.query = query;
+  return buildReq;
 }
 
 function xsRecruterRowsPage(req, rows) {
@@ -3626,6 +3691,16 @@ app.get("/recruter/health", (req, res) => {
   });
 });
 
+app.get("/recruter/players-index/status", (req, res) => {
+  const idx = xsRecruterReadIndex();
+  const auth = xsRecruterAuthState(req);
+  res.json({
+    ...xsRecruterAutoStatusPayload(idx, auth),
+    route: "/recruter/players-index/status",
+    cacheFile: "data/recruter_players_index.json",
+  });
+});
+
 app.get("/recruter/players-index/build", async (req, res) => {
   const auth = xsRecruterAuthState(req);
   try {
@@ -3659,6 +3734,48 @@ app.get("/recruter/players-index/build", async (req, res) => {
       ...xsRecruterAuthPublic(auth),
       ...xsRecruterIndexSummary(idx),
       mode: auth.mode,
+      error: String(e?.message || e),
+      retryAfter: e?.retryAfter || null,
+      retryAfterUntil: idx.retryAfterUntil || null,
+    });
+  }
+});
+
+app.post("/recruter/players-index/auto-run", async (req, res) => {
+  const auth = xsRecruterAuthState(req);
+  try {
+    const out = await xsRecruterBuildIndex(xsRecruterAutoRunReq(req), auth);
+    const payload = xsRecruterAutoStatusPayload(out.index, out.auth);
+    res.json({
+      ...payload,
+      route: "/recruter/players-index/auto-run",
+      callsThisRun: out.calls,
+      autoDefaults: XS_RECRUTER_AUTO_DEFAULTS,
+      options: {
+        maxCalls: out.options.maxCalls,
+        teamPageSize: out.options.teamPageSize,
+        playerPageSize: out.options.playerPageSize,
+        rateDelayMs: out.options.rateDelayMs,
+      },
+    });
+  } catch (e) {
+    const idx = xsRecruterReadIndex();
+    idx.status = e && e.status === 429 ? "paused" : "error";
+    idx.stopReason = e && e.status === 429 ? "rate_limit" : (e && e.code === "XS_RECRUTER_MAX_CALLS" ? "maxCalls" : "error");
+    if (e && e.status === 429) idx.retryAfterUntil = xsRecruterRetryAfterUntil(e.retryAfter);
+    idx.lastError = {
+      at: xsRecruterNowIso(),
+      message: String(e?.message || e),
+      status: e?.status || null,
+      retryAfter: e?.retryAfter || null,
+      graphQLErrors: e?.graphQLErrors || null,
+    };
+    xsRecruterWriteIndex(idx);
+    const status = e && e.status === 429 ? 429 : (e && e.code === "XS_RECRUTER_MAX_CALLS" ? 200 : 502);
+    res.status(status).json({
+      ...xsRecruterAutoStatusPayload(idx, auth),
+      ok: status === 200,
+      route: "/recruter/players-index/auto-run",
       error: String(e?.message || e),
       retryAfter: e?.retryAfter || null,
       retryAfterUntil: idx.retryAfterUntil || null,
