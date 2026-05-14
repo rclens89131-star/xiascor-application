@@ -2882,6 +2882,9 @@ function xsScoreColorL5L15L40(score: number | null): string {
 const XS_HISTORY_CHART_CLOUDRUN_V2 = "https://xiascor-backend-tssdy62zqa-ez.a.run.app";
 
 const XS_HISTORY_SYNC_CLOUDRUN_V1 = "https://xiascor-backend-tssdy62zqa-ez.a.run.app";
+// XS_CARD_AUTO_SYNC_HISTORY_V1: session guard to refresh a player history at most once every 10 minutes.
+const XS_CARD_AUTO_SYNC_HISTORY_TTL_MS_V1 = 10 * 60 * 1000;
+const XS_CARD_AUTO_SYNC_HISTORY_LAST_V1 = new Map<string, number>();
 
 
 export default function CardDetailScreen() {
@@ -3115,12 +3118,74 @@ return () => { cancelled = true; };
     };
   }, [playerSlug, position, positionParam, positionRawParam, card]);
 
-  /* XS_CARD_HISTORY_AUTO_SYNC_V1 */
+  /* XS_CARD_AUTO_SYNC_HISTORY_V1 */
   useEffect(() => {
-    // XS_FIX_CARD_POSITION_AND_SYNC_V1: history sync is launched from Mes cartes, not on each card open.
-    return;
+    let cancelled = false;
+    const slug = String(playerSlug || "").trim().toLowerCase();
+    if (!slug) return;
+
+    const now = Date.now();
+    const lastSyncedAt = XS_CARD_AUTO_SYNC_HISTORY_LAST_V1.get(slug) || 0;
+    if (now - lastSyncedAt < XS_CARD_AUTO_SYNC_HISTORY_TTL_MS_V1) {
+      console.log("[XS_CARD_AUTO_SYNC_HISTORY_V1] skip_recent", {
+        playerSlug: slug,
+        ageMs: now - lastSyncedAt,
+      });
+      return;
+    }
+    XS_CARD_AUTO_SYNC_HISTORY_LAST_V1.set(slug, now);
+
+    async function runHistoryRefresh() {
+      try {
+        const deviceId = await xsReadPositionDeviceIdV1();
+        const syncBase = XS_HISTORY_SYNC_CLOUDRUN_V1.replace(/\/+$/, "");
+        const syncParams = new URLSearchParams({
+          slug,
+          last: "40",
+          force: "true",
+        });
+        if (deviceId) syncParams.set("deviceId", deviceId);
+        const syncUrl = `${syncBase}/history/sync-player-scores?${syncParams.toString()}`;
+
+        console.log("[XS_CARD_AUTO_SYNC_HISTORY_V1] start", {
+          playerSlug: slug,
+          hasDeviceId: Boolean(deviceId),
+        });
+
+        const syncResp = await fetch(syncUrl, {
+          method: "POST",
+          headers: { accept: "application/json" },
+        });
+        const syncJson = await syncResp.json().catch(() => null);
+        if (!syncResp.ok || syncJson?.ok === false) {
+          throw new Error(String(syncJson?.error || syncJson?.details || `sync_http_${syncResp.status}`));
+        }
+
+        const chartBase = XS_HISTORY_CHART_CLOUDRUN_V2.replace(/\/+$/, "");
+        const histUrl = `${chartBase}/history/player-chart/${encodeURIComponent(slug)}?limit=50`;
+        const histResp = await fetch(histUrl, { headers: { accept: "application/json" } });
+        const histJson = await histResp.json().catch(() => null);
+        const items = Array.isArray(histJson?.items) ? histJson.items : [];
+        if (!cancelled) setHistoryChart(items);
+
+        console.log("[XS_CARD_AUTO_SYNC_HISTORY_V1] success", {
+          playerSlug: slug,
+          count: items.length,
+        });
+      } catch (err: any) {
+        console.log("[XS_CARD_AUTO_SYNC_HISTORY_V1] error", {
+          playerSlug: slug,
+          error: String(err?.message || err),
+        });
+      }
+    }
+
+    runHistoryRefresh();
+    return () => {
+      cancelled = true;
+    };
   }, [playerSlug]);
-  /* XS_CARD_HISTORY_AUTO_SYNC_V1_END */
+  /* XS_CARD_AUTO_SYNC_HISTORY_V1_END */
 
 
   const series = useMemo(() => {
