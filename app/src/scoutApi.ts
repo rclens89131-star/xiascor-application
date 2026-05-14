@@ -109,13 +109,61 @@ export type RecruiterRow = {
   salesCount?: number | null;
   leagues?: string[] | null;
 };
+export type RecruiterMarketSummary = {
+  cardsOnSale?: number | null;
+  cheapestCard?: any | null;
+  cheapestPriceEur?: number | null;
+  cheapestPriceText?: string | null;
+  averagePriceEur?: number | null;
+  medianPriceEur?: number | null;
+  limitedCount?: number | null;
+  rareCount?: number | null;
+  superRareCount?: number | null;
+  uniqueCount?: number | null;
+  seasons?: Array<number | string> | null;
+  cheapestSeason?: number | string | null;
+  sellerCount?: number | null;
+  bestValueCard?: any | null;
+  bestValueScore?: number | null;
+};
+export type RecruiterCard = {
+  cardId?: string | null;
+  offerId?: string | null;
+  slug?: string | null;
+  cardSlug?: string | null;
+  cardName?: string | null;
+  name?: string | null;
+  rarity?: string | null;
+  season?: number | null;
+  seasonYear?: number | null;
+  serialNumber?: number | null;
+  pictureUrl?: string | null;
+  playerName?: string | null;
+  clubName?: string | null;
+  sellerNickname?: string | null;
+  sellerSlug?: string | null;
+  price?: number | null;
+  priceEur?: number | null;
+  minPriceEur?: number | null;
+  priceText?: string | null;
+  power?: string | null;
+  cardPower?: string | null;
+  xp?: number | null;
+  level?: number | null;
+  saleStatus?: string | null;
+  bestValueScore?: number | null;
+};
 export type RecruiterPlayer = {
   playerSlug: string;
   playerName?: string | null;
   position?: string | null;
   activeClub?: { name?: string | null; slug?: string | null } | null;
   offersByLeague?: Record<string, any[]> | null;
-  offers?: any[] | null;
+  offers?: RecruiterCard[] | null;
+  cards?: RecruiterCard[] | null;
+  marketSummary?: RecruiterMarketSummary | null;
+  minPriceEur?: number | null;
+  cache?: { hit?: boolean; stale?: boolean; cachedAt?: string | null } | null;
 };
 export async function scoutRecruter(params?: { first?: number; q?: string; league?: string; club?: string; position?: string }) {
   const qs = new URLSearchParams();
@@ -130,9 +178,10 @@ export async function scoutRecruter(params?: { first?: number; q?: string; leagu
   if (!r.ok) throw new Error(`scoutRecruter HTTP ${r.status}`);
   return (await r.json()) as { items: RecruiterRow[]; meta?: any; leagues?: any[]; clubs?: any[] };
 }
-export async function scoutPlayer(slug: string, params?: { first?: number }) {
+export async function scoutPlayer(slug: string, params?: { first?: number; refresh?: boolean }) {
   const qs = new URLSearchParams();
   qs.set("first", String(params?.first ?? 50));
+  if (params?.refresh) qs.set("refresh", "1");
 
   const url = `${BASE_URL}/recruter/player/${encodeURIComponent(slug)}/cards?${qs.toString()}`;
   const r = await fetch(url);
