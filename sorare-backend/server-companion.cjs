@@ -546,8 +546,9 @@ const HAS_SORARE_KEY = Boolean(SORARE_APIKEY || SORARE_JWT);
    - sorareHeaders() fallback
    - /auth/sorare, /auth/sorare/callback, /auth/sorare/status
 */
-const SORARE_OAUTH_UID = process.env.SORARE_OAUTH_UID || "";
-const SORARE_OAUTH_SECRET = process.env.SORARE_OAUTH_SECRET || "";
+// XS_FIX_OAUTH_ENV_NAMES_V2
+const SORARE_OAUTH_CLIENT_ID = (process.env.SORARE_OAUTH_CLIENT_ID || xsEnvHard("SORARE_OAUTH_CLIENT_ID") || "").trim();
+const SORARE_OAUTH_CLIENT_SECRET = (process.env.SORARE_OAUTH_CLIENT_SECRET || xsEnvHard("SORARE_OAUTH_CLIENT_SECRET") || "").trim();
 const SORARE_OAUTH_REDIRECT_URI =
   process.env.SORARE_OAUTH_REDIRECT_URI || "http://localhost:3000/auth/sorare/callback";
 const OAUTH_TOKEN_FILE = dataFile("sorare_oauth.json");
@@ -4426,10 +4427,10 @@ function _fetchAny(...args) {
 }
 
 app.get("/auth/sorare", (req, res) => {
-  if (!SORARE_OAUTH_UID || !SORARE_OAUTH_SECRET) {
-    return res.status(400).json({ error: "OAuth non configuré: SORARE_OAUTH_UID/SECRET manquants" });
+  if (!SORARE_OAUTH_CLIENT_ID || !SORARE_OAUTH_CLIENT_SECRET) {
+    return res.status(400).json({ error: "OAuth non configuré: SORARE_OAUTH_CLIENT_ID/SECRET manquants" });
   }
-  const u = encodeURIComponent(SORARE_OAUTH_UID);
+  const u = encodeURIComponent(SORARE_OAUTH_CLIENT_ID);
   const r = encodeURIComponent(SORARE_OAUTH_REDIRECT_URI);
   const url = `https://sorare.com/oauth/authorize?client_id=${u}&redirect_uri=${r}&response_type=code&scope=public`;
   res.redirect(url);
@@ -4524,8 +4525,8 @@ try {
     if (!code) return res.status(400).send("Missing ?code=");
 
     const form = new URLSearchParams();
-    form.set("client_id", SORARE_OAUTH_UID);
-    form.set("client_secret", SORARE_OAUTH_SECRET);
+    form.set("client_id", SORARE_OAUTH_CLIENT_ID);
+    form.set("client_secret", SORARE_OAUTH_CLIENT_SECRET);
     form.set("code", code);
     form.set("grant_type", "authorization_code");
     form.set("redirect_uri", SORARE_OAUTH_REDIRECT_URI);
@@ -7583,7 +7584,6 @@ app.get("/auth/jwt/logout", async (req,res)=>{
 
   app.get("/auth/sorare-device/login", (req,res)=> xsOauthDisabled(res));
   app.get("/auth/device-status", (req,res)=> xsOauthDisabled(res));
-  app.get("/auth/sorare/callback", (req,res)=> xsOauthDisabled(res));
   app.get("/auth/sorare-device/callback", (req,res)=> xsOauthDisabled(res));
 })();
 /* ============================
