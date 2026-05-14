@@ -2885,6 +2885,8 @@ const XS_HISTORY_SYNC_CLOUDRUN_V1 = "https://xiascor-backend-tssdy62zqa-ez.a.run
 // XS_CARD_AUTO_SYNC_HISTORY_V1: session guard to refresh a player history at most once every 10 minutes.
 const XS_CARD_AUTO_SYNC_HISTORY_TTL_MS_V1 = 10 * 60 * 1000;
 const XS_CARD_AUTO_SYNC_HISTORY_LAST_V1 = new Map<string, number>();
+// XS_CARD_FAST_TABLE_HISTORY_V1: share one fast table history request per player while it is in-flight.
+const XS_CARD_FAST_TABLE_HISTORY_INFLIGHT_V1 = new Map<string, Promise<any[]>>();
 
 
 export default function CardDetailScreen() {
@@ -2914,6 +2916,7 @@ export default function CardDetailScreen() {
 
   const [perf, setPerf] = useState<any>(null);
   const [historyChart, setHistoryChart] = useState<any[]>([]); // XS_HISTORY_CHART_LOGOS_LOAD_V1
+  const [historyFastLoading, setHistoryFastLoading] = useState(false); // XS_CARD_FAST_TABLE_HISTORY_V1
   const [realMatchContext, setRealMatchContext] = useState<XsCardMatchContextV1 | null>(null); // XS_CARD_REAL_MATCH_CONTEXT_V1
   const [playerStatus, setPlayerStatus] = useState<XsPlayerStatusV1 | null>(null); // XS_PLAYER_STATUS_DECISION_V1
   const [aiPrediction, setAiPrediction] = useState<XsAiPlayerScorePredictionV1 | null>(null); // XS_AI_PLAYER_SCORE_PREDICTION_V1
@@ -2923,6 +2926,90 @@ export default function CardDetailScreen() {
   const [error, setError] = useState("");
   const [activeSeries, setActiveSeries] = useState<"L5" | "L15" | "ALL">("L5");
   const [radarRange, setRadarRange] = useState<XsRadarRangeV1>("L15");
+
+  /* XS_CARD_FAST_TABLE_HISTORY_V1 */
+  useEffect(() => {
+    let cancelled = false;
+    const slug = String(playerSlug || "").trim().toLowerCase();
+    if (!slug) {
+      setHistoryChart([]);
+      setHistoryFastLoading(false);
+      return;
+    }
+
+    const cachedRows = [
+      (card as any)?.historyChart,
+      (card as any)?.history,
+      (card as any)?.recentHistory,
+      (card as any)?.recentScores,
+      (card as any)?.recentScores15,
+      (card as any)?.recentScores40,
+    ].find((value) => Array.isArray(value) && value.length);
+    if (Array.isArray(cachedRows) && cachedRows.length) {
+      console.log("[XS_CARD_FAST_TABLE_HISTORY_V1] cache_used", {
+        playerSlug: slug,
+        count: cachedRows.length,
+      });
+    }
+
+    setHistoryChart([]);
+    setHistoryFastLoading(true);
+
+    let fastPromise = XS_CARD_FAST_TABLE_HISTORY_INFLIGHT_V1.get(slug);
+    if (!fastPromise) {
+      fastPromise = (async () => {
+        const base = XS_HISTORY_CHART_CLOUDRUN_V2.replace(/\/+$/, "");
+        const histUrl = `${base}/history/player-chart/${encodeURIComponent(slug)}?limit=15`;
+        console.log("[XS_CARD_FAST_TABLE_HISTORY_V1] fast_fetch_start", {
+          playerSlug: slug,
+          limit: 15,
+        });
+        const histResp = await fetch(histUrl, { headers: { accept: "application/json" } });
+        const histJson = await histResp.json().catch(() => null);
+        if (!histResp.ok) {
+          throw new Error(String(histJson?.error || `history_http_${histResp.status}`));
+        }
+        const items = Array.isArray(histJson?.items) ? histJson.items : [];
+        console.log("[XS_CARD_FAST_TABLE_HISTORY_V1] fast_fetch_success", {
+          playerSlug: slug,
+          count: items.length,
+        });
+        return items;
+      })();
+      XS_CARD_FAST_TABLE_HISTORY_INFLIGHT_V1.set(slug, fastPromise);
+      fastPromise.then(
+        () => {
+          if (XS_CARD_FAST_TABLE_HISTORY_INFLIGHT_V1.get(slug) === fastPromise) {
+            XS_CARD_FAST_TABLE_HISTORY_INFLIGHT_V1.delete(slug);
+          }
+        },
+        () => {
+          if (XS_CARD_FAST_TABLE_HISTORY_INFLIGHT_V1.get(slug) === fastPromise) {
+            XS_CARD_FAST_TABLE_HISTORY_INFLIGHT_V1.delete(slug);
+          }
+        }
+      );
+    }
+
+    fastPromise
+      .then((items) => {
+        if (!cancelled) setHistoryChart(items);
+      })
+      .catch((err: any) => {
+        console.log("[XS_CARD_FAST_TABLE_HISTORY_V1] error", {
+          playerSlug: slug,
+          error: String(err?.message || err),
+        });
+      })
+      .finally(() => {
+        if (!cancelled) setHistoryFastLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [playerSlug]);
+  /* XS_CARD_FAST_TABLE_HISTORY_V1_END */
 
   useEffect(() => {
     let cancelled = false;
@@ -2973,20 +3060,8 @@ export default function CardDetailScreen() {
         if (cancelled) return;
         setPerf(resp || null);
 
-        // XS_HISTORY_CHART_LOGOS_LOAD_V1
-        try {
-          const base = XS_HISTORY_CHART_CLOUDRUN_V2.replace(/\/+$/, "");
-          const histUrl = `${base}/history/player-chart/${encodeURIComponent(playerSlug)}?limit=50`; // XS_FIX_CARD_TABLE_FAST_HISTORY_V1
-          console.log("[card history logos] url=", histUrl);
-          const histResp = await fetch(histUrl);
-          const histJson = await histResp.json();
-          const items = Array.isArray(histJson?.items) ? histJson.items : [];
-          console.log("[card history logos] count=", items.length, "logos=", items.map((x:any)=>x?.opponentLogoUrl).filter(Boolean).length);
-          if (!cancelled) setHistoryChart(items);
-        } catch (histErr:any) {
-          console.log("[card history logos] error=", String(histErr?.message || histErr));
-          if (!cancelled) setHistoryChart([]);
-        }
+        // XS_CARD_FAST_TABLE_HISTORY_V1: historyChart is loaded by a lightweight table effect first,
+        // then refreshed by XS_CARD_AUTO_SYNC_HISTORY_V1 after the background sync succeeds.
         setState("ok");
       } catch (e: any) {
         if (cancelled) return;
@@ -3167,6 +3242,10 @@ return () => { cancelled = true; };
         const histJson = await histResp.json().catch(() => null);
         const items = Array.isArray(histJson?.items) ? histJson.items : [];
         if (!cancelled) setHistoryChart(items);
+        console.log("[XS_CARD_FAST_TABLE_HISTORY_V1] sync_reload_success", {
+          playerSlug: slug,
+          count: items.length,
+        });
 
         console.log("[XS_CARD_AUTO_SYNC_HISTORY_V1] success", {
           playerSlug: slug,
@@ -3189,21 +3268,29 @@ return () => { cancelled = true; };
 
 
   const series = useMemo(() => {
-    const l5 = Array.isArray((perf as any)?.recentScores) ? (perf as any).recentScores.slice(0, 5) : [];
-    const l15 = Array.isArray((perf as any)?.recentScores15)
-      ? (perf as any).recentScores15.slice(0, 15)
-      : (Array.isArray((perf as any)?.recentScores) ? (perf as any).recentScores.slice(0, 15) : []);
-    const l40 = Array.isArray((perf as any)?.recentScores40)
-      ? (perf as any).recentScores40.slice(0, 40)
-      : (Array.isArray((perf as any)?.recentScores) ? (perf as any).recentScores.slice(0, 40) : []);
+    const perfAny = (perf as any) || {};
+    const cardAny = (card as any) || {};
+    const sourceScores = Array.isArray(perfAny?.recentScores) ? perfAny.recentScores : cardAny?.recentScores;
+    const sourceScores15 = Array.isArray(perfAny?.recentScores15) ? perfAny.recentScores15 : cardAny?.recentScores15;
+    const sourceScores40 = Array.isArray(perfAny?.recentScores40) ? perfAny.recentScores40 : cardAny?.recentScores40;
+    const l5 = Array.isArray(sourceScores) ? sourceScores.slice(0, 5) : [];
+    const l15 = Array.isArray(sourceScores15)
+      ? sourceScores15.slice(0, 15)
+      : (Array.isArray(sourceScores) ? sourceScores.slice(0, 15) : []);
+    const l40 = Array.isArray(sourceScores40)
+      ? sourceScores40.slice(0, 40)
+      : (Array.isArray(sourceScores) ? sourceScores.slice(0, 40) : []);
     // XS_FIX_CARD_DETAIL_OPPONENTS_FALLBACK_V1 BEGIN
     const opp =
-      Array.isArray((perf as any)?.recentOpponents) ? (perf as any).recentOpponents :
-      (Array.isArray((perf as any)?.opponents) ? (perf as any).opponents :
-      (Array.isArray((perf as any)?.meta?.opponents) ? (perf as any).meta.opponents : []));
+      Array.isArray(perfAny?.recentOpponents) ? perfAny.recentOpponents :
+      (Array.isArray(perfAny?.opponents) ? perfAny.opponents :
+      (Array.isArray(perfAny?.meta?.opponents) ? perfAny.meta.opponents :
+      (Array.isArray(cardAny?.recentOpponents) ? cardAny.recentOpponents :
+      (Array.isArray(cardAny?.opponents) ? cardAny.opponents :
+      (Array.isArray(cardAny?.meta?.opponents) ? cardAny.meta.opponents : [])))));
     // XS_FIX_CARD_DETAIL_OPPONENTS_FALLBACK_V1 END
     return { l5, l15, l40, opp };
-  }, [perf]);
+  }, [perf, card]);
 
   const scores =
     activeSeries === "L5" ? series.l5 :
@@ -3482,12 +3569,13 @@ return (
         </View>
 
         <View style={{ marginTop: 12 }}>
-          {state === "loading" ? (
-            <Text style={{ color: theme.muted }}>Chargement…</Text>
-          ) : state === "err" ? (
-            <Text style={{ color: "#FF7B7B" }}>Erreur de chargement: {error || "inconnue"}</Text>
-          ) : scores.length > 0 ? (
+          {Array.isArray(xsDisplayScores) && xsDisplayScores.length > 0 ? (
             <View style={{ width: "100%", overflow: "hidden" }}>
+              {historyFastLoading ? (
+                <Text style={{ color: theme.muted, fontSize: 12, marginBottom: 6 }}>
+                  Mise à jour du tableau…
+                </Text>
+              ) : null}
   {/* XS_CHART_HORIZONTAL_SCROLL_V2 */}
   <ScrollView
     horizontal
@@ -3505,6 +3593,10 @@ return (
   </ScrollView>
   {/* XS_CHART_HORIZONTAL_SCROLL_V2_END */}
 </View>
+          ) : state === "loading" || historyFastLoading ? (
+            <Text style={{ color: theme.muted }}>Chargement du tableau…</Text>
+          ) : state === "err" ? (
+            <Text style={{ color: "#FF7B7B" }}>Erreur de chargement: {error || "inconnue"}</Text>
           ) : (
             <Text style={{ color: theme.muted }}>
               {playerSlug ? "Aucun score disponible." : "playerSlug manquant."}
