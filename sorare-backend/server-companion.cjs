@@ -6848,6 +6848,16 @@ try {
       }
     } catch(e) {}
 
+    // XS_FIX_MYCARDS_SYNC_DEVICE_TOKEN_V1: use the same oauth_devices.json store as /auth/sorare-device/status.
+    try {
+      const id = String(deviceId || "").trim();
+      const devices = (typeof xsDevOauth_readJson === "function") ? xsDevOauth_readJson(xsDevOauth_DEVICES_FILE, {}) : {};
+      const rec = id && devices ? devices[id] : null;
+      const access = rec ? (rec.access_token || rec.accessToken || rec.token || null) : null;
+      const refresh = rec ? (rec.refresh_token || rec.refreshToken || null) : null;
+      if (access) return { access_token: String(access), refresh_token: refresh ? String(refresh) : null, kind:"oauth" };
+    } catch(e) {}
+
     // 2) Fallback: JWT token store (deviceId -> {access_token}) + aud from jwt_devices.json
     try {
       if (typeof xsJwtTokDbReadV3 === "function") {
