@@ -2819,7 +2819,11 @@ return res.json({
 */
 const XS_RECRUTER_ALL_LEAGUES_CLUBS_V1 = "XS_RECRUTER_ALL_LEAGUES_CLUBS_V1";
 const XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1 = "XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1";
+const XS_RECRUTER_HYBRID_INDEX_MODE_V1 = "XS_RECRUTER_HYBRID_INDEX_MODE_V1";
 const XS_RECRUTER_INDEX_FILE = dataFile("recruter_players_index.json");
+const XS_RECRUTER_JWT_DEVICE_TOKENS_FILE = dataFile("jwt_device_tokens.json");
+const XS_RECRUTER_JWT_DEVICES_FILE = dataFile("jwt_devices.json");
+const XS_RECRUTER_OAUTH_DEVICES_FILE = dataFile("oauth_devices.json");
 
 function xsRecruterNowIso() {
   return new Date().toISOString();
@@ -2835,6 +2839,10 @@ function xsRecruterEmptyIndex() {
     completedAt: null,
     stopReason: null,
     lastError: null,
+    retryAfterUntil: null,
+    authMode: "public",
+    patches: [XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1, XS_RECRUTER_HYBRID_INDEX_MODE_V1],
+    lastBuildOptions: null,
     progress: {
       phase: "idle",
       leagueSlug: null,
@@ -2866,7 +2874,13 @@ function xsRecruterReadIndex() {
   idx.failedClubs = Array.isArray(idx.failedClubs) ? idx.failedClubs : [];
   idx.totals = idx.totals && typeof idx.totals === "object" ? idx.totals : {};
   idx.progress = idx.progress && typeof idx.progress === "object" ? idx.progress : {};
-  return { ...xsRecruterEmptyIndex(), ...idx, totals: { ...xsRecruterEmptyIndex().totals, ...idx.totals } };
+  const base = xsRecruterEmptyIndex();
+  const patches = Array.from(new Set([
+    ...base.patches,
+    ...(Array.isArray(idx.patches) ? idx.patches : []),
+    XS_RECRUTER_HYBRID_INDEX_MODE_V1,
+  ]));
+  return { ...base, ...idx, patches, totals: { ...base.totals, ...idx.totals } };
 }
 
 function xsRecruterWriteIndex(idx) {
@@ -2905,28 +2919,140 @@ function xsRecruterBool(value) {
   return s === "1" || s === "true" || s === "yes";
 }
 
-function xsRecruterRateDelayMs(req) {
+function xsRecruterDeviceId(req) {
+  const headerDeviceId = req && typeof req.get === "function"
+    ? (req.get("x-xs-device-id") || req.get("x-device-id") || "")
+    : "";
+  return String((req && req.query && (req.query.deviceId || req.query.device_id)) || headerDeviceId || "").trim();
+}
+
+function xsRecruterNormalizeUserToken(rec, fallbackKind) {
+  if (!rec || typeof rec !== "object") return null;
+  const access = rec.access_token || rec.accessToken || rec.token || null;
+  if (!access) return null;
+  return {
+    access_token: String(access),
+    jwtAud: rec.aud || rec.jwtAud || rec.jwt_aud || null,
+    kind: rec.kind || fallbackKind || "userJwt",
+  };
+}
+
+function xsRecruterTokenFromFile(file, deviceId, fallbackKind) {
+  const db = readJson(file, null);
+  if (!db || typeof db !== "object") return null;
+  const buckets = [db, db.devices, db.tokens].filter((v) => v && typeof v === "object");
+  for (const bucket of buckets) {
+    const rec = bucket[deviceId];
+    const token = xsRecruterNormalizeUserToken(rec, fallbackKind);
+    if (token) return token;
+  }
+  return null;
+}
+
+function xsRecruterAnyUserTokenAvailable() {
+  for (const file of [XS_RECRUTER_JWT_DEVICE_TOKENS_FILE, XS_RECRUTER_OAUTH_DEVICES_FILE]) {
+    const db = readJson(file, null);
+    if (!db || typeof db !== "object") continue;
+    const buckets = [db, db.devices, db.tokens].filter((v) => v && typeof v === "object");
+    for (const bucket of buckets) {
+      for (const rec of Object.values(bucket)) {
+        if (xsRecruterNormalizeUserToken(rec, "userJwt")) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function xsRecruterFindUserToken(req) {
+  const deviceId = xsRecruterDeviceId(req);
+  if (!deviceId) return null;
+  const token =
+    xsRecruterTokenFromFile(XS_RECRUTER_JWT_DEVICE_TOKENS_FILE, deviceId, "jwt") ||
+    xsRecruterTokenFromFile(XS_RECRUTER_OAUTH_DEVICES_FILE, deviceId, "oauth");
+  if (!token || token.jwtAud) return token;
+  const meta = readJson(XS_RECRUTER_JWT_DEVICES_FILE, {});
+  const rec = meta && typeof meta === "object" ? meta[deviceId] : null;
+  if (rec && rec.aud) token.jwtAud = rec.aud;
+  return token;
+}
+
+function xsRecruterAuthState(req) {
+  const userToken = xsRecruterFindUserToken(req);
+  const hasApiKey = Boolean(SORARE_APIKEY);
+  const hasServerJwt = Boolean(SORARE_JWT);
+  const hasUserJwtAvailable = Boolean(userToken || xsRecruterAnyUserTokenAvailable());
+  const mode = hasApiKey ? "apiKey" : ((userToken || hasServerJwt) ? "userJwt" : "public");
+  return {
+    mode,
+    hasApiKey,
+    hasServerJwt,
+    hasUserJwtAvailable,
+    userToken,
+  };
+}
+
+function xsRecruterAuthPublic(auth) {
+  return {
+    mode: auth && auth.mode ? auth.mode : "public",
+    hasApiKey: !!(auth && auth.hasApiKey),
+    hasServerJwt: !!(auth && auth.hasServerJwt),
+    hasUserJwtAvailable: !!(auth && auth.hasUserJwtAvailable),
+  };
+}
+
+function xsRecruterGraphQLHeaders(auth) {
+  const h = { "content-type": "application/json", "accept": "application/json" };
+  if (auth && auth.hasApiKey && SORARE_APIKEY) {
+    h["APIKEY"] = SORARE_APIKEY;
+    return h;
+  }
+  const token = auth && auth.userToken && auth.userToken.access_token ? auth.userToken : null;
+  if (token) {
+    h["authorization"] = "Bearer " + token.access_token;
+    if (token.jwtAud) h["JWT-AUD"] = token.jwtAud;
+    return h;
+  }
+  if (SORARE_JWT) {
+    h["authorization"] = "Bearer " + SORARE_JWT;
+    if (SORARE_JWT_AUD) h["JWT-AUD"] = SORARE_JWT_AUD;
+  }
+  return h;
+}
+
+function xsRecruterModeLimits(auth) {
+  const mode = auth && auth.mode ? auth.mode : "public";
+  if (mode === "apiKey") {
+    return { maxCallsDefault: 120, maxCallsMax: 2000, teamDefault: 25, teamMax: 80, playerDefault: 50, playerMax: 100, rateDefault: 250 };
+  }
+  if (mode === "userJwt") {
+    return { maxCallsDefault: 50, maxCallsMax: 500, teamDefault: 10, teamMax: 25, playerDefault: 20, playerMax: 50, rateDefault: 900 };
+  }
+  return { maxCallsDefault: 25, maxCallsMax: 500, teamDefault: 10, teamMax: 10, playerDefault: 20, playerMax: 30, rateDefault: 3200 };
+}
+
+function xsRecruterRateDelayMs(req, auth) {
   const fromQuery = xsRecruterOptionalInt(req && req.query ? req.query.rateDelayMs : null, 0, 10000);
   if (fromQuery !== null) return fromQuery;
   const fromEnv = xsRecruterOptionalInt(process.env.XS_RECRUTER_RATE_DELAY_MS, 0, 10000);
   if (fromEnv !== null) return fromEnv;
-  if (SORARE_APIKEY) return 150;
-  if (hasSorareAuth()) return 1100;
-  return 3200;
+  return xsRecruterModeLimits(auth).rateDefault;
 }
 
-function xsRecruterBuildOptions(req) {
+function xsRecruterBuildOptions(req, auth) {
+  const limits = xsRecruterModeLimits(auth);
   return {
     force: xsRecruterBool(req.query.force || req.query.reset),
     refreshLeagues: xsRecruterBool(req.query.refreshLeagues),
-    maxCalls: xsRecruterInt(req.query.maxCalls, 25, 1, 500),
+    maxCalls: xsRecruterInt(req.query.maxCalls, limits.maxCallsDefault, 1, limits.maxCallsMax),
     leagueLimit: xsRecruterOptionalInt(req.query.limitLeagues || req.query.leaguesLimit, 1, 1000),
     clubLimit: xsRecruterOptionalInt(req.query.limitClubs || req.query.clubsLimit, 1, 5000),
     playerLimit: xsRecruterOptionalInt(req.query.limitPlayers || req.query.playersLimit, 1, 200000),
     // XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1: public GraphQL complexity must stay under 500.
-    teamPageSize: xsRecruterInt(req.query.teamPageSize || req.query.clubPageSize || req.query.pageSize, 10, 1, 10),
-    playerPageSize: xsRecruterInt(req.query.playerPageSize || req.query.pageSize, 20, 1, 30),
-    rateDelayMs: xsRecruterRateDelayMs(req),
+    // XS_RECRUTER_HYBRID_INDEX_MODE_V1: page-size caps widen only when server auth is available.
+    teamPageSize: xsRecruterInt(req.query.teamPageSize || req.query.clubPageSize || req.query.pageSize, limits.teamDefault, 1, limits.teamMax),
+    playerPageSize: xsRecruterInt(req.query.playerPageSize || req.query.pageSize, limits.playerDefault, 1, limits.playerMax),
+    rateDelayMs: xsRecruterRateDelayMs(req, auth),
+    mode: auth && auth.mode ? auth.mode : "public",
   };
 }
 
@@ -2971,9 +3097,19 @@ function xsRecruterLowComplexityResume(idx) {
 }
 
 async function xsRecruterGraphQL(query, variables) {
+  return xsRecruterGraphQLWithAuth(query, variables, xsRecruterAuthState(null));
+}
+
+async function xsRecruterGraphQLWithAuth(query, variables, auth) {
+  if (process.env.XS_RECRUTER_SIMULATE_429 === "1") {
+    const err = new Error("Sorare HTTP 429");
+    err.status = 429;
+    err.retryAfter = process.env.XS_RECRUTER_SIMULATE_429_RETRY_AFTER || "2";
+    throw err;
+  }
   const response = await fetch(SORARE_GQL, {
     method: "POST",
-    headers: sorareHeaders(),
+    headers: xsRecruterGraphQLHeaders(auth),
     body: JSON.stringify({ query, variables: variables || {} }),
   });
   const text = await response.text();
@@ -2985,12 +3121,14 @@ async function xsRecruterGraphQL(query, variables) {
     err.retryAfter = response.headers && response.headers.get ? response.headers.get("retry-after") : null;
     err.graphQLErrors = json && json.errors ? json.errors : null;
     err.body = text ? text.slice(0, 2000) : null;
+    err.isComplexity = /complexity/i.test(String(err.message || "") + " " + String(err.body || ""));
     throw err;
   }
   if (json && json.errors && json.errors.length) {
     const err = new Error(json.errors[0]?.message || "Sorare GraphQL error");
     err.graphQLErrors = json.errors;
     err.data = json.data;
+    err.isComplexity = /complexity/i.test(JSON.stringify(json.errors));
     throw err;
   }
   return json ? json.data : null;
@@ -3005,7 +3143,53 @@ async function xsRecruterCall(ctx, query, variables) {
   if (ctx.calls > 0 && ctx.opts.rateDelayMs > 0) await xsRecruterSleep(ctx.opts.rateDelayMs);
   ctx.calls += 1;
   ctx.index.totals.calls = Number(ctx.index.totals.calls || 0) + 1;
-  return xsRecruterGraphQL(query, variables);
+  return xsRecruterGraphQLWithAuth(query, variables, ctx.auth);
+}
+
+function xsRecruterRetryAfterSeconds(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  if (Number.isFinite(n)) return Math.max(1, Math.floor(n));
+  const t = Date.parse(String(value));
+  if (!Number.isFinite(t)) return null;
+  return Math.max(1, Math.ceil((t - Date.now()) / 1000));
+}
+
+function xsRecruterRetryAfterUntil(value) {
+  const seconds = xsRecruterRetryAfterSeconds(value);
+  return seconds === null ? null : new Date(Date.now() + seconds * 1000).toISOString();
+}
+
+function xsRecruterActiveRetryAfter(idx) {
+  const t = Date.parse(String(idx && idx.retryAfterUntil ? idx.retryAfterUntil : ""));
+  if (!Number.isFinite(t) || t <= Date.now()) return null;
+  return Math.max(1, Math.ceil((t - Date.now()) / 1000));
+}
+
+function xsRecruterComplexityText(e) {
+  return String(e?.message || "") + " " + JSON.stringify(e?.graphQLErrors || null) + " " + String(e?.body || "");
+}
+
+function xsRecruterIsComplexityError(e) {
+  return !!(e && (e.isComplexity || /complexity|exceeds max complexity/i.test(xsRecruterComplexityText(e))));
+}
+
+function xsRecruterReduceComplexityPage(ctx, key, phase, scope) {
+  const oldValue = Number(ctx.opts[key] || 1);
+  const nextValue = Math.max(1, Math.floor(oldValue / 2));
+  if (nextValue >= oldValue) return false;
+  ctx.opts[key] = nextValue;
+  ctx.index.adaptiveComplexity = {
+    marker: XS_RECRUTER_HYBRID_INDEX_MODE_V1,
+    at: xsRecruterNowIso(),
+    phase,
+    scope,
+    field: key,
+    previous: oldValue,
+    current: nextValue,
+  };
+  xsRecruterWriteIndex(ctx.index);
+  return true;
 }
 
 function xsRecruterCanContinue(ctx) {
@@ -3078,7 +3262,9 @@ async function xsRecruterFetchLeagueTeams(ctx, league) {
     idx.progress = { phase: "clubs", leagueSlug, clubSlug: null, playersAfter: null };
     xsRecruterWriteIndex(idx);
 
-    const data = await xsRecruterCall(ctx, `
+    let data = null;
+    try {
+      data = await xsRecruterCall(ctx, `
       query XSRecruterLeagueTeams($slug: String!, $first: Int!, $after: String) {
         football {
           competition(slug: $slug) {
@@ -3097,6 +3283,10 @@ async function xsRecruterFetchLeagueTeams(ctx, league) {
         }
       }
     `, { slug: leagueSlug, first: ctx.opts.teamPageSize, after: bucket.after || null });
+    } catch (e) {
+      if (xsRecruterIsComplexityError(e) && xsRecruterReduceComplexityPage(ctx, "teamPageSize", "clubs", leagueSlug)) continue;
+      throw e;
+    }
 
     const comp = data?.football?.competition;
     const teams = comp?.teams?.nodes || [];
@@ -3183,7 +3373,9 @@ async function xsRecruterFetchClubPlayers(ctx, league, club) {
     idx.progress = { phase: "players", leagueSlug: league.leagueSlug, clubSlug: club.clubSlug, playersAfter: club.playersAfter || null };
     xsRecruterWriteIndex(idx);
 
-    const data = await xsRecruterCall(ctx, `
+    let data = null;
+    try {
+      data = await xsRecruterCall(ctx, `
       query XSRecruterTeamPlayers($slug: String!, $first: Int!, $after: String) {
         team(slug: $slug) {
           __typename
@@ -3201,6 +3393,10 @@ async function xsRecruterFetchClubPlayers(ctx, league, club) {
         }
       }
     `, { slug: club.clubSlug, first, after: club.playersAfter || null });
+    } catch (e) {
+      if (xsRecruterIsComplexityError(e) && xsRecruterReduceComplexityPage(ctx, "playerPageSize", "players", club.clubSlug)) continue;
+      throw e;
+    }
 
     const team = data?.team;
     if (team && team.name) club.clubName = team.name;
@@ -3219,13 +3415,27 @@ async function xsRecruterFetchClubPlayers(ctx, league, club) {
   }
 }
 
-async function xsRecruterBuildIndex(req) {
-  const opts = xsRecruterBuildOptions(req);
-  const index = opts.force ? xsRecruterEmptyIndex() : xsRecruterReadIndex();
+async function xsRecruterBuildIndex(req, authArg) {
+  const auth = authArg || xsRecruterAuthState(req);
+  const opts = xsRecruterBuildOptions(req, auth);
+  const existingIndex = xsRecruterReadIndex();
+  const activeRetryAfter = xsRecruterActiveRetryAfter(existingIndex);
+  if (activeRetryAfter) {
+    existingIndex.status = "paused";
+    existingIndex.stopReason = "rate_limit";
+    xsRecruterWriteIndex(existingIndex);
+    const err = new Error("Sorare Retry-After still active");
+    err.status = 429;
+    err.retryAfter = String(activeRetryAfter);
+    err.code = "XS_RECRUTER_RETRY_AFTER_ACTIVE";
+    throw err;
+  }
+  const index = opts.force ? xsRecruterEmptyIndex() : existingIndex;
   if (!opts.force) xsRecruterLowComplexityResume(index);
   const ctx = {
     opts,
     index,
+    auth,
     calls: 0,
     leaguesTouched: 0,
     clubsTouched: 0,
@@ -3239,6 +3449,19 @@ async function xsRecruterBuildIndex(req) {
   index.completedAt = null;
   index.stopReason = null;
   index.lastError = null;
+  index.retryAfterUntil = null;
+  index.authMode = auth.mode;
+  index.hybridMarker = XS_RECRUTER_HYBRID_INDEX_MODE_V1;
+  index.lastBuildOptions = {
+    mode: opts.mode,
+    maxCalls: opts.maxCalls,
+    leagueLimit: opts.leagueLimit,
+    clubLimit: opts.clubLimit,
+    playerLimit: opts.playerLimit,
+    teamPageSize: opts.teamPageSize,
+    playerPageSize: opts.playerPageSize,
+    rateDelayMs: opts.rateDelayMs,
+  };
   xsRecruterWriteIndex(index);
 
   await xsRecruterEnsureLeagues(ctx);
@@ -3299,10 +3522,11 @@ async function xsRecruterBuildIndex(req) {
   index.status = complete ? "complete" : "partial";
   index.completedAt = complete ? xsRecruterNowIso() : null;
   index.stopReason = ctx.stopReason;
+  index.authMode = auth.mode;
   if (!complete && !index.stopReason) index.stopReason = "more_work";
   xsRecruterWriteIndex(index);
 
-  return { index, calls: ctx.calls, options: opts };
+  return { index, calls: ctx.calls, options: opts, auth };
 }
 
 function xsRecruterIndexSummary(idx) {
@@ -3310,14 +3534,19 @@ function xsRecruterIndexSummary(idx) {
   return {
     marker: XS_RECRUTER_ALL_LEAGUES_CLUBS_V1,
     patch: XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1,
+    hybridPatch: XS_RECRUTER_HYBRID_INDEX_MODE_V1,
+    patches: Array.isArray(idx.patches) ? idx.patches : [XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1, XS_RECRUTER_HYBRID_INDEX_MODE_V1],
+    mode: idx.authMode || "public",
     status: idx.status,
     startedAt: idx.startedAt || null,
     updatedAt: idx.updatedAt || null,
     completedAt: idx.completedAt || null,
     stopReason: idx.stopReason || null,
     lastError: idx.lastError || null,
+    retryAfterUntil: idx.retryAfterUntil || null,
     progress: idx.progress || {},
     totals: idx.totals || {},
+    lastBuildOptions: idx.lastBuildOptions || null,
     leaguesCount: (idx.totals && typeof idx.totals.leagues === "number") ? idx.totals.leagues : (Array.isArray(idx.leagues) ? idx.leagues.length : 0),
     clubsCount: (idx.totals && typeof idx.totals.clubs === "number") ? idx.totals.clubs : 0,
     playersCount: (idx.totals && typeof idx.totals.players === "number") ? idx.totals.players : 0,
@@ -3386,21 +3615,27 @@ function xsRecruterCatalog(idx, selectedLeague) {
 
 app.get("/recruter/health", (req, res) => {
   const idx = xsRecruterReadIndex();
+  const auth = xsRecruterAuthState(req);
   res.json({
     ok: true,
     route: "/recruter/health",
     cacheFile: "data/recruter_players_index.json",
+    ...xsRecruterAuthPublic(auth),
     ...xsRecruterIndexSummary(idx),
+    mode: auth.mode,
   });
 });
 
 app.get("/recruter/players-index/build", async (req, res) => {
+  const auth = xsRecruterAuthState(req);
   try {
-    const out = await xsRecruterBuildIndex(req);
+    const out = await xsRecruterBuildIndex(req, auth);
     const summary = xsRecruterIndexSummary(out.index);
     res.json({
       ok: true,
+      ...xsRecruterAuthPublic(out.auth),
       ...summary,
+      mode: out.auth.mode,
       callsThisRun: out.calls,
       nextBuildUrl: summary.status === "complete" ? null : "/recruter/players-index/build?maxCalls=" + encodeURIComponent(String(out.options.maxCalls)),
       note: "Index resumable: relance cette route tant que status != complete. Les cartes restent chargees au clic via /recruter/player/:slug/cards.",
@@ -3409,6 +3644,7 @@ app.get("/recruter/players-index/build", async (req, res) => {
     const idx = xsRecruterReadIndex();
     idx.status = e && e.status === 429 ? "paused" : "error";
     idx.stopReason = e && e.status === 429 ? "rate_limit" : (e && e.code === "XS_RECRUTER_MAX_CALLS" ? "maxCalls" : "error");
+    if (e && e.status === 429) idx.retryAfterUntil = xsRecruterRetryAfterUntil(e.retryAfter);
     idx.lastError = {
       at: xsRecruterNowIso(),
       message: String(e?.message || e),
@@ -3420,9 +3656,12 @@ app.get("/recruter/players-index/build", async (req, res) => {
     const status = e && e.status === 429 ? 429 : (e && e.code === "XS_RECRUTER_MAX_CALLS" ? 200 : 502);
     res.status(status).json({
       ok: status === 200,
+      ...xsRecruterAuthPublic(auth),
       ...xsRecruterIndexSummary(idx),
+      mode: auth.mode,
       error: String(e?.message || e),
       retryAfter: e?.retryAfter || null,
+      retryAfterUntil: idx.retryAfterUntil || null,
     });
   }
 });
@@ -3449,12 +3688,13 @@ app.get("/recruter/players", (req, res) => {
 
 app.get("/recruter/player/:slug/cards", async (req, res) => {
   try {
+    const auth = xsRecruterAuthState(req);
     const slug = String(req.params.slug || "").trim();
     if (!slug) return res.status(400).json({ ok: false, error: "slug missing" });
     const first = xsRecruterInt(req.query.first, 30, 1, 50);
     const after = req.query.after ? String(req.query.after) : null;
 
-    const data = await xsRecruterGraphQL(`
+    const data = await xsRecruterGraphQLWithAuth(`
       query XSRecruterPlayerCards($playerSlug: String!, $first: Int!, $after: String) {
         anyPlayer(slug: $playerSlug) {
           slug
@@ -3489,7 +3729,7 @@ app.get("/recruter/player/:slug/cards", async (req, res) => {
           }
         }
       }
-    `, { playerSlug: slug, first, after });
+    `, { playerSlug: slug, first, after }, auth);
 
     const player = data?.anyPlayer || null;
     const conn = data?.tokens?.liveSingleSaleOffers || {};
