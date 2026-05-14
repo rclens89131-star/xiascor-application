@@ -4455,9 +4455,9 @@ app.get("/auth/sorare/callback", async (req, res) => {
 
           /* XS_FIX_DEVICE_OAUTH_ENVREAD_V1: read env directly inside handler (avoid stale consts) */
 const xsEnvClientId =
-  (xsEnvHard("SORARE_OAUTH_CLIENT_ID") || xsEnvHard("SORARE_CLIENT_ID") || "").trim();
+  (process.env.SORARE_OAUTH_CLIENT_ID || xsEnvHard("SORARE_OAUTH_CLIENT_ID") || process.env.SORARE_CLIENT_ID || xsEnvHard("SORARE_CLIENT_ID") || "").trim();
 const xsEnvClientSecret =
-  (xsEnvHard("SORARE_OAUTH_CLIENT_SECRET") || xsEnvHard("SORARE_CLIENT_SECRET") || "").trim();
+  (process.env.SORARE_OAUTH_CLIENT_SECRET || xsEnvHard("SORARE_OAUTH_CLIENT_SECRET") || process.env.SORARE_CLIENT_SECRET || xsEnvHard("SORARE_CLIENT_SECRET") || "").trim();
 /* end XS_FIX_DEVICE_OAUTH_ENVREAD_V1 */
 
 if (!xsEnvClientId || !xsEnvClientSecret) {
@@ -7582,9 +7582,7 @@ app.get("/auth/jwt/logout", async (req,res)=>{
     }
   }
 
-  app.get("/auth/sorare-device/login", (req,res)=> xsOauthDisabled(res));
-  app.get("/auth/device-status", (req,res)=> xsOauthDisabled(res));
-  app.get("/auth/sorare-device/callback", (req,res)=> xsOauthDisabled(res));
+  // XS_FIX_DEVICE_OAUTH_CLOUDRUN_V1: keep device OAuth routes reachable on Cloud Run.
 })();
 /* ============================
    XS_JWT_ONLY_DISABLE_OAUTH_V1_END
@@ -7644,9 +7642,9 @@ function xsDevOauth_writeJson(file, obj) {
 function xsDevOauth_nowSec() { return Math.floor(Date.now() / 1000); }
 
 const xsDevOauth_CLIENT_ID =
-  xsEnvHard("SORARE_OAUTH_CLIENT_ID") || process.env.SORARE_OAUTH_CLIENTID || xsEnvHard("SORARE_CLIENT_ID") || "";
+  (SORARE_OAUTH_CLIENT_ID || process.env.SORARE_CLIENT_ID || xsEnvHard("SORARE_CLIENT_ID") || "").trim();
 const xsDevOauth_CLIENT_SECRET =
-  xsEnvHard("SORARE_OAUTH_CLIENT_SECRET") || process.env.SORARE_OAUTH_CLIENTSECRET || xsEnvHard("SORARE_CLIENT_SECRET") || "";
+  (SORARE_OAUTH_CLIENT_SECRET || process.env.SORARE_CLIENT_SECRET || xsEnvHard("SORARE_CLIENT_SECRET") || "").trim();
 const xsDevOauth_REDIRECT =
   (process.env.SORARE_OAUTH_DEV_REDIRECT_URI || process.env.SORARE_OAUTH_REDIRECT || process.env.SORARE_OAUTH_REDIRECT_URI) || "http://localhost:3000/auth/sorare-device/callback";
 
@@ -7812,10 +7810,8 @@ app.get("/auth/sorare-device/callback", async (req, res) => {
     const deviceId = st.deviceId;
 
     /* XS_FIX_DEVICE_OAUTH_ENVREAD_V1: read env directly inside handler (avoid stale consts) */
-const xsEnvClientId =
-  (xsEnvHard("SORARE_OAUTH_CLIENT_ID") || xsEnvHard("SORARE_CLIENT_ID") || "").trim();
-const xsEnvClientSecret =
-  (xsEnvHard("SORARE_OAUTH_CLIENT_SECRET") || xsEnvHard("SORARE_CLIENT_SECRET") || "").trim();
+const xsEnvClientId = xsDevOauth_CLIENT_ID;
+const xsEnvClientSecret = xsDevOauth_CLIENT_SECRET;
 /* end XS_FIX_DEVICE_OAUTH_ENVREAD_V1 */
 
 if (!xsEnvClientId || !xsEnvClientSecret) {
@@ -7837,8 +7833,8 @@ if (!xsEnvClientId || !xsEnvClientSecret) {
     const token = await xsDevOauth_tokenRequest({
       grant_type: "authorization_code",
       code: code,
-      client_id: (xsEnvHard("SORARE_OAUTH_CLIENT_ID") || xsEnvHard("SORARE_CLIENT_ID") || "").trim(),
-      client_secret: (xsEnvHard("SORARE_OAUTH_CLIENT_SECRET") || xsEnvHard("SORARE_CLIENT_SECRET") || "").trim(),
+      client_id: xsEnvClientId,
+      client_secret: xsEnvClientSecret,
       /* XS_FIX_DEVICE_CALLBACK_REDIRECT_URI_V1 */
       redirect_uri: (
         (process.env.SORARE_OAUTH_DEV_REDIRECT_URI || process.env.SORARE_OAUTH_REDIRECT || "") ||
@@ -7879,17 +7875,19 @@ if (!xsEnvClientId || !xsEnvClientSecret) {
   }
 });
 
-app.get("/auth/device-status", (req, res) => {
+function xsDevOauthDeviceStatusHandler(req, res) {
   const deviceId = String(req.query.deviceId || "").trim();
   if (!deviceId) return res.status(400).json({ error: "Missing deviceId" });
 
   const devices = xsDevOauth_readJson(xsDevOauth_DEVICES_FILE, {});
   const rec = devices[deviceId];
   if (!rec)
-return res.json({ linked: false });
+return res.json({ ok: true, linked: false });
 
-  res.json({ linked: true, userSlug: rec.userSlug, nickname: rec.nickname || null });
-});
+  res.json({ ok: true, linked: true, userSlug: rec.userSlug, nickname: rec.nickname || null });
+}
+app.get("/auth/device-status", xsDevOauthDeviceStatusHandler);
+app.get("/auth/sorare-device/status", xsDevOauthDeviceStatusHandler);
 
 app.get("/auth/sorare-device/me", async (req, res) => {
   try {
