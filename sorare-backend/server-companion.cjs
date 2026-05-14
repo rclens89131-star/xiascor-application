@@ -2818,6 +2818,7 @@ return res.json({
    Cards/offers stay lazy and are fetched only by /recruter/player/:slug/cards.
 */
 const XS_RECRUTER_ALL_LEAGUES_CLUBS_V1 = "XS_RECRUTER_ALL_LEAGUES_CLUBS_V1";
+const XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1 = "XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1";
 const XS_RECRUTER_INDEX_FILE = dataFile("recruter_players_index.json");
 
 function xsRecruterNowIso() {
@@ -2851,6 +2852,7 @@ function xsRecruterEmptyIndex() {
     clubs: {},
     rows: {},
     errors: [],
+    failedClubs: [],
   };
 }
 
@@ -2861,6 +2863,7 @@ function xsRecruterReadIndex() {
   idx.clubs = idx.clubs && typeof idx.clubs === "object" ? idx.clubs : {};
   idx.rows = idx.rows && typeof idx.rows === "object" ? idx.rows : {};
   idx.errors = Array.isArray(idx.errors) ? idx.errors : [];
+  idx.failedClubs = Array.isArray(idx.failedClubs) ? idx.failedClubs : [];
   idx.totals = idx.totals && typeof idx.totals === "object" ? idx.totals : {};
   idx.progress = idx.progress && typeof idx.progress === "object" ? idx.progress : {};
   return { ...xsRecruterEmptyIndex(), ...idx, totals: { ...xsRecruterEmptyIndex().totals, ...idx.totals } };
@@ -2920,8 +2923,9 @@ function xsRecruterBuildOptions(req) {
     leagueLimit: xsRecruterOptionalInt(req.query.limitLeagues || req.query.leaguesLimit, 1, 1000),
     clubLimit: xsRecruterOptionalInt(req.query.limitClubs || req.query.clubsLimit, 1, 5000),
     playerLimit: xsRecruterOptionalInt(req.query.limitPlayers || req.query.playersLimit, 1, 200000),
-    teamPageSize: xsRecruterInt(req.query.teamPageSize || req.query.clubPageSize || req.query.pageSize, 50, 1, 80),
-    playerPageSize: xsRecruterInt(req.query.playerPageSize || req.query.pageSize, 40, 1, 80),
+    // XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1: public GraphQL complexity must stay under 500.
+    teamPageSize: xsRecruterInt(req.query.teamPageSize || req.query.clubPageSize || req.query.pageSize, 10, 1, 10),
+    playerPageSize: xsRecruterInt(req.query.playerPageSize || req.query.pageSize, 20, 1, 30),
     rateDelayMs: xsRecruterRateDelayMs(req),
   };
 }
@@ -2938,6 +2942,32 @@ function xsRecruterPosition(anyPositions) {
   if (s === "midfielder" || s === "mid") return "MID";
   if (s === "forward" || s === "fwd") return "FWD";
   return raw || null;
+}
+
+function xsRecruterLowComplexityResume(idx) {
+  let reopened = 0;
+  for (const league of (idx.leagues || [])) {
+    if (league && league.status === "error" && /complexity/i.test(String(league.error || ""))) {
+      league.status = "pending";
+      league.lowComplexityReopenedAt = xsRecruterNowIso();
+      reopened += 1;
+    }
+  }
+  for (const bucket of Object.values(idx.clubs || {})) {
+    for (const club of ((bucket && bucket.items) || [])) {
+      if (!club || club.status !== "error") continue;
+      if (!/complexity/i.test(String(club.error || ""))) continue;
+      club.status = "pending";
+      club.playersDone = false;
+      club.lowComplexityReopenedAt = xsRecruterNowIso();
+      reopened += 1;
+    }
+  }
+  if (reopened) {
+    idx.lowComplexityReopenedCount = Number(idx.lowComplexityReopenedCount || 0) + reopened;
+    idx.lowComplexityReopenedAt = xsRecruterNowIso();
+  }
+  return reopened;
 }
 
 async function xsRecruterGraphQL(query, variables) {
@@ -3096,7 +3126,15 @@ async function xsRecruterFetchLeagueTeams(ctx, league) {
 function xsRecruterUpsertPlayerRow(idx, league, club, player) {
   if (!player || !player.slug) return false;
   const key = [league.leagueSlug, club.clubSlug, player.slug].join("|");
-  const picture = player.avatarPictureUrl || player.fullPictureUrl || null;
+  // XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1: pictures/activeClub are intentionally not fetched here.
+  const picture = null;
+  const activeClub = player.activeClub ? {
+    slug: player.activeClub.slug || null,
+    name: player.activeClub.name || null,
+  } : {
+    slug: club.clubSlug || null,
+    name: club.clubName || null,
+  };
   const row = {
     rowKey: key,
     leagueSlug: league.leagueSlug,
@@ -3111,10 +3149,7 @@ function xsRecruterUpsertPlayerRow(idx, league, club, player) {
     avatar: picture,
     picture: picture,
     pictureUrl: picture,
-    activeClub: player.activeClub ? {
-      slug: player.activeClub.slug || null,
-      name: player.activeClub.name || null,
-    } : null,
+    activeClub,
     activeLeague: {
       slug: league.leagueSlug,
       name: league.leagueName,
@@ -3127,6 +3162,7 @@ function xsRecruterUpsertPlayerRow(idx, league, club, player) {
     displayName: player.displayName || player.slug,
     team: club.clubName,
     teamSlug: club.clubSlug,
+    lowComplexityIndex: true,
     updatedAt: xsRecruterNowIso(),
   };
   const isNew = !idx.rows[key];
@@ -3159,9 +3195,6 @@ async function xsRecruterFetchClubPlayers(ctx, league, club) {
               displayName
               age
               anyPositions
-              avatarPictureUrl
-              fullPictureUrl
-              activeClub { slug name }
             }
             pageInfo { hasNextPage endCursor }
           }
@@ -3189,6 +3222,7 @@ async function xsRecruterFetchClubPlayers(ctx, league, club) {
 async function xsRecruterBuildIndex(req) {
   const opts = xsRecruterBuildOptions(req);
   const index = opts.force ? xsRecruterEmptyIndex() : xsRecruterReadIndex();
+  if (!opts.force) xsRecruterLowComplexityResume(index);
   const ctx = {
     opts,
     index,
@@ -3244,7 +3278,10 @@ async function xsRecruterBuildIndex(req) {
         if (e && (e.status === 429 || e.code === "XS_RECRUTER_MAX_CALLS")) throw e;
         club.status = "error";
         club.error = String(e?.message || e);
-        index.errors.push({ at: xsRecruterNowIso(), phase: "players", leagueSlug: league.leagueSlug, clubSlug: club.clubSlug, error: club.error });
+        const failedClub = { at: xsRecruterNowIso(), leagueSlug: league.leagueSlug, clubSlug: club.clubSlug, clubName: club.clubName || null, error: club.error };
+        index.errors.push({ at: failedClub.at, phase: "players", leagueSlug: league.leagueSlug, clubSlug: club.clubSlug, error: club.error });
+        index.failedClubs = Array.isArray(index.failedClubs) ? index.failedClubs : [];
+        index.failedClubs.push(failedClub);
         xsRecruterWriteIndex(index);
       }
       if (ctx.stopReason || !xsRecruterCanContinue(ctx)) break;
@@ -3272,6 +3309,7 @@ function xsRecruterIndexSummary(idx) {
   const leaguesDone = (idx.leagues || []).filter((l) => l.status === "complete").length;
   return {
     marker: XS_RECRUTER_ALL_LEAGUES_CLUBS_V1,
+    patch: XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1,
     status: idx.status,
     startedAt: idx.startedAt || null,
     updatedAt: idx.updatedAt || null,
@@ -3280,9 +3318,14 @@ function xsRecruterIndexSummary(idx) {
     lastError: idx.lastError || null,
     progress: idx.progress || {},
     totals: idx.totals || {},
+    leaguesCount: (idx.totals && typeof idx.totals.leagues === "number") ? idx.totals.leagues : (Array.isArray(idx.leagues) ? idx.leagues.length : 0),
+    clubsCount: (idx.totals && typeof idx.totals.clubs === "number") ? idx.totals.clubs : 0,
+    playersCount: (idx.totals && typeof idx.totals.players === "number") ? idx.totals.players : 0,
+    rowsCount: (idx.totals && typeof idx.totals.rows === "number") ? idx.totals.rows : 0,
     leaguesDone,
     leaguesTotal: Array.isArray(idx.leagues) ? idx.leagues.length : 0,
     errorsCount: Array.isArray(idx.errors) ? idx.errors.length : 0,
+    failedClubsCount: Array.isArray(idx.failedClubs) ? idx.failedClubs.length : 0,
   };
 }
 
