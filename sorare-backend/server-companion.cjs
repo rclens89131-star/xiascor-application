@@ -2823,6 +2823,7 @@ const XS_RECRUTER_HYBRID_INDEX_MODE_V1 = "XS_RECRUTER_HYBRID_INDEX_MODE_V1";
 const XS_RECRUTER_AUTO_INDEX_RUNNER_V1 = "XS_RECRUTER_AUTO_INDEX_RUNNER_V1";
 const XS_RECRUTER_CARDS_CACHE_WARMUP_V1 = "XS_RECRUTER_CARDS_CACHE_WARMUP_V1";
 const XS_RECRUTER_CARDS_ENRICHED_V1 = "XS_RECRUTER_CARDS_ENRICHED_V1";
+const XS_RECRUTER_MARKET_SUMMARY_V1 = "XS_RECRUTER_MARKET_SUMMARY_V1";
 const XS_RECRUTER_INDEX_FILE = dataFile("recruter_players_index.json");
 const XS_RECRUTER_CARDS_CACHE_DIR = dataFile("recruter_cards_cache");
 const XS_RECRUTER_CARDS_CACHE_META_FILE = require("path").join(XS_RECRUTER_CARDS_CACHE_DIR, "_meta.json");
@@ -2852,7 +2853,7 @@ function xsRecruterEmptyIndex() {
     lastError: null,
     retryAfterUntil: null,
     authMode: "public",
-    patches: [XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1, XS_RECRUTER_HYBRID_INDEX_MODE_V1, XS_RECRUTER_AUTO_INDEX_RUNNER_V1, XS_RECRUTER_CARDS_CACHE_WARMUP_V1, XS_RECRUTER_CARDS_ENRICHED_V1],
+    patches: [XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1, XS_RECRUTER_HYBRID_INDEX_MODE_V1, XS_RECRUTER_AUTO_INDEX_RUNNER_V1, XS_RECRUTER_CARDS_CACHE_WARMUP_V1, XS_RECRUTER_CARDS_ENRICHED_V1, XS_RECRUTER_MARKET_SUMMARY_V1],
     lastBuildOptions: null,
     progress: {
       phase: "idle",
@@ -2893,6 +2894,7 @@ function xsRecruterReadIndex() {
     XS_RECRUTER_AUTO_INDEX_RUNNER_V1,
     XS_RECRUTER_CARDS_CACHE_WARMUP_V1,
     XS_RECRUTER_CARDS_ENRICHED_V1,
+    XS_RECRUTER_MARKET_SUMMARY_V1,
   ]));
   return { ...base, ...idx, patches, totals: { ...base.totals, ...idx.totals } };
 }
@@ -3570,7 +3572,8 @@ function xsRecruterIndexSummary(idx) {
     autoRunnerPatch: XS_RECRUTER_AUTO_INDEX_RUNNER_V1,
     cardsCachePatch: XS_RECRUTER_CARDS_CACHE_WARMUP_V1,
     cardsEnrichedPatch: XS_RECRUTER_CARDS_ENRICHED_V1,
-    patches: Array.isArray(idx.patches) ? idx.patches : [XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1, XS_RECRUTER_HYBRID_INDEX_MODE_V1, XS_RECRUTER_AUTO_INDEX_RUNNER_V1, XS_RECRUTER_CARDS_CACHE_WARMUP_V1, XS_RECRUTER_CARDS_ENRICHED_V1],
+    marketSummaryPatch: XS_RECRUTER_MARKET_SUMMARY_V1,
+    patches: Array.isArray(idx.patches) ? idx.patches : [XS_RECRUTER_LOW_COMPLEXITY_INDEX_V1, XS_RECRUTER_HYBRID_INDEX_MODE_V1, XS_RECRUTER_AUTO_INDEX_RUNNER_V1, XS_RECRUTER_CARDS_CACHE_WARMUP_V1, XS_RECRUTER_CARDS_ENRICHED_V1, XS_RECRUTER_MARKET_SUMMARY_V1],
     mode: idx.authMode || "public",
     status: idx.status,
     startedAt: idx.startedAt || null,
@@ -3786,6 +3789,71 @@ function xsRecruterCardsRememberError(meta, slug, e) {
   xsRecruterWriteCardsCacheMeta(meta);
 }
 
+function xsRecruterRound2(value) {
+  return Number.isFinite(value) ? Math.round(value * 100) / 100 : null;
+}
+
+function xsRecruterMedian(values) {
+  if (!values.length) return null;
+  const sorted = values.slice().sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : ((sorted[mid - 1] + sorted[mid]) / 2);
+}
+
+function xsRecruterMarketPrice(card) {
+  const price = Number(card && (card.priceEur ?? card.eur ?? card.price));
+  return Number.isFinite(price) && price > 0 ? price : null;
+}
+
+function xsRecruterMarketSummary(cards) {
+  const items = Array.isArray(cards) ? cards : [];
+  const priced = items
+    .map((card) => ({ card, price: xsRecruterMarketPrice(card) }))
+    .filter((x) => x.price !== null);
+  const prices = priced.map((x) => x.price);
+  const cheapest = priced.slice().sort((a, b) => a.price - b.price)[0] || null;
+  const rarityCounts = { limited: 0, rare: 0, superRare: 0, unique: 0 };
+  const seasons = Array.from(new Set(items.map((card) => card && (card.season ?? card.seasonYear)).filter((v) => v !== null && v !== undefined))).sort((a, b) => Number(a) - Number(b));
+  const sellers = new Set(items.map((card) => card && (card.sellerSlug || card.ownerSlug || card.sellerNickname || card.ownerNickname)).filter(Boolean));
+  for (const card of items) {
+    const rarity = String(card && card.rarity ? card.rarity : "").toLowerCase().replace(/[\s_-]/g, "");
+    if (rarity === "limited") rarityCounts.limited += 1;
+    else if (rarity === "rare") rarityCounts.rare += 1;
+    else if (rarity === "superrare") rarityCounts.superRare += 1;
+    else if (rarity === "unique") rarityCounts.unique += 1;
+  }
+  const best = priced
+    .map(({ card, price }) => {
+      const power = Number(card && (card.cardPower ?? card.power));
+      const score = price > 0
+        ? ((Number.isFinite(power) && power > 0 ? power : 1) / price)
+        : null;
+      return { card, score };
+    })
+    .filter((x) => x.score !== null && Number.isFinite(x.score))
+    .sort((a, b) => b.score - a.score)[0] || null;
+
+  return {
+    marker: XS_RECRUTER_MARKET_SUMMARY_V1,
+    cardsOnSale: items.length,
+    cheapestCard: cheapest ? cheapest.card : null,
+    cheapestPriceEur: cheapest ? xsRecruterRound2(cheapest.price) : null,
+    cheapestPriceText: cheapest ? (cheapest.card.priceText || ("€" + (xsRecruterRound2(cheapest.price) ?? cheapest.price))) : null,
+    averagePriceEur: prices.length ? xsRecruterRound2(prices.reduce((sum, price) => sum + price, 0) / prices.length) : null,
+    medianPriceEur: prices.length ? xsRecruterRound2(xsRecruterMedian(prices)) : null,
+    limitedCount: rarityCounts.limited,
+    rareCount: rarityCounts.rare,
+    superRareCount: rarityCounts.superRare,
+    uniqueCount: rarityCounts.unique,
+    seasons,
+    cheapestSeason: cheapest ? (cheapest.card.season ?? cheapest.card.seasonYear ?? null) : null,
+    sellerCount: sellers.size,
+    bestValueCard: best ? best.card : null,
+    bestValueScore: best ? xsRecruterRound2(best.score) : null,
+    pricedCardsCount: prices.length,
+  };
+}
+
 function xsRecruterPlayerSlugsForWarmup(req, idx, meta, ttlMs, maxPlayers, first, after) {
   const body = req && req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
   const raw = body.playerSlugs || body.players || (req.query && (req.query.playerSlugs || req.query.players || req.query.slugs));
@@ -3933,6 +4001,7 @@ async function xsRecruterFetchPlayerCardsPayload(slug, first, after, auth) {
   const minPrice = cards.reduce((min, card) => (
     typeof card.eur === "number" && Number.isFinite(card.eur) ? Math.min(min, card.eur) : min
   ), Infinity);
+  const marketSummary = xsRecruterMarketSummary(cards);
   const playerOut = player ? {
     playerSlug: player.slug || slug,
     playerName: player.displayName || slug,
@@ -3947,6 +4016,7 @@ async function xsRecruterFetchPlayerCardsPayload(slug, first, after, auth) {
     marker: XS_RECRUTER_ALL_LEAGUES_CLUBS_V1,
     cardsCachePatch: XS_RECRUTER_CARDS_CACHE_WARMUP_V1,
     cardsEnrichedPatch: XS_RECRUTER_CARDS_ENRICHED_V1,
+    marketSummaryPatch: XS_RECRUTER_MARKET_SUMMARY_V1,
     playerSlug: playerOut.playerSlug,
     playerName: playerOut.playerName,
     position: playerOut.position || null,
@@ -3957,6 +4027,7 @@ async function xsRecruterFetchPlayerCardsPayload(slug, first, after, auth) {
     salesCount: typeof conn.totalCount === "number" ? conn.totalCount : cards.length,
     minPrice: Number.isFinite(minPrice) ? minPrice : null,
     minPriceEur: Number.isFinite(minPrice) ? minPrice : null,
+    marketSummary,
     cards,
     offers: cards,
     pageInfo: conn.pageInfo || { hasNextPage: false, endCursor: null },
@@ -3972,8 +4043,12 @@ async function xsRecruterCardsReadThroughCache(req, slug, auth) {
   const meta = xsRecruterCardsCacheMeta();
   const entry = xsRecruterCardsCacheEntry(slug);
   if (!forceRefresh && xsRecruterCardsCacheIsFresh(entry, ttlMs, first, after)) {
-    return {
+    const response = {
       ...entry.response,
+      marketSummary: xsRecruterMarketSummary(entry.response.cards || entry.response.offers || []),
+    };
+    return {
+      ...response,
       cache: { ...xsRecruterCardsCacheInfo(entry, ttlMs), hit: true, stale: false },
     };
   }
