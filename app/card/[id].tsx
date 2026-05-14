@@ -2973,7 +2973,7 @@ export default function CardDetailScreen() {
         // XS_HISTORY_CHART_LOGOS_LOAD_V1
         try {
           const base = XS_HISTORY_CHART_CLOUDRUN_V2.replace(/\/+$/, "");
-          const histUrl = `${base}/history/player-chart/${encodeURIComponent(playerSlug)}?limit=500`;
+          const histUrl = `${base}/history/player-chart/${encodeURIComponent(playerSlug)}?limit=50`; // XS_FIX_CARD_TABLE_FAST_HISTORY_V1
           console.log("[card history logos] url=", histUrl);
           const histResp = await fetch(histUrl);
           const histJson = await histResp.json();
@@ -3207,7 +3207,7 @@ return () => { cancelled = true; };
   function xsPickOpponentShort(x: any): string | null {
     const raw =
       x?.shortName ??
-      x?.opponentShort ??
+      x?.opponentShort ?? (typeof x?.opponent === "string" ? x.opponent : null) ??
       x?.short ??
       x?.code ??
       x?.opponent ??
@@ -3515,6 +3515,7 @@ return (
     </ScrollView>
   );
 }
+
 
 
 
