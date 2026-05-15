@@ -412,13 +412,23 @@ export function SorareCardTile(props: any) {
           <View
             style={{
               flexDirection: "row",
-              alignItems: "flex-start",
+              alignItems: "center",
               gap: 6,
+              maxWidth: "100%",
             }}
           >
             <Text
-              style={{ color: "#FFFFFF", fontSize: 21, lineHeight: 24, fontWeight: "900", letterSpacing: 0, flexShrink: 1 }}
-              numberOfLines={2}
+              style={{
+                color: "#FFFFFF",
+                fontSize: 21,
+                lineHeight: 24,
+                fontWeight: "900",
+                letterSpacing: 0,
+                flexShrink: 1,
+                maxWidth: Math.max(72, width - scoreCircleSize - 74),
+              }}
+              numberOfLines={1}
+              ellipsizeMode="tail"
               adjustsFontSizeToFit
               minimumFontScale={0.72}
             >
@@ -426,14 +436,14 @@ export function SorareCardTile(props: any) {
             </Text>
             <View
               style={{
-                // XS_BONUS_BADGE_INLINE_NAME_FINAL_V1
+                // XS_BONUS_BADGE_NEXT_TO_NAME_FINAL_SAFE_V1
                 borderRadius: 10,
                 borderWidth: 1,
                 borderColor: "rgba(34,197,94,0.42)",
                 backgroundColor: "rgba(6,16,12,0.82)",
                 paddingHorizontal: 7,
                 paddingVertical: 3,
-                marginTop: 2,
+                flexShrink: 0,
               }}
             >
               <Text style={{ color: bonusPct === null ? "#A4A7AE" : "#86EFAC", fontSize: 10, fontWeight: "900" }}>
