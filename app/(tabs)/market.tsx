@@ -13,7 +13,20 @@ import {
 
 // XS_FRONT_RECRUTER_PLAYERS_INDEX_V1
 // XS_RECRUTER_FRONT_LEAGUE_INDEX_V1: Recruter uses the full backend league cache for Ligue 1.
+// XS_RECRUTER_FRONT_LEAGUES_VISIBLE_V1: Recruter loads every available league-index cache.
 const XS_RECRUTER_FRONT_LEAGUE_INDEX_DEFAULT_V1 = "ligue-1-fr";
+const XS_RECRUTER_FRONT_VISIBLE_LEAGUES_V1 = [
+  { label: "Ligue 1", slug: "ligue-1-fr" },
+  { label: "Premier League", slug: "premier-league" },
+  { label: "LaLiga", slug: "laliga" },
+  { label: "Serie A", slug: "serie-a" },
+  { label: "Bundesliga", slug: "bundesliga" },
+  { label: "Ligue 2", slug: "ligue-2" },
+  { label: "Eredivisie", slug: "eredivisie" },
+  { label: "Liga Portugal", slug: "liga-portugal" },
+  { label: "Championship", slug: "championship" },
+  { label: "MLS", slug: "mls" },
+];
 
 function text(v: unknown, fallback = "") {
   const s = String(v ?? "").trim();
@@ -47,6 +60,30 @@ function collectOptions(items: RecruterPlayer[], type: "league" | "club") {
 
 const POSITIONS = ["GK", "DEF", "MID", "FW"];
 
+function xsRecruterMergeLeagueItemsV1(payloads: RecruterLeagueIndexResponse[]) {
+  const bySlug = new Map<string, RecruterPlayer>();
+  let clubsCount = 0;
+  let playersCount = 0;
+  for (const payload of payloads) {
+    clubsCount += Number(payload?.clubsCount ?? payload?.summary?.clubsCount ?? 0);
+    playersCount += Number(payload?.playersCount ?? payload?.summary?.playersCount ?? 0);
+    for (const item of (Array.isArray(payload?.items) ? payload.items : [])) {
+      const key = text(item.slug || item.playerSlug).toLowerCase();
+      if (!key) continue;
+      bySlug.set(key, item);
+    }
+  }
+  const items = Array.from(bySlug.values());
+  return {
+    ok: true,
+    leagueSlug: "all",
+    leagueName: "Ligues Recruter",
+    clubsCount,
+    playersCount: playersCount || items.length,
+    items,
+  } as RecruterLeagueIndexResponse;
+}
+
 export default function RecruiterTabScreen() {
   const router = useRouter();
   const [items, setItems] = useState<RecruterPlayer[]>([]);
@@ -69,14 +106,22 @@ export default function RecruiterTabScreen() {
       setError(null);
 
       const [playersRes, healthRes] = await Promise.allSettled([
-        recruterLeagueIndex(XS_RECRUTER_FRONT_LEAGUE_INDEX_DEFAULT_V1),
+        Promise.allSettled(XS_RECRUTER_FRONT_VISIBLE_LEAGUES_V1.map((league) => recruterLeagueIndex(league.slug))),
         apiFetch<{ ok?: boolean }>("/recruter/health"),
       ]);
 
       if (playersRes.status === "fulfilled") {
-        setLeagueIndex(playersRes.value);
-        setItems(Array.isArray(playersRes.value.items) ? playersRes.value.items : []);
-        setSelectedLeague((current) => current && current !== XS_RECRUTER_FRONT_LEAGUE_INDEX_DEFAULT_V1 ? "" : current);
+        const fulfilled = playersRes.value
+          .filter((res): res is PromiseFulfilledResult<RecruterLeagueIndexResponse> => res.status === "fulfilled")
+          .map((res) => res.value);
+        if (!fulfilled.length) {
+          const firstError = playersRes.value.find((res) => res.status === "rejected") as PromiseRejectedResult | undefined;
+          throw firstError?.reason || new Error("Aucune ligue Recruter disponible");
+        }
+        const merged = xsRecruterMergeLeagueItemsV1(fulfilled);
+        setLeagueIndex(merged);
+        setItems(Array.isArray(merged.items) ? merged.items : []);
+        setSelectedLeague((current) => current && !merged.items.some((item) => norm(item.leagueSlug) === current) ? "" : current);
       } else {
         throw playersRes.reason;
       }
@@ -138,7 +183,7 @@ export default function RecruiterTabScreen() {
       <View style={{ padding: 12, gap: 10, backgroundColor: "#0d0f14", borderBottomWidth: 1, borderBottomColor: "#251016" }}>
         <Text style={{ color: "white", fontSize: 24, fontWeight: "900" }}>Recruter</Text>
         <Text style={{ color: "#a8b0ba" }}>
-          Index Ligue 1 · santé API: {health === "ok" ? "OK" : health === "ko" ? "KO" : "..."}
+          Index {leagues.length || XS_RECRUTER_FRONT_VISIBLE_LEAGUES_V1.length} ligues · santé API: {health === "ok" ? "OK" : health === "ko" ? "KO" : "..."}
         </Text>
 
         <TouchableOpacity
