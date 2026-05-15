@@ -378,7 +378,7 @@ export function SorareCardTile(props: any) {
           style={{
             position: "absolute",
             top: 10,
-            bottom: 44,
+            right: 10,
             width: 32,
             height: 32,
             borderRadius: 10,
@@ -395,8 +395,8 @@ export function SorareCardTile(props: any) {
         <View
           style={{
             position: "absolute",
-            left: 10,
-            bottom: 44,
+            top: 80,
+            right: 10,
             borderRadius: 10,
             borderWidth: 1,
             borderColor: "rgba(34,197,94,0.42)",
@@ -407,6 +407,9 @@ export function SorareCardTile(props: any) {
         >
           <Text style={{ color: bonusPct === null ? "#A4A7AE" : "#86EFAC", fontSize: 11, fontWeight: "900" }}>
             {xsFormatBonusPctV1(bonusPct)}
+            left: 12, // XS_FIX_ONLY_BONUS_BADGE_NOT_L5_SCORE_V1
+            bottom: 46,
+            zIndex: 8,
           </Text>
         </View>
 
@@ -443,7 +446,7 @@ export function SorareCardTile(props: any) {
         <View
           style={{
             position: "absolute",
-            bottom: 44,
+            right: 8,
             bottom: 12,
             alignItems: "center",
             justifyContent: "center",
@@ -515,17 +518,6 @@ export function SorareCardTile(props: any) {
     </TouchableOpacity>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
 
 
 
