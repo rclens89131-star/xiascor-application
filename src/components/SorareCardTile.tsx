@@ -395,27 +395,6 @@ export function SorareCardTile(props: any) {
         <View
           style={{
             position: "absolute",
-            top: 80,
-            right: 10,
-            borderRadius: 10,
-            borderWidth: 1,
-            borderColor: "rgba(34,197,94,0.42)",
-            backgroundColor: "rgba(6,16,12,0.82)",
-            paddingHorizontal: 8,
-            paddingVertical: 4,
-          }}
-        >
-          <Text style={{ color: bonusPct === null ? "#A4A7AE" : "#86EFAC", fontSize: 11, fontWeight: "900" }}>
-            {xsFormatBonusPctV1(bonusPct)}
-            left: 12, // XS_FIX_ONLY_BONUS_BADGE_NOT_L5_SCORE_V1
-            bottom: 46,
-            zIndex: 8,
-          </Text>
-        </View>
-
-        <View
-          style={{
-            position: "absolute",
             left: 10,
             bottom: 76,
             paddingHorizontal: 8,
@@ -430,14 +409,38 @@ export function SorareCardTile(props: any) {
         </View>
 
         <View style={{ position: "absolute", left: 10, right: scoreCircleSize + 14, bottom: 12 }}>
-          <Text
-            style={{ color: "#FFFFFF", fontSize: 21, lineHeight: 24, fontWeight: "900", letterSpacing: 0 }}
-            numberOfLines={2}
-            adjustsFontSizeToFit
-            minimumFontScale={0.72}
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "flex-start",
+              gap: 6,
+            }}
           >
-            {xsGetPlayerNameV1(c).toUpperCase()}
-          </Text>
+            <Text
+              style={{ color: "#FFFFFF", fontSize: 21, lineHeight: 24, fontWeight: "900", letterSpacing: 0, flexShrink: 1 }}
+              numberOfLines={2}
+              adjustsFontSizeToFit
+              minimumFontScale={0.72}
+            >
+              {xsGetPlayerNameV1(c).toUpperCase()}
+            </Text>
+            <View
+              style={{
+                // XS_BONUS_BADGE_INLINE_NAME_FINAL_V1
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: "rgba(34,197,94,0.42)",
+                backgroundColor: "rgba(6,16,12,0.82)",
+                paddingHorizontal: 7,
+                paddingVertical: 3,
+                marginTop: 2,
+              }}
+            >
+              <Text style={{ color: bonusPct === null ? "#A4A7AE" : "#86EFAC", fontSize: 10, fontWeight: "900" }}>
+                {xsFormatBonusPctV1(bonusPct)}
+              </Text>
+            </View>
+          </View>
           <Text style={{ color: "#D1D5DB", fontSize: 12, marginTop: 2 }} numberOfLines={1}>
             {xsGetClubNameV1(c)}
           </Text>
