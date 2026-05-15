@@ -11,6 +11,7 @@ const BASE_URL =
 const XS_FRONT_RECRUTER_NEW_BACKEND_MARKER_V1 = "XS_FRONT_RECRUTER_NEW_BACKEND_V1";
 const XS_FRONT_RECRUTER_BOARD_MARKER_V1 = "XS_FRONT_RECRUTER_BOARD_V1";
 const XS_FRONT_RECRUTER_PLAYERS_INDEX_MARKER_V1 = "XS_FRONT_RECRUTER_PLAYERS_INDEX_V1";
+const XS_RECRUTER_FRONT_LEAGUE_INDEX_MARKER_V1 = "XS_RECRUTER_FRONT_LEAGUE_INDEX_V1";
 
 export type ScoutOffer = {
   offerId: string;
@@ -160,6 +161,31 @@ export type RecruterPlayersResponse = {
   items: RecruterPlayer[];
 };
 
+export type RecruterLeagueIndexResponse = {
+  ok?: boolean;
+  marker?: string | null;
+  leagueSlug?: string | null;
+  leagueName?: string | null;
+  status?: string | null;
+  clubsCount?: number | null;
+  playersCount?: number | null;
+  updatedAt?: string | null;
+  cacheFile?: string | null;
+  summary?: {
+    leagueSlug?: string | null;
+    status?: string | null;
+    clubsCount?: number | null;
+    playersCount?: number | null;
+    updatedAt?: string | null;
+  } | null;
+  clubs?: Array<{
+    slug?: string | null;
+    name?: string | null;
+    playersCount?: number | null;
+  }> | null;
+  items: RecruterPlayer[];
+};
+
 export type RecruterOffersResponse = {
   ok?: boolean;
   count?: number;
@@ -284,6 +310,21 @@ export async function recruterPlayers(params?: {
     items = items.slice(0, Math.max(1, Number(params.first)));
   }
   return { ...res, ok: res?.ok ?? true, count: items.length, items };
+}
+
+export async function recruterLeagueIndex(leagueSlug: string, params?: { signal?: AbortSignal }): Promise<RecruterLeagueIndexResponse> {
+  const slug = String(leagueSlug || "").trim().toLowerCase();
+  if (!slug) throw new Error("missing league slug");
+  const res = await apiFetch<RecruterLeagueIndexResponse>(`/recruter/league-index/${encodeURIComponent(slug)}`, { signal: params?.signal });
+  const items = Array.isArray(res?.items) ? res.items.map(xsRecruterPlayerCompatV1) : [];
+  return {
+    ...res,
+    ok: res?.ok ?? true,
+    marker: res?.marker || XS_RECRUTER_FRONT_LEAGUE_INDEX_MARKER_V1,
+    leagueSlug: res?.leagueSlug || slug,
+    items,
+    playersCount: res?.playersCount ?? res?.summary?.playersCount ?? items.length,
+  };
 }
 
 export async function recruterPlayersIndexBuild(params?: {

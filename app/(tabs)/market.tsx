@@ -3,14 +3,18 @@ import { ActivityIndicator, FlatList, Image, RefreshControl, SafeAreaView, Scrol
 import { useFocusEffect, useRouter } from "expo-router";
 import { apiFetch } from "../../src/api";
 import {
-  recruterPlayers,
+  recruterLeagueIndex,
   recruterPlayersIndexBuild,
   recruterSaleStatus,
+  type RecruterLeagueIndexResponse,
   type RecruterPlayer,
   type RecruterPlayersIndexBuildResponse,
 } from "../../src/scoutApi";
 
 // XS_FRONT_RECRUTER_PLAYERS_INDEX_V1
+// XS_RECRUTER_FRONT_LEAGUE_INDEX_V1: Recruter uses the full backend league cache for Ligue 1.
+const XS_RECRUTER_FRONT_LEAGUE_INDEX_DEFAULT_V1 = "ligue-1-fr";
+
 function text(v: unknown, fallback = "") {
   const s = String(v ?? "").trim();
   return s || fallback;
@@ -56,6 +60,7 @@ export default function RecruiterTabScreen() {
   const [error, setError] = useState<string | null>(null);
   const [health, setHealth] = useState<"idle" | "ok" | "ko">("idle");
   const [buildMeta, setBuildMeta] = useState<RecruterPlayersIndexBuildResponse | null>(null);
+  const [leagueIndex, setLeagueIndex] = useState<RecruterLeagueIndexResponse | null>(null);
 
   const load = useCallback(async (isRefresh = false) => {
     try {
@@ -64,12 +69,14 @@ export default function RecruiterTabScreen() {
       setError(null);
 
       const [playersRes, healthRes] = await Promise.allSettled([
-        recruterPlayers(),
+        recruterLeagueIndex(XS_RECRUTER_FRONT_LEAGUE_INDEX_DEFAULT_V1),
         apiFetch<{ ok?: boolean }>("/recruter/health"),
       ]);
 
       if (playersRes.status === "fulfilled") {
+        setLeagueIndex(playersRes.value);
         setItems(Array.isArray(playersRes.value.items) ? playersRes.value.items : []);
+        setSelectedLeague((current) => current && current !== XS_RECRUTER_FRONT_LEAGUE_INDEX_DEFAULT_V1 ? "" : current);
       } else {
         throw playersRes.reason;
       }
@@ -131,7 +138,7 @@ export default function RecruiterTabScreen() {
       <View style={{ padding: 12, gap: 10, backgroundColor: "#0d0f14", borderBottomWidth: 1, borderBottomColor: "#251016" }}>
         <Text style={{ color: "white", fontSize: 24, fontWeight: "900" }}>Recruter</Text>
         <Text style={{ color: "#a8b0ba" }}>
-          Index joueurs · santé API: {health === "ok" ? "OK" : health === "ko" ? "KO" : "..."}
+          Index Ligue 1 · santé API: {health === "ok" ? "OK" : health === "ko" ? "KO" : "..."}
         </Text>
 
         <TouchableOpacity
@@ -147,7 +154,9 @@ export default function RecruiterTabScreen() {
             Cache: {buildMeta.summary.playersCount ?? 0} joueurs · {buildMeta.summary.clubsCount ?? 0} clubs · {buildMeta.summary.leaguesCount ?? 0} ligues
           </Text>
         ) : (
-          <Text style={{ color: "#ff9aa8" }}>{summary.total} joueurs · {summary.clubs} clubs · {summary.leagues} ligues · {summary.forSale} en vente</Text>
+          <Text style={{ color: "#ff9aa8" }}>
+            {leagueIndex?.playersCount ?? summary.total} joueurs · {leagueIndex?.clubsCount ?? summary.clubs} clubs · {summary.leagues} ligue{summary.leagues > 1 ? "s" : ""} · {summary.forSale} en vente
+          </Text>
         )}
 
         <TextInput
