@@ -2525,12 +2525,12 @@ function xsRadarRecommendationV1(
 function xsRadarLimitForRangeV1(range: XsRadarRangeV1): number {
   if (range === "L5") return 5;
   if (range === "L40") return 40;
-  return 15;
+  return 10;
 }
 
 function xsBuildFifaRadarValuesFromHistoryV1(
   historyChart: any[],
-  fallbackAvg: { avg5?: number | null; avg15?: number | null; avg40?: number | null },
+  fallbackAvg: { avg5?: number | null; avg10?: number | null; avg40?: number | null },
   positionSource: any,
   range: XsRadarRangeV1 = "L10",
   realMatchContext?: XsCardMatchContextV1 | null,
@@ -2549,7 +2549,7 @@ function xsBuildFifaRadarValuesFromHistoryV1(
   xsCoachNextOpponentLogoDebugV1(historyChart, matchContext);
   const rangeLimit = xsRadarLimitForRangeV1(range);
   const fallbackScore =
-    xsRadarAvgV1([fallbackAvg?.avg5, fallbackAvg?.avg15, fallbackAvg?.avg40]) ?? 50;
+    xsRadarAvgV1([fallbackAvg?.avg5, fallbackAvg?.avg10, fallbackAvg?.avg40]) ?? 50;
 
   const rows = (Array.isArray(historyChart) ? historyChart : [])
     .slice()
@@ -2595,9 +2595,9 @@ function xsBuildFifaRadarValuesFromHistoryV1(
     confidence,
     detailedStats: false,
     l5: fallbackAvg?.avg5 ?? fallbackScore,
-    L10: fallbackAvg?.avg15 ?? fallbackScore,
+    L10: fallbackAvg?.avg10 ?? fallbackScore,
     l40: fallbackAvg?.avg40 ?? fallbackScore,
-    scoreSeries: [fallbackAvg?.avg5, fallbackAvg?.avg15, fallbackAvg?.avg40]
+    scoreSeries: [fallbackAvg?.avg5, fallbackAvg?.avg10, fallbackAvg?.avg40]
       .map((score) => xsRadarNumV1(score))
       .filter((score): score is number => typeof score === "number" && Number.isFinite(score)),
   };
@@ -2659,10 +2659,10 @@ function xsBuildFifaRadarValuesFromHistoryV1(
   }
 
   const officialL5 = xsRadarNumV1(fallbackAvg?.avg5);
-  const officialL10 = xsRadarNumV1(fallbackAvg?.avg15);
+  const officialL10 = xsRadarNumV1(fallbackAvg?.avg10);
   const officialL40 = xsRadarNumV1(fallbackAvg?.avg40);
   const l5 = officialL5 ?? xsRadarAvgV1(scores.slice(0, 5)) ?? fallbackScore; /* XS_OFFICIAL_SORARE_AVERAGES_V1 */
-  const L10 = officialL10 ?? xsRadarAvgV1(scores.slice(0, 15)) ?? fallbackScore; /* XS_OFFICIAL_SORARE_AVERAGES_V1 */
+  const L10 = officialL10 ?? fallbackScore; /* XS_FIX_OFFICIAL_L10_ALL_CARDS_FAST_V1 */
   const l40 = officialL40 ?? xsRadarAvgV1(scores.slice(0, 40)) ?? fallbackScore; /* XS_OFFICIAL_SORARE_AVERAGES_V1 */
   const trendL5 = xsRadarClampV1(l5);
   const trendL10 = xsRadarClampV1(L10);
@@ -2905,7 +2905,20 @@ const XS_HISTORY_SYNC_CLOUDRUN_V1 = "https://xiascor-backend-tssdy62zqa-ez.a.run
 const XS_CARD_AUTO_SYNC_HISTORY_TTL_MS_V1 = 10 * 60 * 1000;
 const XS_CARD_AUTO_SYNC_HISTORY_LAST_V1 = new Map<string, number>();
 // XS_CARD_FAST_TABLE_HISTORY_V1: share one fast table history request per player while it is in-flight.
-const XS_CARD_FAST_TABLE_HISTORY_INFLIGHT_V1 = new Map<string, Promise<any[]>>();
+type XsOfficialHistoryAveragesV1 = { l5?: number | null; l10?: number | null; l15?: number | null; l40?: number | null };
+type XsFastHistoryPayloadV1 = { items: any[]; averages: XsOfficialHistoryAveragesV1 | null };
+const XS_CARD_FAST_TABLE_HISTORY_INFLIGHT_V1 = new Map<string, Promise<XsFastHistoryPayloadV1>>();
+
+function xsPickOfficialHistoryAveragesV1(payload: any): XsOfficialHistoryAveragesV1 | null {
+  const averages = payload?.averages;
+  if (!averages || typeof averages !== "object") return null;
+  return {
+    l5: asNum(averages.l5),
+    l10: asNum(averages.l10), // XS_FIX_OFFICIAL_L10_ALL_CARDS_FAST_V1
+    l15: asNum(averages.l15),
+    l40: asNum(averages.l40),
+  };
+}
 
 /* XS_CARD_SPEED_SCORE_V1 */
 function xsCardSpeedGradeV1(score: number): string {
@@ -2977,6 +2990,7 @@ export default function CardDetailScreen() {
 
   const [perf, setPerf] = useState<any>(null);
   const [historyChart, setHistoryChart] = useState<any[]>([]); // XS_HISTORY_CHART_LOGOS_LOAD_V1
+  const [historyAverages, setHistoryAverages] = useState<XsOfficialHistoryAveragesV1 | null>(null); // XS_FIX_OFFICIAL_L10_ALL_CARDS_FAST_V1
   const [historyFastLoading, setHistoryFastLoading] = useState(false); // XS_CARD_FAST_TABLE_HISTORY_V1
   const [realMatchContext, setRealMatchContext] = useState<XsCardMatchContextV1 | null>(null); // XS_CARD_REAL_MATCH_CONTEXT_V1
   const [playerStatus, setPlayerStatus] = useState<XsPlayerStatusV1 | null>(null); // XS_PLAYER_STATUS_DECISION_V1
@@ -3056,6 +3070,7 @@ export default function CardDetailScreen() {
     const slug = String(playerSlug || "").trim().toLowerCase();
     if (!slug) {
       setHistoryChart([]);
+      setHistoryAverages(null);
       setHistoryFastLoading(false);
       return;
     }
@@ -3076,6 +3091,7 @@ export default function CardDetailScreen() {
     }
 
     setHistoryChart([]);
+    setHistoryAverages(null);
     setHistoryFastLoading(true);
 
     let fastPromise = XS_CARD_FAST_TABLE_HISTORY_INFLIGHT_V1.get(slug);
@@ -3105,7 +3121,7 @@ export default function CardDetailScreen() {
           ms: Date.now() - fastStartedAt,
           count: items.length,
         });
-        return items;
+        return { items, averages: xsPickOfficialHistoryAveragesV1(histJson) };
       })();
       XS_CARD_FAST_TABLE_HISTORY_INFLIGHT_V1.set(slug, fastPromise);
       fastPromise.then(
@@ -3123,8 +3139,11 @@ export default function CardDetailScreen() {
     }
 
     fastPromise
-      .then((items) => {
-        if (!cancelled) setHistoryChart(items);
+      .then((payload) => {
+        if (!cancelled) {
+          setHistoryChart(payload.items);
+          setHistoryAverages(payload.averages);
+        }
       })
       .catch((err: any) => {
         console.log("[XS_CARD_FAST_TABLE_HISTORY_V1] error", {
@@ -3395,7 +3414,10 @@ return () => { cancelled = true; };
         const histJson = await histResp.json().catch(() => null);
         xsCardSpeedTrackPayloadV1(histJson);
         const items = Array.isArray(histJson?.items) ? histJson.items : [];
-        if (!cancelled) setHistoryChart(items);
+        if (!cancelled) {
+          setHistoryChart(items);
+          setHistoryAverages(xsPickOfficialHistoryAveragesV1(histJson));
+        }
         console.log("[XS_CARD_FAST_TABLE_HISTORY_V1] sync_reload_success", {
           playerSlug: slug,
           count: items.length,
@@ -3433,12 +3455,14 @@ return () => { cancelled = true; };
     const perfAny = (perf as any) || {};
     const cardAny = (card as any) || {};
     const sourceScores = Array.isArray(perfAny?.recentScores) ? perfAny.recentScores : cardAny?.recentScores;
-    const sourceScores15 = Array.isArray(perfAny?.recentScores10 ?? perfAny?.recentScores15) ? perfAny.recentScores10 : cardAny?.recentScores10 ?? cardAny?.recentScores15;
+    const sourceScores10 = Array.isArray(perfAny?.recentScores10)
+      ? perfAny.recentScores10
+      : (Array.isArray(cardAny?.recentScores10) ? cardAny.recentScores10 : null);
     const sourceScores40 = Array.isArray(perfAny?.recentScores40) ? perfAny.recentScores40 : cardAny?.recentScores40;
     const l5 = Array.isArray(sourceScores) ? sourceScores.slice(0, 5) : [];
-    const L10 = Array.isArray(sourceScores15)
-      ? sourceScores15.slice(0, 15)
-      : (Array.isArray(sourceScores) ? sourceScores.slice(0, 15) : []);
+    const L10 = Array.isArray(sourceScores10)
+      ? sourceScores10.slice(0, 10)
+      : (Array.isArray(sourceScores) ? sourceScores.slice(0, 10) : []);
     const l40 = Array.isArray(sourceScores40)
       ? sourceScores40.slice(0, 40)
       : (Array.isArray(sourceScores) ? sourceScores.slice(0, 40) : []);
@@ -3465,7 +3489,7 @@ return () => { cancelled = true; };
   // On garde un fallback texte si l'API ne donne pas encore de logo.
       // XS_CARD_DETAIL_LATEST_MATCH_RIGHT_ALL_CARDS_V1
   // On trie les matchs par date ASC pour afficher le plus récent à droite.
-  const xsWantedCount = activeSeries === "L5" ? 5 : activeSeries === "L10" ? 15 : 40;
+  const xsWantedCount = activeSeries === "L5" ? 5 : activeSeries === "L10" ? 10 : 40;
   const xsBaseHistory = Array.isArray(historyChart) && historyChart.length ? historyChart.slice(0, xsWantedCount) : [];
   const xsSortedHistory = xsBaseHistory
     .slice()
@@ -3576,18 +3600,25 @@ return () => { cancelled = true; };
     }
   }, [historyFastLoading, playerSlug, state, xsDisplayScores.length]);
 const avg5 =
+  asNum(historyAverages?.l5) ??
   asNum((perf as any)?.averages?.l5) ??
   asNum((perf as any)?.l5) ??
   asNum((card as any)?.averages?.l5) ??
   asNum((card as any)?.l5) ??
   avgOf(series.l5);
-  const avg15 =
+  const avg10 =
+    asNum(historyAverages?.l10) ??
+    asNum((perf as any)?.averages?.l10) ??
+    asNum((perf as any)?.l10) ??
     asNum((perf as any)?.averages?.L10) ??
     asNum((perf as any)?.L10) ??
+    asNum((card as any)?.averages?.l10) ??
+    asNum((card as any)?.l10) ??
     asNum((card as any)?.averages?.L10) ??
     asNum((card as any)?.L10) ??
-    avgOf(series.L10);
+    null;
   const avg40 =
+    asNum(historyAverages?.l40) ??
     asNum((perf as any)?.averages?.l40) ??
     asNum((perf as any)?.l40) ??
     asNum((card as any)?.averages?.l40) ??
@@ -3597,7 +3628,7 @@ const avg5 =
     () =>
       xsBuildFifaRadarValuesFromHistoryV1(
         historyChart,
-        { avg5, avg15, avg40 },
+        { avg5, avg10, avg40 },
         {
           positionRaw: positionRawParam || (card as any)?.positionRaw,
           position: resolvedPosition,
@@ -3614,7 +3645,7 @@ const avg5 =
         realMatchContext,
         playerStatus
       ),
-    [historyChart, avg5, avg15, avg40, resolvedPosition, positionRawParam, card, perf, radarRange, realMatchContext, playerStatus]
+    [historyChart, avg5, avg10, avg40, resolvedPosition, positionRawParam, card, perf, radarRange, realMatchContext, playerStatus]
   );
 
   const aiPredictionMatchKey = useMemo(
@@ -3675,7 +3706,7 @@ const avg5 =
           competition: matchContext?.competition ?? null,
           difficulty: matchContext?.difficulty ?? "unknown",
           l5: avg5,
-          L10: avg15,
+          L10: avg10,
           l40: avg40,
           historyScores,
           minutes: historyScores.map((row) => row.minutes).filter((n): n is number => typeof n === "number" && Number.isFinite(n)),
@@ -3803,8 +3834,8 @@ return (
 
         <View style={{ flex: 1, borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, padding: 14 }}>
           <Text style={{ color: theme.muted, fontSize: 12, fontWeight: "700" }}>L10</Text>
-          <Text style={{ color: xsScoreColorL5L10L40(avg15), fontSize: 24, fontWeight: "900", marginTop: 4 }}>
-            {avg15 == null ? "—" : String(Math.round(avg15))}
+          <Text style={{ color: xsScoreColorL5L10L40(avg10), fontSize: 24, fontWeight: "900", marginTop: 4 }}>
+            {avg10 == null ? "—" : String(Math.round(avg10))}
           </Text>
         </View>
 
