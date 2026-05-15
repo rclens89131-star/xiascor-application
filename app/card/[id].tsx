@@ -3369,7 +3369,7 @@ return () => { cancelled = true; };
         });
 
         const chartBase = XS_HISTORY_CHART_CLOUDRUN_V2.replace(/\/+$/, "");
-        const histUrl = `${chartBase}/history/player-chart/${encodeURIComponent(slug)}?limit=50`;
+        const histUrl = `${chartBase}/history/player-chart/${encodeURIComponent(slug)}?limit=15`;
         const reloadStartedAt = Date.now();
         speedApiCallsRef.current += 1;
         const histResp = await fetch(histUrl, { headers: { accept: "application/json" } });
@@ -3866,4 +3866,7 @@ return (
 
 
 
+
+
+// XS_MANUAL_RELOAD15_AFTER_SYNC_V1
 
