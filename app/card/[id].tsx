@@ -2389,7 +2389,7 @@ function xsBuildAccumulatedCoachDecisionV1(
     cleanSheets: xsRadarWeightedMetricV1(weightedWindows, "cleanSheets", activeMetrics.cleanSheets),
     duels: xsRadarWeightedMetricV1(weightedWindows, "duels", activeMetrics.duels),
     l5: l5Overall ?? activeMetrics.l5,
-    L10: L10Overall ?? (active as any)?.l10 ?? (active as any)?.l15,
+    L10: L10Overall ?? null, // XS_FIX_L10_ACTIVE_UNDEFINED_V1
     l40: l40Overall ?? activeMetrics.l40,
     overall: accumulatedOverall,
     confidenceScore: confidenceForDecision.score,
@@ -3876,4 +3876,7 @@ return (
 
 
 // XS_FIX_L10_TYPESCRIPT_ERRORS_V1
+
+
+// XS_FIX_L10_ACTIVE_UNDEFINED_V1
 
