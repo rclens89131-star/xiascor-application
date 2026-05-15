@@ -8,7 +8,7 @@ type RadarValue = {
   value: number;
 };
 
-type RadarRange = "L5" | "L15" | "L40";
+type RadarRange = "L5" | "L10" | "L40";
 type RadarTrend = "up" | "down" | "stable";
 type RadarVolatility = "stable" | "medium" | "high" | "unknown";
 type RadarAutoProfile = {
@@ -413,8 +413,8 @@ export default function FifaRadarChart(props: {
     (headingBits.length
       ? headingBits.join(" · ")
       : "Basé sur l'historique disponible");
-  const activeRange: RadarRange = props.range || "L15";
-  const ranges: RadarRange[] = ["L5", "L15", "L40"];
+  const activeRange: RadarRange = props.range || "L10";
+  const ranges: RadarRange[] = ["L5", "L10", "L40"];
   const autoProfile =
     props.autoProfile || {
       label: "Profil en construction",
@@ -1307,3 +1307,6 @@ export default function FifaRadarChart(props: {
     </View>
   );
 }
+
+// XS_PATCH_L15_TO_L10_UI_RADAR_V1
+

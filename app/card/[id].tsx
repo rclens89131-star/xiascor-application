@@ -63,7 +63,7 @@ function xsRadarRateV1<T>(values: T[], predicate: (value: T) => boolean): number
 
 /* XS_FIFA_RADAR_POSITION_WEIGHTS_V1 */
 type XsRadarPositionV1 = "GK" | "DEF" | "MID" | "FW" | "GEN";
-type XsRadarRangeV1 = "L5" | "L15" | "L40";
+type XsRadarRangeV1 = "L5" | "L10" | "L40";
 type XsRadarTrendV1 = "up" | "down" | "stable";
 type XsRadarVolatilityV1 = "stable" | "medium" | "high" | "unknown";
 
@@ -390,7 +390,7 @@ type XsRadarMetricsByPositionV1 = {
   confidence?: number;
   detailedStats?: boolean;
   l5?: number;
-  l15?: number;
+  L10?: number;
   l40?: number;
   confidenceScore?: number;
   overall?: number;
@@ -614,7 +614,7 @@ function xsRadarPositionPercentileV1(
 ): XsRadarPositionPercentileV1 {
   const overall = Math.round(xsRadarClampV1(metrics.coachAdjustedOverall ?? metrics.overall ?? xsRadarWeightedOverallByPositionV1(positionUsed, metrics)));
   const group = xsRadarPositionGroupLabelV1(positionUsed);
-  const range = metrics.range || "L15";
+  const range = metrics.range || "L10";
   const delta = overall - 55;
   const deltaLabel =
     delta > 0
@@ -724,7 +724,7 @@ function xsRadarAutoProfileLabelV1(
   metrics: XsRadarMetricsByPositionV1,
   profile: string
 ): XsRadarAutoProfileV1 {
-  const range = metrics.range || "L15";
+  const range = metrics.range || "L10";
   const matches = Math.max(0, Math.round(Number(metrics.matches || 0)));
   const windowText = `fenêtre ${range}`;
 
@@ -781,7 +781,7 @@ function xsRadarAutoProfileLabelV1(
 /* XS_FIFA_RADAR_CONFIDENCE_RECO_V1 */
 function xsRadarConfidenceEnhancedV1(metrics: XsRadarMetricsByPositionV1): XsRadarConfidenceEnhancedV1 {
   const matches = Math.max(0, Math.round(Number(metrics.matches || 0)));
-  const range = metrics.range || "L15";
+  const range = metrics.range || "L10";
   const hasDetailedStats = metrics.detailedStats === true;
   const volumeScore = matches < 5 ? 35 : matches <= 15 ? 62 : 82;
   const existingScore =
@@ -800,7 +800,7 @@ function xsRadarConfidenceEnhancedV1(metrics: XsRadarMetricsByPositionV1): XsRad
     score += 10;
     reasons.push("fenêtre L40 plus stable");
   } else {
-    reasons.push("fenêtre L15 équilibrée");
+    reasons.push("fenêtre L10 équilibrée");
   }
 
   if (!hasDetailedStats) {
@@ -1664,7 +1664,7 @@ function xsCoachDecisionSmartConfidenceV1(
 ): XsRadarConfidenceEnhancedV1 {
   const matches = Math.max(0, Math.round(xsCoachDecisionSmartMetricV1(metrics.matches, 0)));
   const score = xsCoachDecisionSmartMetricV1(coachDecision.score);
-  const windows = [metrics.l5, metrics.l15, metrics.l40]
+  const windows = [metrics.l5, (metrics as any).l10 ?? metrics.l15, metrics.l40]
     .map((value) => xsRadarNumV1(value))
     .filter((value): value is number => value != null)
     .map((value) => xsRadarClampV1(value));
@@ -1693,7 +1693,7 @@ function xsCoachDecisionSmartConfidenceV1(
   const finalScore = Math.round(xsRadarClampV1(decisionScore));
   const label = finalScore < 50 ? "Faible" : finalScore < 70 ? "Moyen" : "Élevé";
   const target = score < 45 ? "dans la décision d'éviter" : "dans la décision d'aligner";
-  const reason = `Confiance ${target} : ${matches} match${matches > 1 ? "s" : ""}, stabilité ${volatility}, écart L5/L15/L40 ${Math.round(spread)} pts.`;
+  const reason = `Confiance ${target} : ${matches} match${matches > 1 ? "s" : ""}, stabilité ${volatility}, écart L5/L10/L40 ${Math.round(spread)} pts.`;
   return {
     score: finalScore,
     label,
@@ -1774,9 +1774,9 @@ function xsPlayerStatusAvailabilityItemV1(statusValue?: XsPlayerStatusV1 | null)
   return { icon: "?", title: "Statut non confirmé", text: reason || "Aucune donnée fiable de disponibilité." };
 }
 
-function xsCoachDecisionDeepTrendV2(l5: number, l15: number, l40: number): "up" | "down" | "stable" | "mixed" {
-  const baseline = xsRadarAvgV1([l15, l40]) ?? l15;
-  const spread = Math.max(l5, l15, l40) - Math.min(l5, l15, l40);
+function xsCoachDecisionDeepTrendV2(l5: number, L10: number, l40: number): "up" | "down" | "stable" | "mixed" {
+  const baseline = xsRadarAvgV1([L10, l40]) ?? L10;
+  const spread = Math.max(l5, L10, l40) - Math.min(l5, L10, l40);
   if (spread <= 7) return "stable";
   if (l5 - baseline >= 7) return "up";
   if (baseline - l5 >= 7) return "down";
@@ -1865,21 +1865,21 @@ function xsCoachDecisionDeepMainReasonV2(
     if (gameTime >= 72) return xsCoachDecisionDeepItemV2("▶", "Temps de jeu sécurisant", `Minutes très fiables (${Math.round(gameTime)}/100), bon socle Sorare.`);
     if (positionSignal.value >= 65) return positionSignal.positive;
     if (impact >= 65) return xsCoachDecisionDeepItemV2("★", "Impact Sorare fort", `Impact ${Math.round(impact)}/100, il pèse vraiment dans le scoring.`);
-    if (trend === "up") return xsCoachDecisionDeepItemV2("↗", "Dynamique positive", "L5 au-dessus du L15/L40, forme récente confirmée.");
+    if (trend === "up") return xsCoachDecisionDeepItemV2("↗", "Dynamique positive", "L5 au-dessus du L10/L40, forme récente confirmée.");
     if (contextGood) return xsCoachDecisionDeepItemV2("⌂", "Contexte favorable", "Match abordable qui renforce une base déjà solide.");
     if (contextHard) return xsCoachDecisionDeepItemV2("◆", "Profil solide malgré le match", "Le score reste haut malgré un contexte plus exigeant.");
-    return xsCoachDecisionDeepItemV2("✓", "Profil complet", "Aucun axe faible majeur dans la synthèse L5/L15/L40.");
+    return xsCoachDecisionDeepItemV2("✓", "Profil complet", "Aucun axe faible majeur dans la synthèse L5/L10/L40.");
   }
 
   if (score >= 55) {
     if (gameTime >= 65) return xsCoachDecisionDeepItemV2("▶", "Base minutes correcte", `Temps de jeu ${Math.round(gameTime)}/100, utile sans être premium.`);
-    if (trend === "up") return xsCoachDecisionDeepItemV2("↗", "Forme récente utile", "L5 supérieur au fond L15/L40, mais confirmation encore nécessaire.");
+    if (trend === "up") return xsCoachDecisionDeepItemV2("↗", "Forme récente utile", "L5 supérieur au fond L10/L40, mais confirmation encore nécessaire.");
     if (positionSignal.value >= 60) return positionSignal.positive;
     return xsCoachDecisionDeepItemV2("=", "Option équilibrée", "Quelques signaux positifs, mais pas assez pour un statut prioritaire.");
   }
 
   if (gameTime < 55) return xsCoachDecisionDeepItemV2("!", "Dépend trop du temps de jeu", `Minutes fragiles (${Math.round(gameTime)}/100), risque de rendement incomplet.`);
-  if (trend === "down") return xsCoachDecisionDeepItemV2("↓", "Baisse récente", "L5 inférieur au L15/L40, dynamique négative.");
+  if (trend === "down") return xsCoachDecisionDeepItemV2("↓", "Baisse récente", "L5 inférieur au L10/L40, dynamique négative.");
   if (regularity < 55) return xsCoachDecisionDeepItemV2("~", "Régularité fragile", `Régularité ${Math.round(regularity)}/100, profil difficile à sécuriser.`);
   if (reliability < 55) return xsCoachDecisionDeepItemV2("!", "Fiabilité limitée", `Fiabilité ${Math.round(reliability)}/100, décision prudente.`);
   return xsCoachDecisionDeepItemV2("?", "Profil de dépannage", "Quelques arguments existent, mais la synthèse reste trop moyenne.");
@@ -1895,7 +1895,7 @@ function xsBuildCoachDecisionDeepAnalysisV2(
 ): XsCoachDecisionDeepAnalysisV2 {
   const score = xsCoachDecisionSmartMetricV1(coachDecision.score);
   const l5 = xsCoachDecisionSmartMetricV1(metrics.l5 ?? metrics.form);
-  const l15 = xsCoachDecisionSmartMetricV1(metrics.l15 ?? metrics.form);
+  const L10 = xsCoachDecisionSmartMetricV1((metrics as any).l10 ?? metrics.l15 ?? metrics.form);
   const l40 = xsCoachDecisionSmartMetricV1(metrics.l40 ?? metrics.form);
   const gameTime = xsCoachDecisionSmartMetricV1(metrics.gameTime);
   const impact = xsCoachDecisionSmartMetricV1(metrics.impact);
@@ -1903,7 +1903,7 @@ function xsBuildCoachDecisionDeepAnalysisV2(
   const reliability = xsCoachDecisionSmartMetricV1(metrics.reliability);
   const ceiling = xsCoachDecisionSmartMetricV1(coachDecision.ceiling);
   const volatility = coachDecision.volatility || "unknown";
-  const trend = xsCoachDecisionDeepTrendV2(l5, l15, l40);
+  const trend = xsCoachDecisionDeepTrendV2(l5, L10, l40);
   const positionSignal = xsCoachDecisionDeepPositionSignalV2(positionUsed, metrics);
   const contextGood = matchContext?.difficulty === "easy" || (matchContext?.difficulty === "medium" && matchContext?.homeAway === "home");
   const contextHard = matchContext?.difficulty === "hard";
@@ -1914,9 +1914,9 @@ function xsBuildCoachDecisionDeepAnalysisV2(
   if (gameTime >= 70) xsCoachDecisionDeepPushV2(positive, xsCoachDecisionDeepItemV2("▶", "Temps de jeu stable", `Minutes solides (${Math.round(gameTime)}/100).`), positiveLimit);
   else if (gameTime < 55) xsCoachDecisionDeepPushV2(negative, xsCoachDecisionDeepItemV2("!", "Temps de jeu fragile", `Sécurité minutes ${Math.round(gameTime)}/100.`));
 
-  if (trend === "up" && score >= 40) xsCoachDecisionDeepPushV2(positive, xsCoachDecisionDeepItemV2("↗", "L5 supérieur au fond", `L5 ${Math.round(l5)} au-dessus du L15/L40.`), positiveLimit);
-  else if (trend === "down") xsCoachDecisionDeepPushV2(negative, xsCoachDecisionDeepItemV2("↓", "L5 inférieur au L15/L40", `L5 ${Math.round(l5)}, dynamique récente en baisse.`));
-  else if (trend === "stable" && score >= 55) xsCoachDecisionDeepPushV2(positive, xsCoachDecisionDeepItemV2("=", "Courbe stable", `L5/L15/L40 cohérents autour de ${Math.round(xsRadarAvgV1([l5, l15, l40]) ?? l5)}.`), positiveLimit);
+  if (trend === "up" && score >= 40) xsCoachDecisionDeepPushV2(positive, xsCoachDecisionDeepItemV2("↗", "L5 supérieur au fond", `L5 ${Math.round(l5)} au-dessus du L10/L40.`), positiveLimit);
+  else if (trend === "down") xsCoachDecisionDeepPushV2(negative, xsCoachDecisionDeepItemV2("↓", "L5 inférieur au L10/L40", `L5 ${Math.round(l5)}, dynamique récente en baisse.`));
+  else if (trend === "stable" && score >= 55) xsCoachDecisionDeepPushV2(positive, xsCoachDecisionDeepItemV2("=", "Courbe stable", `L5/L10/L40 cohérents autour de ${Math.round(xsRadarAvgV1([l5, L10, l40]) ?? l5)}.`), positiveLimit);
 
   if (positionSignal.value >= 62 && score >= 40) xsCoachDecisionDeepPushV2(positive, positionSignal.positive, positiveLimit);
   else if (positionSignal.value < 50) xsCoachDecisionDeepPushV2(negative, positionSignal.negative);
@@ -2024,7 +2024,7 @@ function xsCoachDecisionSmartReasonsV1(
 } {
   const score = xsCoachDecisionSmartMetricV1(coachDecision.score);
   const form = xsCoachDecisionSmartMetricV1(metrics.l5 ?? metrics.form);
-  const l15 = xsCoachDecisionSmartMetricV1(metrics.l15 ?? metrics.form);
+  const L10 = xsCoachDecisionSmartMetricV1((metrics as any).l10 ?? metrics.l15 ?? metrics.form);
   const l40 = xsCoachDecisionSmartMetricV1(metrics.l40 ?? metrics.form);
   const gameTime = xsCoachDecisionSmartMetricV1(metrics.gameTime);
   const impact = xsCoachDecisionSmartMetricV1(metrics.impact);
@@ -2059,7 +2059,7 @@ function xsCoachDecisionSmartReasonsV1(
     if (gameTime >= 70) xsCoachDecisionSmartPushV1(why, { icon: "▶", title: "Temps de jeu très fiable", text: `Sécurité minutes élevée (${Math.round(gameTime)}/100).` });
     if (positionSignal.value >= 62) xsCoachDecisionSmartPushV1(why, { icon: "◆", title: positionSignal.strongTitle, text: positionSignal.strongText });
     if (impact >= 62) xsCoachDecisionSmartPushV1(why, { icon: "★", title: "Impact Sorare élevé", text: `Impact à ${Math.round(impact)}/100 sur la fenêtre synthèse.` });
-    if (form >= 60 && l15 >= 55) xsCoachDecisionSmartPushV1(why, { icon: "↗", title: "Forme confirmée", text: `L5 ${Math.round(form)} avec L15 ${Math.round(l15)}.` });
+    if (form >= 60 && L10 >= 55) xsCoachDecisionSmartPushV1(why, { icon: "↗", title: "Forme confirmée", text: `L5 ${Math.round(form)} avec L10 ${Math.round(L10)}.` });
     if (contextGood) xsCoachDecisionSmartPushV1(why, { icon: "⌂", title: "Contexte jouable", text: `Match favorable${opponent || ""}.` });
     if (volatility === "high") xsCoachDecisionSmartPushV1(risks, { icon: "~", title: "Irrégularité à surveiller", text: "Plafond intéressant mais sorties encore instables." });
     if (regularity < 55) xsCoachDecisionSmartPushV1(risks, { icon: "!", title: "Régularité limite", text: `Régularité à ${Math.round(regularity)}/100.` });
@@ -2099,7 +2099,7 @@ function xsCoachDecisionSmartReasonsV1(
   }
 
   while (why.length < 3) {
-    if (score >= 55) xsCoachDecisionSmartPushV1(why, { icon: "=", title: "Lecture équilibrée", text: `L5 ${Math.round(form)} · L15 ${Math.round(l15)} · L40 ${Math.round(l40)}.` });
+    if (score >= 55) xsCoachDecisionSmartPushV1(why, { icon: "=", title: "Lecture équilibrée", text: `L5 ${Math.round(form)} · L10 ${Math.round(L10)} · L40 ${Math.round(l40)}.` });
     else xsCoachDecisionSmartPushV1(why, { icon: "!", title: "Signaux insuffisants", text: `L5 ${Math.round(form)} · impact ${Math.round(impact)} · minutes ${Math.round(gameTime)}.` });
     break;
   }
@@ -2236,7 +2236,7 @@ function xsRadarConfidenceFromScoreV1(score: number, reason: string): XsRadarCon
 
 function xsRadarMinMatchesForWindowV1(range: XsRadarRangeV1): number {
   if (range === "L5") return 1;
-  if (range === "L15") return 6;
+  if (range === "L10") return 6;
   return 16;
 }
 
@@ -2282,8 +2282,8 @@ function xsBuildAccumulatedCoachDecisionV1(
   recommendation: XsRadarRecommendationV1;
   metrics: XsRadarMetricsByPositionV1;
 } | null {
-  const baseWeights: Record<XsRadarRangeV1, number> = { L5: 0.4, L15: 0.35, L40: 0.25 };
-  const snapshots = (["L5", "L15", "L40"] as XsRadarRangeV1[])
+  const baseWeights: Record<XsRadarRangeV1, number> = { L5: 0.4, L10: 0.35, L40: 0.25 };
+  const snapshots = (["L5", "L10", "L40"] as XsRadarRangeV1[])
     .map((range) => xsRadarWindowSnapshotV1(range, radarsByRange[range]))
     .filter((snapshot): snapshot is XsRadarWindowSnapshotV1 => snapshot != null);
 
@@ -2298,9 +2298,9 @@ function xsBuildAccumulatedCoachDecisionV1(
     snapshots.map((snapshot) => [snapshot.range, snapshot])
   );
   const l5Overall = byRange.get("L5")?.overall;
-  const l15Overall = byRange.get("L15")?.overall;
+  const L10Overall = byRange.get("L10")?.overall;
   const l40Overall = byRange.get("L40")?.overall;
-  const longerAverage = xsRadarAvgV1([l15Overall, l40Overall]) ?? null;
+  const longerAverage = xsRadarAvgV1([L10Overall, l40Overall]) ?? null;
   const accumulatedOverall = xsRadarClampV1(
     weightedWindows.reduce((sum, window) => sum + window.overall * window.weight, 0)
   );
@@ -2311,7 +2311,7 @@ function xsBuildAccumulatedCoachDecisionV1(
   );
   const scoreSeries = (
     byRange.get("L40")?.metrics?.scoreSeries ||
-    byRange.get("L15")?.metrics?.scoreSeries ||
+    byRange.get("L10")?.metrics?.scoreSeries ||
     byRange.get("L5")?.metrics?.scoreSeries ||
     activeMetrics.scoreSeries ||
     []
@@ -2328,13 +2328,13 @@ function xsBuildAccumulatedCoachDecisionV1(
   const unconfirmedL5Penalty =
     l5Overall != null && l5Overall >= 75 && longerAverage != null && longerAverage < 55 ? 12 : 0;
   const lowRecentPenalty =
-    l5Overall != null && l15Overall != null && l5Overall < 45 && l15Overall < 50 ? 8 : 0;
+    l5Overall != null && L10Overall != null && l5Overall < 45 && L10Overall < 50 ? 8 : 0;
   const allWindowsHighBonus =
     l5Overall != null &&
-    l15Overall != null &&
+    L10Overall != null &&
     l40Overall != null &&
     l5Overall >= 70 &&
-    l15Overall >= 70 &&
+    L10Overall >= 70 &&
     l40Overall >= 70
       ? 4
       : 0;
@@ -2353,16 +2353,16 @@ function xsBuildAccumulatedCoachDecisionV1(
   );
   const windowBlendLabel =
     snapshots.length === 3
-      ? "Calcul : L5 40% · L15 35% · L40 25%"
+      ? "Calcul : L5 40% · L10 35% · L40 25%"
       : `Calcul : ${weightedWindows
           .map((window) => `${window.range} ${Math.round(window.weight * 100)}%`)
           .join(" · ")}`;
   const reasons: string[] = [windowBlendLabel];
   if (l5Overall != null) reasons.push(`L5 ${Math.round(l5Overall)}`);
-  if (l15Overall != null) reasons.push(`L15 ${Math.round(l15Overall)}`);
+  if (L10Overall != null) reasons.push(`L10 ${Math.round(L10Overall)}`);
   if (l40Overall != null) reasons.push(`L40 ${Math.round(l40Overall)}`);
-  if (unconfirmedL5Penalty) reasons.push("Pic L5 non confirmé par L15/L40");
-  if (lowRecentPenalty) reasons.push("L5 et L15 faibles");
+  if (unconfirmedL5Penalty) reasons.push("Pic L5 non confirmé par L10/L40");
+  if (lowRecentPenalty) reasons.push("L5 et L10 faibles");
   if (lowConfidencePenalty) reasons.push("Confiance faible: décision abaissée");
   if (match.bonus > 0) reasons.push(`Contexte favorable: ${match.reason}`);
   else if (match.bonus < 0) reasons.push(`Contexte pénalisant: ${match.reason}`);
@@ -2373,7 +2373,7 @@ function xsBuildAccumulatedCoachDecisionV1(
 
   const confidenceForDecision = xsRadarConfidenceFromScoreV1(
     confidenceScore,
-    "Confiance synthétisée depuis L5/L15/L40."
+    "Confiance synthétisée depuis L5/L10/L40."
   );
   const decisionMetrics: XsRadarMetricsByPositionV1 = {
     ...activeMetrics,
@@ -2389,7 +2389,7 @@ function xsBuildAccumulatedCoachDecisionV1(
     cleanSheets: xsRadarWeightedMetricV1(weightedWindows, "cleanSheets", activeMetrics.cleanSheets),
     duels: xsRadarWeightedMetricV1(weightedWindows, "duels", activeMetrics.duels),
     l5: l5Overall ?? activeMetrics.l5,
-    l15: l15Overall ?? activeMetrics.l15,
+    L10: L10Overall ?? active(metrics as any).l10 ?? metrics.l15,
     l40: l40Overall ?? activeMetrics.l40,
     overall: accumulatedOverall,
     confidenceScore: confidenceForDecision.score,
@@ -2422,8 +2422,8 @@ function xsBuildAccumulatedCoachDecisionV1(
       finalLabel: "Différentiel intéressant",
       finalTone: "joker",
       playStyle: "Boom/Bust",
-      summary: "Différentiel intéressant : L5 haut, mais L15/L40 ne confirment pas encore.",
-      bullets: ["Forme récente forte", "L15/L40 plus faibles", "Risque de faux positif"],
+      summary: "Différentiel intéressant : L5 haut, mais L10/L40 ne confirment pas encore.",
+      bullets: ["Forme récente forte", "L10/L40 plus faibles", "Risque de faux positif"],
     };
   }
 
@@ -2454,7 +2454,7 @@ function xsRadarRecommendationV1(
   const opponentText = matchContext?.opponentName ? ` contre ${matchContext.opponentName}` : "";
   const contextOk = matchContext?.difficulty === "easy" || matchContext?.difficulty === "medium";
   const l5 = typeof metrics.l5 === "number" ? metrics.l5 : metrics.form;
-  const l15 = typeof metrics.l15 === "number" ? metrics.l15 : metrics.form;
+  const L10 = typeof (metrics as any).l10 ?? metrics.l15 === "number" ? (metrics as any).l10 ?? metrics.l15 : metrics.form;
   const l40 = typeof metrics.l40 === "number" ? metrics.l40 : metrics.form;
 
   if (metrics.gameTime < 35) {
@@ -2478,8 +2478,8 @@ function xsRadarRecommendationV1(
   if (positionUsed === "FW" && metrics.attack >= 62 && metrics.impact >= 58) {
     return { label: "À aligner", tone: "play", reason: `À aligner : attaque élevée et impact fort${opponentText} sur la fenêtre sélectionnée.` };
   }
-  if (l5 >= 62 && l15 < 58 && l40 < 58 && metrics.gameTime >= 55) {
-    return { label: "Différentiel intéressant", tone: "play", reason: `Différentiel intéressant : L5 fort mais historique L15/L40 encore moyen${opponentText}.` };
+  if (l5 >= 62 && L10 < 58 && l40 < 58 && metrics.gameTime >= 55) {
+    return { label: "Différentiel intéressant", tone: "play", reason: `Différentiel intéressant : L5 fort mais historique L10/L40 encore moyen${opponentText}.` };
   }
   if (autoProfile.tone === "safe" && confidence.label === "Élevé") {
     return { label: "Bon pick secondaire", tone: "play", reason: `Bon pick secondaire : profil sûr, confiance élevée et base stable${opponentText}.` };
@@ -2513,7 +2513,7 @@ function xsBuildFifaRadarValuesFromHistoryV1(
   historyChart: any[],
   fallbackAvg: { avg5?: number | null; avg15?: number | null; avg40?: number | null },
   positionSource: any,
-  range: XsRadarRangeV1 = "L15",
+  range: XsRadarRangeV1 = "L10",
   realMatchContext?: XsCardMatchContextV1 | null,
   playerStatus?: XsPlayerStatusV1 | null,
   skipAccumulatedCoachDecision: boolean = false
@@ -2576,7 +2576,7 @@ function xsBuildFifaRadarValuesFromHistoryV1(
     confidence,
     detailedStats: false,
     l5: fallbackAvg?.avg5 ?? fallbackScore,
-    l15: fallbackAvg?.avg15 ?? fallbackScore,
+    L10: fallbackAvg?.avg15 ?? fallbackScore,
     l40: fallbackAvg?.avg40 ?? fallbackScore,
     scoreSeries: [fallbackAvg?.avg5, fallbackAvg?.avg15, fallbackAvg?.avg40]
       .map((score) => xsRadarNumV1(score))
@@ -2602,7 +2602,7 @@ function xsBuildFifaRadarValuesFromHistoryV1(
     const fallbackMatchContext = xsAdjustMatchContextWithMetricsV1(matchContext, fallbackMetrics);
     const fallbackBaseRecommendation = xsRadarRecommendationV1(positionUsed, fallbackMetrics, fallbackAutoProfile, fallbackConfidenceEnhanced, fallbackMatchContext);
     const fallbackCoachDecision = xsRadarCoachDecisionV1(positionUsed, fallbackMetrics, fallbackConfidenceEnhanced, fallbackMatchContext);
-    fallbackCoachDecision.windowBlendLabel = "Calcul : L5 40% · L15 35% · L40 25%";
+    fallbackCoachDecision.windowBlendLabel = "Calcul : L5 40% · L10 35% · L40 25%";
     fallbackMetrics.coachAdjustedOverall = fallbackCoachDecision.adjustedOverall;
     fallbackMetrics.coachScore = fallbackCoachDecision.score;
     const fallbackDecisionV2 = xsRadarDecisionEngineV2(positionUsed, fallbackMetrics, fallbackCoachDecision, fallbackMatchContext);
@@ -2640,15 +2640,15 @@ function xsBuildFifaRadarValuesFromHistoryV1(
   }
 
   const officialL5 = xsRadarNumV1(fallbackAvg?.avg5);
-  const officialL15 = xsRadarNumV1(fallbackAvg?.avg15);
+  const officialL10 = xsRadarNumV1(fallbackAvg?.avg15);
   const officialL40 = xsRadarNumV1(fallbackAvg?.avg40);
   const l5 = officialL5 ?? xsRadarAvgV1(scores.slice(0, 5)) ?? fallbackScore; /* XS_OFFICIAL_SORARE_AVERAGES_V1 */
-  const l15 = officialL15 ?? xsRadarAvgV1(scores.slice(0, 15)) ?? fallbackScore; /* XS_OFFICIAL_SORARE_AVERAGES_V1 */
+  const L10 = officialL10 ?? xsRadarAvgV1(scores.slice(0, 15)) ?? fallbackScore; /* XS_OFFICIAL_SORARE_AVERAGES_V1 */
   const l40 = officialL40 ?? xsRadarAvgV1(scores.slice(0, 40)) ?? fallbackScore; /* XS_OFFICIAL_SORARE_AVERAGES_V1 */
   const trendL5 = xsRadarClampV1(l5);
-  const trendL15 = xsRadarClampV1(l15);
+  const trendL10 = xsRadarClampV1(L10);
   const trendL40 = xsRadarClampV1(l40);
-  const form = xsRadarClampV1(l5 * 0.5 + l15 * 0.3 + l40 * 0.2);
+  const form = xsRadarClampV1(l5 * 0.5 + L10 * 0.3 + l40 * 0.2);
 
   const stdDev = xsRadarStdDevV1(scores);
   const badScoreRate = xsRadarRateV1(scores, (score) => score < 30);
@@ -2767,7 +2767,7 @@ function xsBuildFifaRadarValuesFromHistoryV1(
     confidence,
     detailedStats: hasDetailedStats,
     l5: trendL5,
-    l15: trendL15,
+    L10: trendL10,
     l40: trendL40,
     scoreSeries: scores.slice(0, 15),
   };
@@ -2800,7 +2800,7 @@ function xsBuildFifaRadarValuesFromHistoryV1(
   if (!skipAccumulatedCoachDecision) {
     const radarsByRange: Partial<Record<XsRadarRangeV1, any>> = {
       L5: xsBuildFifaRadarValuesFromHistoryV1(historyChart, fallbackAvg, positionSource, "L5", realMatchContext, playerStatus, true),
-      L15: xsBuildFifaRadarValuesFromHistoryV1(historyChart, fallbackAvg, positionSource, "L15", realMatchContext, playerStatus, true),
+      L10: xsBuildFifaRadarValuesFromHistoryV1(historyChart, fallbackAvg, positionSource, "L10", realMatchContext, playerStatus, true),
       L40: xsBuildFifaRadarValuesFromHistoryV1(historyChart, fallbackAvg, positionSource, "L40", realMatchContext, playerStatus, true),
     };
     const accumulatedDecision = xsBuildAccumulatedCoachDecisionV1(
@@ -2868,15 +2868,15 @@ function xsBuildFifaRadarValuesFromHistoryV1(
 }
 /* XS_FIFA_RADAR_REAL_STATS_V1_END */
 
-/* XS_SCORE_COLOR_L5_L15_L40_V1 */
-function xsScoreColorL5L15L40(score: number | null): string {
+/* XS_SCORE_COLOR_L5_L10_L40_V1 */
+function xsScoreColorL5L10L40(score: number | null): string {
   if (typeof score !== "number" || !Number.isFinite(score)) return "#9CA3AF";
   if (score >= 65) return "#38BDF8"; // bleu = excellent
   if (score >= 50) return "#22C55E"; // vert = bon
   if (score >= 40) return "#FACC15"; // jaune = moyen
   return "#EF4444"; // rouge = faible
 }
-/* XS_SCORE_COLOR_L5_L15_L40_V1_END */
+/* XS_SCORE_COLOR_L5_L10_L40_V1_END */
 
 
 const XS_HISTORY_CHART_CLOUDRUN_V2 = "https://xiascor-backend-tssdy62zqa-ez.a.run.app";
@@ -2966,8 +2966,8 @@ export default function CardDetailScreen() {
   const [aiPredictionError, setAiPredictionError] = useState<string | null>(null); // XS_AI_PLAYER_SCORE_PREDICTION_V1
   const [state, setState] = useState<"idle" | "loading" | "ok" | "err">("idle");
   const [error, setError] = useState("");
-  const [activeSeries, setActiveSeries] = useState<"L5" | "L15" | "ALL">("L5");
-  const [radarRange, setRadarRange] = useState<XsRadarRangeV1>("L15");
+  const [activeSeries, setActiveSeries] = useState<"L5" | "L10" | "ALL">("L5");
+  const [radarRange, setRadarRange] = useState<XsRadarRangeV1>("L10");
   const perfAuditSlugRef = React.useRef("");
   const perfAuditStartedAtRef = React.useRef(Date.now());
   const perfAuditRenderCountRef = React.useRef(0);
@@ -3046,7 +3046,7 @@ export default function CardDetailScreen() {
       (card as any)?.history,
       (card as any)?.recentHistory,
       (card as any)?.recentScores,
-      (card as any)?.recentScores15,
+      (card as any)?.recentScores10,
       (card as any)?.recentScores40,
     ].find((value) => Array.isArray(value) && value.length);
     if (Array.isArray(cachedRows) && cachedRows.length) {
@@ -3414,10 +3414,10 @@ return () => { cancelled = true; };
     const perfAny = (perf as any) || {};
     const cardAny = (card as any) || {};
     const sourceScores = Array.isArray(perfAny?.recentScores) ? perfAny.recentScores : cardAny?.recentScores;
-    const sourceScores15 = Array.isArray(perfAny?.recentScores15) ? perfAny.recentScores15 : cardAny?.recentScores15;
+    const sourceScores15 = Array.isArray(perfAny?.recentScores10 ?? perfAny?.recentScores15) ? perfAny.recentScores10 : cardAny?.recentScores10 ?? cardAny?.recentScores15;
     const sourceScores40 = Array.isArray(perfAny?.recentScores40) ? perfAny.recentScores40 : cardAny?.recentScores40;
     const l5 = Array.isArray(sourceScores) ? sourceScores.slice(0, 5) : [];
-    const l15 = Array.isArray(sourceScores15)
+    const L10 = Array.isArray(sourceScores15)
       ? sourceScores15.slice(0, 15)
       : (Array.isArray(sourceScores) ? sourceScores.slice(0, 15) : []);
     const l40 = Array.isArray(sourceScores40)
@@ -3432,12 +3432,12 @@ return () => { cancelled = true; };
       (Array.isArray(cardAny?.opponents) ? cardAny.opponents :
       (Array.isArray(cardAny?.meta?.opponents) ? cardAny.meta.opponents : [])))));
     // XS_FIX_CARD_DETAIL_OPPONENTS_FALLBACK_V1 END
-    return { l5, l15, l40, opp };
+    return { l5, L10, l40, opp };
   }, [perf, card]);
 
   const scores =
     activeSeries === "L5" ? series.l5 :
-    activeSeries === "L15" ? series.l15 :
+    activeSeries === "L10" ? series.L10 :
     series.l40;
 
   
@@ -3446,7 +3446,7 @@ return () => { cancelled = true; };
   // On garde un fallback texte si l'API ne donne pas encore de logo.
       // XS_CARD_DETAIL_LATEST_MATCH_RIGHT_ALL_CARDS_V1
   // On trie les matchs par date ASC pour afficher le plus récent à droite.
-  const xsWantedCount = activeSeries === "L5" ? 5 : activeSeries === "L15" ? 15 : 40;
+  const xsWantedCount = activeSeries === "L5" ? 5 : activeSeries === "L10" ? 15 : 40;
   const xsBaseHistory = Array.isArray(historyChart) && historyChart.length ? historyChart.slice(0, xsWantedCount) : [];
   const xsSortedHistory = xsBaseHistory
     .slice()
@@ -3563,11 +3563,11 @@ const avg5 =
   asNum((card as any)?.l5) ??
   avgOf(series.l5);
   const avg15 =
-    asNum((perf as any)?.averages?.l15) ??
-    asNum((perf as any)?.l15) ??
-    asNum((card as any)?.averages?.l15) ??
-    asNum((card as any)?.l15) ??
-    avgOf(series.l15);
+    asNum((perf as any)?.averages?.L10) ??
+    asNum((perf as any)?.L10) ??
+    asNum((card as any)?.averages?.L10) ??
+    asNum((card as any)?.L10) ??
+    avgOf(series.L10);
   const avg40 =
     asNum((perf as any)?.averages?.l40) ??
     asNum((perf as any)?.l40) ??
@@ -3656,7 +3656,7 @@ const avg5 =
           competition: matchContext?.competition ?? null,
           difficulty: matchContext?.difficulty ?? "unknown",
           l5: avg5,
-          l15: avg15,
+          L10: avg15,
           l40: avg40,
           historyScores,
           minutes: historyScores.map((row) => row.minutes).filter((n): n is number => typeof n === "number" && Number.isFinite(n)),
@@ -3677,7 +3677,7 @@ const avg5 =
     }
   }
 
-  function pill(label: "L5" | "L15" | "ALL") {
+  function pill(label: "L5" | "L10" | "ALL") {
     const active = activeSeries === label;
 return (
       <Text
@@ -3733,7 +3733,7 @@ return (
 
         <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
           {pill("L5")}
-          {pill("L15")}
+          {pill("L10")}
           {pill("ALL")}
         </View>
 
@@ -3777,21 +3777,21 @@ return (
       <View style={{ flexDirection: "row", gap: 10 }}>
         <View style={{ flex: 1, borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, padding: 14 }}>
           <Text style={{ color: theme.muted, fontSize: 12, fontWeight: "700" }}>L5</Text>
-          <Text style={{ color: xsScoreColorL5L15L40(avg5), fontSize: 24, fontWeight: "900", marginTop: 4 }}>
+          <Text style={{ color: xsScoreColorL5L10L40(avg5), fontSize: 24, fontWeight: "900", marginTop: 4 }}>
             {avg5 == null ? "—" : String(Math.round(avg5))}
           </Text>
         </View>
 
         <View style={{ flex: 1, borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, padding: 14 }}>
-          <Text style={{ color: theme.muted, fontSize: 12, fontWeight: "700" }}>L15</Text>
-          <Text style={{ color: xsScoreColorL5L15L40(avg15), fontSize: 24, fontWeight: "900", marginTop: 4 }}>
+          <Text style={{ color: theme.muted, fontSize: 12, fontWeight: "700" }}>L10</Text>
+          <Text style={{ color: xsScoreColorL5L10L40(avg15), fontSize: 24, fontWeight: "900", marginTop: 4 }}>
             {avg15 == null ? "—" : String(Math.round(avg15))}
           </Text>
         </View>
 
         <View style={{ flex: 1, borderRadius: 16, backgroundColor: theme.panel, borderWidth: 1, borderColor: theme.stroke, padding: 14 }}>
           <Text style={{ color: theme.muted, fontSize: 12, fontWeight: "700" }}>L40</Text>
-          <Text style={{ color: xsScoreColorL5L15L40(avg40), fontSize: 24, fontWeight: "900", marginTop: 4 }}>
+          <Text style={{ color: xsScoreColorL5L10L40(avg40), fontSize: 24, fontWeight: "900", marginTop: 4 }}>
             {avg40 == null ? "—" : String(Math.round(avg40))}
           </Text>
         </View>
@@ -3832,7 +3832,7 @@ return (
           recentScores: {Array.isArray((perf as any)?.recentScores) ? (perf as any).recentScores.length : 0}
         </Text>
         <Text style={{ color: theme.muted }}>
-          recentScores15: {Array.isArray((perf as any)?.recentScores15) ? (perf as any).recentScores15.length : 0}
+          recentScores10: {Array.isArray((perf as any)?.recentScores10) ? (perf as any).recentScores10.length : 0}
         </Text>
         <Text style={{ color: theme.muted }}>
           ALL/historyChart: {Array.isArray(historyChart) ? historyChart.length : 0}
@@ -3869,4 +3869,7 @@ return (
 
 
 // XS_MANUAL_RELOAD15_AFTER_SYNC_V1
+
+
+// XS_PATCH_L15_TO_L10_UI_RADAR_V1
 
