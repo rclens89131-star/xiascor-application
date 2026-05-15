@@ -1664,7 +1664,7 @@ function xsCoachDecisionSmartConfidenceV1(
 ): XsRadarConfidenceEnhancedV1 {
   const matches = Math.max(0, Math.round(xsCoachDecisionSmartMetricV1(metrics.matches, 0)));
   const score = xsCoachDecisionSmartMetricV1(coachDecision.score);
-  const windows = [metrics.l5, (metrics as any).l10 ?? metrics.l15, metrics.l40]
+  const windows = [metrics.l5, (metrics as any).l10 ?? (metrics as any).l15, metrics.l40]
     .map((value) => xsRadarNumV1(value))
     .filter((value): value is number => value != null)
     .map((value) => xsRadarClampV1(value));
@@ -1895,7 +1895,7 @@ function xsBuildCoachDecisionDeepAnalysisV2(
 ): XsCoachDecisionDeepAnalysisV2 {
   const score = xsCoachDecisionSmartMetricV1(coachDecision.score);
   const l5 = xsCoachDecisionSmartMetricV1(metrics.l5 ?? metrics.form);
-  const L10 = xsCoachDecisionSmartMetricV1((metrics as any).l10 ?? metrics.l15 ?? metrics.form);
+  const L10 = xsCoachDecisionSmartMetricV1((metrics as any).l10 ?? (metrics as any).l15 ?? metrics.form);
   const l40 = xsCoachDecisionSmartMetricV1(metrics.l40 ?? metrics.form);
   const gameTime = xsCoachDecisionSmartMetricV1(metrics.gameTime);
   const impact = xsCoachDecisionSmartMetricV1(metrics.impact);
@@ -2024,7 +2024,7 @@ function xsCoachDecisionSmartReasonsV1(
 } {
   const score = xsCoachDecisionSmartMetricV1(coachDecision.score);
   const form = xsCoachDecisionSmartMetricV1(metrics.l5 ?? metrics.form);
-  const L10 = xsCoachDecisionSmartMetricV1((metrics as any).l10 ?? metrics.l15 ?? metrics.form);
+  const L10 = xsCoachDecisionSmartMetricV1((metrics as any).l10 ?? (metrics as any).l15 ?? metrics.form);
   const l40 = xsCoachDecisionSmartMetricV1(metrics.l40 ?? metrics.form);
   const gameTime = xsCoachDecisionSmartMetricV1(metrics.gameTime);
   const impact = xsCoachDecisionSmartMetricV1(metrics.impact);
@@ -2389,7 +2389,7 @@ function xsBuildAccumulatedCoachDecisionV1(
     cleanSheets: xsRadarWeightedMetricV1(weightedWindows, "cleanSheets", activeMetrics.cleanSheets),
     duels: xsRadarWeightedMetricV1(weightedWindows, "duels", activeMetrics.duels),
     l5: l5Overall ?? activeMetrics.l5,
-    L10: L10Overall ?? active(metrics as any).l10 ?? metrics.l15,
+    L10: L10Overall ?? (active as any)?.l10 ?? (active as any)?.l15,
     l40: l40Overall ?? activeMetrics.l40,
     overall: accumulatedOverall,
     confidenceScore: confidenceForDecision.score,
@@ -2454,7 +2454,8 @@ function xsRadarRecommendationV1(
   const opponentText = matchContext?.opponentName ? ` contre ${matchContext.opponentName}` : "";
   const contextOk = matchContext?.difficulty === "easy" || matchContext?.difficulty === "medium";
   const l5 = typeof metrics.l5 === "number" ? metrics.l5 : metrics.form;
-  const L10 = typeof (metrics as any).l10 ?? metrics.l15 === "number" ? (metrics as any).l10 ?? metrics.l15 : metrics.form;
+  const L10Raw = (metrics as any).l10 ?? (metrics as any).l15;
+  const L10 = typeof L10Raw === "number" ? L10Raw : metrics.form;
   const l40 = typeof metrics.l40 === "number" ? metrics.l40 : metrics.form;
 
   if (metrics.gameTime < 35) {
@@ -3872,4 +3873,7 @@ return (
 
 
 // XS_PATCH_L15_TO_L10_UI_RADAR_V1
+
+
+// XS_FIX_L10_TYPESCRIPT_ERRORS_V1
 
