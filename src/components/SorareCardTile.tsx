@@ -395,7 +395,7 @@ export function SorareCardTile(props: any) {
         <View
           style={{
             position: "absolute",
-            bottom: -28,
+            bottom: -10,
             right: 8,
             borderRadius: 10,
             borderWidth: 1,
@@ -515,6 +515,7 @@ export function SorareCardTile(props: any) {
     </TouchableOpacity>
   );
 }
+
 
 
 
