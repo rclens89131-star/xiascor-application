@@ -63,6 +63,24 @@ function xsRadarRateV1<T>(values: T[], predicate: (value: T) => boolean): number
 
 /* XS_FIFA_RADAR_POSITION_WEIGHTS_V1 */
 type XsRadarPositionV1 = "GK" | "DEF" | "MID" | "FW" | "GEN";
+
+// XS_PATCH_TRUE_L10_FROM_HISTORY_V1 BEGIN
+function xsAverageLastValidScoresV1(items: any[], take: number): number | null {
+  const scores = Array.isArray(items)
+    ? items
+        .filter((x) => {
+          const score = Number(x?.scoreSorare);
+          const minutes = Number(x?.minutes);
+          return Number.isFinite(score) && Number.isFinite(minutes) && minutes > 0;
+        })
+        .slice(0, take)
+        .map((x) => Number(x.scoreSorare))
+    : [];
+
+  if (!scores.length) return null;
+  return Math.round(scores.reduce((sum, n) => sum + n, 0) / scores.length);
+}
+// XS_PATCH_TRUE_L10_FROM_HISTORY_V1 END
 type XsRadarRangeV1 = "L5" | "L10" | "L40";
 type XsRadarTrendV1 = "up" | "down" | "stable";
 type XsRadarVolatilityV1 = "stable" | "medium" | "high" | "unknown";
@@ -2389,7 +2407,7 @@ function xsBuildAccumulatedCoachDecisionV1(
     cleanSheets: xsRadarWeightedMetricV1(weightedWindows, "cleanSheets", activeMetrics.cleanSheets),
     duels: xsRadarWeightedMetricV1(weightedWindows, "duels", activeMetrics.duels),
     l5: l5Overall ?? activeMetrics.l5,
-    L10: L10Overall ?? null, // XS_FIX_L10_ACTIVE_UNDEFINED_V1
+    L10: xsAverageLastValidScoresV1(Array.isArray(historyChart) ? historyChart : [], 10) ?? L10Overall ?? null, // XS_PATCH_TRUE_L10_FROM_HISTORY_V1
     l40: l40Overall ?? activeMetrics.l40,
     overall: accumulatedOverall,
     confidenceScore: confidenceForDecision.score,
@@ -3879,4 +3897,5 @@ return (
 
 
 // XS_FIX_L10_ACTIVE_UNDEFINED_V1
+
 
