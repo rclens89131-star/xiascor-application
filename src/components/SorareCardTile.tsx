@@ -395,11 +395,11 @@ export function SorareCardTile(props: any) {
         <View
           style={{
             position: "absolute",
-            bottom: 58,
+            bottom: -6,
             right: 12,
             borderRadius: 10,
             borderWidth: 1,
-            borderColor: "rgba(34,197,94,0.42)",
+            borderColor: "red", // XS_PROBE_BONUS_BADGE_VISIBLE_MOVE_V1
             backgroundColor: "rgba(6,16,12,0.82)",
             paddingHorizontal: 8,
             paddingVertical: 4,
@@ -515,6 +515,8 @@ export function SorareCardTile(props: any) {
     </TouchableOpacity>
   );
 }
+
+
 
 
 
