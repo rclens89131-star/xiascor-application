@@ -417,7 +417,7 @@ export function SorareCardTile(props: any) {
             }}
           >
             <Text
-              style={{ color: "#FFFFFF", fontSize: 21, lineHeight: 24, fontWeight: "900", letterSpacing: 0, flexShrink: 1, maxWidth: Math.round(width * 0.55) }}
+              style={{ color: "#FFFFFF", fontSize: 21, lineHeight: 24, fontWeight: "900", letterSpacing: 0, flexShrink: 1 }}
               numberOfLines={2}
               adjustsFontSizeToFit
               minimumFontScale={0.72}
@@ -432,7 +432,7 @@ export function SorareCardTile(props: any) {
                 borderColor: "rgba(34,197,94,0.42)",
                 backgroundColor: "rgba(6,16,12,0.82)",
                 paddingHorizontal: 7,
-                paddingVertical: 3,`r`n                flexShrink: 0, // XS_ADJUST_INLINE_BONUS_BADGE_LONG_NAMES_V1
+                paddingVertical: 3,
                 marginTop: 2,
               }}
             >
@@ -521,7 +521,6 @@ export function SorareCardTile(props: any) {
     </TouchableOpacity>
   );
 }
-
 
 
 
