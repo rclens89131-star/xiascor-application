@@ -3165,6 +3165,12 @@ export default function CardDetailScreen() {
         } catch {}
 
         speedApiCallsRef.current += 1;
+    // XS_MANUAL_REMOVE_DUP_HISTORY40_V2 BEGIN
+    if (Array.isArray(historyChart) && historyChart.length > 0) {
+      console.log("[XS_MANUAL_REMOVE_DUP_HISTORY40_V2] skip publicPlayerPerformance: historyChart already available", historyChart.length);
+      return;
+    }
+    // XS_MANUAL_REMOVE_DUP_HISTORY40_V2 END
         const resp = await publicPlayerPerformance(
           playerSlug,
           xsPerfDeviceId ? { deviceId: xsPerfDeviceId } : undefined
@@ -3835,6 +3841,7 @@ return (
     </ScrollView>
   );
 }
+
 
 
 
