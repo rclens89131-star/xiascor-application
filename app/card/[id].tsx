@@ -2888,6 +2888,48 @@ const XS_CARD_AUTO_SYNC_HISTORY_LAST_V1 = new Map<string, number>();
 // XS_CARD_FAST_TABLE_HISTORY_V1: share one fast table history request per player while it is in-flight.
 const XS_CARD_FAST_TABLE_HISTORY_INFLIGHT_V1 = new Map<string, Promise<any[]>>();
 
+/* XS_CARD_SPEED_SCORE_V1 */
+function xsCardSpeedGradeV1(score: number): string {
+  if (score >= 90) return "ultra premium";
+  if (score >= 80) return "premium";
+  if (score >= 65) return "rapide";
+  if (score >= 50) return "correct";
+  return "lent";
+}
+
+function xsCardClampSpeedV1(value: number): number {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function xsCardSpeedScoreV1(input: {
+  tableMs?: number | null;
+  fullMs?: number | null;
+  syncMs?: number | null;
+  renders?: number | null;
+  apiCalls?: number | null;
+  dataKb?: number | null;
+  cacheReopenMs?: number | null;
+}): { score: number; grade: string } {
+  const tableMs = Number(input.tableMs || 0);
+  const fullMs = Number(input.fullMs || tableMs || 0);
+  const syncMs = Number(input.syncMs || 0);
+  const renders = Number(input.renders || 0);
+  const apiCalls = Number(input.apiCalls || 0);
+  const dataKb = Number(input.dataKb || 0);
+  const cacheReopenMs = Number(input.cacheReopenMs || 0);
+  let score = 100;
+  score -= Math.min(25, Math.max(0, (tableMs - 500) / 20));
+  score -= Math.min(20, Math.max(0, (fullMs - 1000) / 40));
+  score -= Math.min(8, Math.max(0, (syncMs - 1500) / 100));
+  score -= Math.min(12, Math.max(0, (renders - 6) * 2));
+  score -= Math.min(12, Math.max(0, (apiCalls - 4) * 3));
+  score -= Math.min(8, Math.max(0, (dataKb - 80) / 20));
+  if (cacheReopenMs > 0) score -= Math.min(6, Math.max(0, (cacheReopenMs - 450) / 60));
+  const rounded = xsCardClampSpeedV1(score);
+  return { score: rounded, grade: xsCardSpeedGradeV1(rounded) };
+}
+/* XS_CARD_SPEED_SCORE_V1_END */
+
 
 export default function CardDetailScreen() {
   const params = useLocalSearchParams();
@@ -2931,6 +2973,12 @@ export default function CardDetailScreen() {
   const perfAuditRenderCountRef = React.useRef(0);
   const perfAuditFirstTableLoggedRef = React.useRef(false);
   const perfAuditTotalReadyLoggedRef = React.useRef(false);
+  const speedApiCallsRef = React.useRef(0); // XS_CARD_SPEED_SCORE_V1
+  const speedDataBytesRef = React.useRef(0); // XS_CARD_SPEED_SCORE_V1
+  const speedTableMsRef = React.useRef<number | null>(null); // XS_CARD_SPEED_SCORE_V1
+  const speedFullMsRef = React.useRef<number | null>(null); // XS_CARD_SPEED_SCORE_V1
+  const speedSyncMsRef = React.useRef<number | null>(null); // XS_CARD_SPEED_SCORE_V1
+  const speedLoggedPhasesRef = React.useRef<Record<string, boolean>>({}); // XS_CARD_SPEED_SCORE_V1
 
   if (perfAuditSlugRef.current !== playerSlug) {
     perfAuditSlugRef.current = playerSlug;
@@ -2938,6 +2986,12 @@ export default function CardDetailScreen() {
     perfAuditRenderCountRef.current = 0;
     perfAuditFirstTableLoggedRef.current = false;
     perfAuditTotalReadyLoggedRef.current = false;
+    speedApiCallsRef.current = 0;
+    speedDataBytesRef.current = 0;
+    speedTableMsRef.current = null;
+    speedFullMsRef.current = null;
+    speedSyncMsRef.current = null;
+    speedLoggedPhasesRef.current = {};
   }
   perfAuditRenderCountRef.current += 1;
   console.log("[XS_CARD_PERF_AUDIT_V1] render_count", {
@@ -2945,6 +2999,37 @@ export default function CardDetailScreen() {
     renders: perfAuditRenderCountRef.current,
     ms: Date.now() - perfAuditStartedAtRef.current,
   });
+
+  function xsCardSpeedTrackPayloadV1(payload: any) {
+    try {
+      speedDataBytesRef.current += JSON.stringify(payload || {}).length;
+    } catch {}
+  }
+
+  function xsCardSpeedLogV1(phase: string) {
+    if (speedLoggedPhasesRef.current[phase]) return;
+    speedLoggedPhasesRef.current[phase] = true;
+    const tableMs = speedTableMsRef.current;
+    const fullMs = speedFullMsRef.current ?? (phase === "first_table" ? tableMs : null);
+    const syncMs = speedSyncMsRef.current;
+    const renders = perfAuditRenderCountRef.current;
+    const apiCalls = speedApiCallsRef.current;
+    const dataKb = Math.round((speedDataBytesRef.current / 1024) * 10) / 10;
+    const result = xsCardSpeedScoreV1({ tableMs, fullMs, syncMs, renders, apiCalls, dataKb });
+    console.log("[XS_CARD_SPEED_SCORE_V1] summary", {
+      playerSlug: playerSlug || null,
+      phase,
+      tableVisibleMs: tableMs,
+      fullReadyMs: fullMs,
+      syncMs,
+      renders,
+      apiCalls,
+      dataKb,
+      cacheReopenMs: null,
+      performanceScore: result.score,
+      performanceGrade: result.grade,
+    });
+  }
 
   /* XS_CARD_FAST_TABLE_HISTORY_V1 */
   useEffect(() => {
@@ -2984,8 +3069,10 @@ export default function CardDetailScreen() {
           playerSlug: slug,
           limit: 15,
         });
+        speedApiCallsRef.current += 1;
         const histResp = await fetch(histUrl, { headers: { accept: "application/json" } });
         const histJson = await histResp.json().catch(() => null);
+        xsCardSpeedTrackPayloadV1(histJson);
         if (!histResp.ok) {
           throw new Error(String(histJson?.error || `history_http_${histResp.status}`));
         }
@@ -3077,10 +3164,12 @@ export default function CardDetailScreen() {
           }
         } catch {}
 
+        speedApiCallsRef.current += 1;
         const resp = await publicPlayerPerformance(
           playerSlug,
           xsPerfDeviceId ? { deviceId: xsPerfDeviceId } : undefined
         );
+        xsCardSpeedTrackPayloadV1(resp);
         // XS_CARD_DETAIL_PASS_DEVICEID_TO_PERF_V1 END
         if (cancelled) return;
         setPerf(resp || null);
@@ -3112,8 +3201,10 @@ return () => { cancelled = true; };
         const base = xsPositionFallbackBaseUrlV1();
         const url = `${base}/player/next-match-context/${encodeURIComponent(playerSlug)}`;
         console.log("[card real match context] url=", url);
+        speedApiCallsRef.current += 1;
         const resp = await fetch(url, { headers: { accept: "application/json" } });
         const json = await resp.json().catch(() => null);
+        xsCardSpeedTrackPayloadV1(json);
         const context = xsNormalizeRealMatchContextV1(json);
         if (!cancelled) {
           setRealMatchContext(context && xsIsRealMatchContextUsefulV1(context) ? context : null);
@@ -3143,8 +3234,10 @@ return () => { cancelled = true; };
         const base = xsPositionFallbackBaseUrlV1();
         const url = `${base}/player/status/${encodeURIComponent(playerSlug)}`;
         console.log("[XS_PLAYER_STATUS_DECISION_V1] url=", url);
+        speedApiCallsRef.current += 1;
         const resp = await fetch(url, { headers: { accept: "application/json" } });
         const json = await resp.json().catch(() => null);
+        xsCardSpeedTrackPayloadV1(json);
         const status = xsNormalizePlayerStatusV1(json, playerSlug);
         if (!cancelled) setPlayerStatus(status);
         console.log("[XS_PLAYER_STATUS_DECISION_V1] resolved=", {
@@ -3253,14 +3346,17 @@ return () => { cancelled = true; };
         });
 
         const syncStartedAt = Date.now();
+        speedApiCallsRef.current += 1;
         const syncResp = await fetch(syncUrl, {
           method: "POST",
           headers: { accept: "application/json" },
         });
         const syncJson = await syncResp.json().catch(() => null);
+        xsCardSpeedTrackPayloadV1(syncJson);
         if (!syncResp.ok || syncJson?.ok === false) {
           throw new Error(String(syncJson?.error || syncJson?.details || `sync_http_${syncResp.status}`));
         }
+        speedSyncMsRef.current = Date.now() - syncStartedAt;
         console.log("[XS_CARD_PERF_AUDIT_V1] sync_ms", {
           playerSlug: slug,
           ms: Date.now() - syncStartedAt,
@@ -3269,8 +3365,10 @@ return () => { cancelled = true; };
         const chartBase = XS_HISTORY_CHART_CLOUDRUN_V2.replace(/\/+$/, "");
         const histUrl = `${chartBase}/history/player-chart/${encodeURIComponent(slug)}?limit=50`;
         const reloadStartedAt = Date.now();
+        speedApiCallsRef.current += 1;
         const histResp = await fetch(histUrl, { headers: { accept: "application/json" } });
         const histJson = await histResp.json().catch(() => null);
+        xsCardSpeedTrackPayloadV1(histJson);
         const items = Array.isArray(histJson?.items) ? histJson.items : [];
         if (!cancelled) setHistoryChart(items);
         console.log("[XS_CARD_FAST_TABLE_HISTORY_V1] sync_reload_success", {
@@ -3283,6 +3381,8 @@ return () => { cancelled = true; };
           reloadMs: Date.now() - reloadStartedAt,
           count: items.length,
         });
+        speedFullMsRef.current = Date.now() - perfAuditStartedAtRef.current;
+        xsCardSpeedLogV1("after_sync");
 
         console.log("[XS_CARD_AUTO_SYNC_HISTORY_V1] success", {
           playerSlug: slug,
@@ -3428,15 +3528,18 @@ return () => { cancelled = true; };
     const tableCount = Array.isArray(xsDisplayScores) ? xsDisplayScores.length : 0;
     if (tableCount > 0 && !perfAuditFirstTableLoggedRef.current) {
       perfAuditFirstTableLoggedRef.current = true;
+      speedTableMsRef.current = Date.now() - perfAuditStartedAtRef.current;
       console.log("[XS_CARD_PERF_AUDIT_V1] first_table_ms", {
         playerSlug: playerSlug || null,
         ms: Date.now() - perfAuditStartedAtRef.current,
         tableCount,
         renders: perfAuditRenderCountRef.current,
       });
+      xsCardSpeedLogV1("first_table");
     }
     if (tableCount > 0 && state === "ok" && !historyFastLoading && !perfAuditTotalReadyLoggedRef.current) {
       perfAuditTotalReadyLoggedRef.current = true;
+      speedFullMsRef.current = Date.now() - perfAuditStartedAtRef.current;
       console.log("[XS_CARD_PERF_AUDIT_V1] total_ready_ms", {
         playerSlug: playerSlug || null,
         phase: "initial_ready",
@@ -3444,6 +3547,7 @@ return () => { cancelled = true; };
         tableCount,
         renders: perfAuditRenderCountRef.current,
       });
+      xsCardSpeedLogV1("initial_ready");
     }
   }, [historyFastLoading, playerSlug, state, xsDisplayScores.length]);
 const avg5 =
