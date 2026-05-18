@@ -701,12 +701,12 @@ export default function FifaRadarChart(props: {
 
       {/* XS_MOVE_RADAR_BEFORE_DECISION_V1 */}
       <View style={{ gap: 10 }}>
-        {values.map((v) => {
+        {values.map((v, index) => {
           const n = clamp(v.value);
           const c = colorFromValue(n);
 
           return (
-            <View key={v.label} style={{ gap: 5 }}>
+            <View key={`${v.label}-${index}`} style={{ gap: 5 }}>
               <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
                 <Text style={{ color: "#E5E7EB", fontWeight: "800", fontSize: 13 }}>
                   {v.label}
@@ -1282,11 +1282,11 @@ export default function FifaRadarChart(props: {
       {/* XS_RADAR_PIXEL_PERFECT_DECISION_V3_END */}
 
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-        {values.map((v) => {
+        {values.map((v, index) => {
           const n = clamp(v.value);
           return (
             <View
-              key={"pill-" + v.label}
+              key={`pill-${v.label}-${index}`}
               style={{
                 paddingHorizontal: 10,
                 paddingVertical: 6,
