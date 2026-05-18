@@ -50,6 +50,14 @@ type RecruterPlayerStatusV1 = {
   disciplineRisk?: string | null;
 };
 
+type RecruterHistoryPayloadV1 = {
+  items?: any[];
+  averages?: { l5?: number | null; l10?: number | null; l15?: number | null; l40?: number | null } | null;
+  playerName?: string | null;
+  position?: string | null;
+  activeClub?: { name?: string | null; slug?: string | null } | null;
+};
+
 function num(v: unknown, fallback = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
@@ -80,11 +88,17 @@ function normalizePositionV1(value: unknown) {
   return raw || "GEN";
 }
 
-function pickScoresV1(perf: PublicPlayerPerformance | null) {
+function scoreFromRowV1(row: any) {
+  return num(row?.scoreSorare ?? row?.score ?? row?.totalScore ?? row?.so5Score, NaN);
+}
+
+function pickScoresV1(perf: PublicPlayerPerformance | null, historyItems?: any[] | null) {
   const p: any = perf || {};
-  const rows = Array.isArray(p.historyChart) ? p.historyChart : [];
+  const rows = Array.isArray(historyItems) && historyItems.length
+    ? historyItems
+    : (Array.isArray(p.historyChart) ? p.historyChart : []);
   const fromRows = rows
-    .map((row: any) => num(row?.score ?? row?.scoreSorare ?? row?.so5Score ?? row?.totalScore, NaN))
+    .map(scoreFromRowV1)
     .filter((v: number) => Number.isFinite(v));
   const fromRecent = Array.isArray(p.recentScores)
     ? p.recentScores.map((v: any) => num(v, NaN)).filter((v: number) => Number.isFinite(v))
@@ -92,9 +106,14 @@ function pickScoresV1(perf: PublicPlayerPerformance | null) {
   return fromRows.length ? fromRows : fromRecent;
 }
 
-function pickAverageV1(perf: PublicPlayerPerformance | null, key: "l5" | "l10" | "l15" | "l40", scores: number[]) {
+function pickAverageV1(
+  perf: PublicPlayerPerformance | null,
+  key: "l5" | "l10" | "l15" | "l40",
+  scores: number[],
+  historyAverages?: RecruterHistoryPayloadV1["averages"]
+) {
   const p: any = perf || {};
-  const direct = num(p.averages?.[key] ?? p[key], NaN);
+  const direct = num(historyAverages?.[key] ?? p.averages?.[key] ?? p[key], NaN);
   if (Number.isFinite(direct)) return clamp(direct);
   const windowSize = key === "l5" ? 5 : key === "l10" ? 10 : key === "l15" ? 15 : 40;
   const fallback = avg(scores.slice(0, windowSize));
@@ -138,15 +157,18 @@ function statusPenaltyV1(status: RecruterPlayerStatusV1 | null) {
 
 function buildRecruterCoachRadarV1(params: {
   perf: PublicPlayerPerformance | null;
+  historyItems?: any[];
+  historyAverages?: RecruterHistoryPayloadV1["averages"];
   matchContext: RecruterCoachContextV1 | null;
   playerStatus: RecruterPlayerStatusV1 | null;
   fallbackPosition: string;
 }) {
-  // XS_RECRUTER_COACH_DECISION_PLAYER_VIEW_V1: reuse the existing Decision Coach UI for Recruter player profiles.
-  const scores = pickScoresV1(params.perf);
-  const l5 = pickAverageV1(params.perf, "l5", scores);
-  const l10 = pickAverageV1(params.perf, "l10", scores);
-  const l40 = pickAverageV1(params.perf, "l40", scores);
+  // XS_RECRUTER_COACH_DECISION_DATA_L1540_V1: feed Recruter coach with the same history/player-chart source as card detail.
+  const scores = pickScoresV1(params.perf, params.historyItems);
+  const l5 = pickAverageV1(params.perf, "l5", scores, params.historyAverages);
+  const l10 = pickAverageV1(params.perf, "l10", scores, params.historyAverages);
+  const l15 = pickAverageV1(params.perf, "l15", scores, params.historyAverages);
+  const l40 = pickAverageV1(params.perf, "l40", scores, params.historyAverages);
   const overallBase = clamp((l5 ?? l10 ?? l40 ?? 50) * 0.4 + (l10 ?? l5 ?? l40 ?? 50) * 0.35 + (l40 ?? l10 ?? l5 ?? 50) * 0.25);
   const trend = trendFromScoresV1(scores);
   const volatility = volatilityFromScoresV1(scores);
@@ -155,6 +177,7 @@ function buildRecruterCoachRadarV1(params: {
   const confidence = clamp((scores.length >= 15 ? 78 : scores.length >= 8 ? 62 : scores.length >= 4 ? 45 : 28) - (volatility === "high" ? 12 : volatility === "medium" ? 5 : 0));
   const score = clamp(overallBase + difficultyBonusV1(params.matchContext) + (trend === "up" ? 4 : trend === "down" ? -4 : 0) + (ceiling >= 80 ? 4 : ceiling >= 70 ? 2 : 0) - (volatility === "high" ? 8 : volatility === "medium" ? 3 : 0) - statusPenaltyV1(params.playerStatus));
   const position = normalizePositionV1((params.perf as any)?.position || params.fallbackPosition);
+  const hasPerformanceData = scores.length > 0 || l5 != null || l15 != null || l40 != null;
   const statusRaw = String(params.playerStatus?.status || "").toLowerCase();
   const forcedAvoid = statusRaw === "injured" || statusRaw === "suspended";
   const finalTone = forcedAvoid || score < 40 ? "avoid" : score >= 75 ? "strongPlay" : score >= 65 ? "play" : score >= 52 ? "borderline" : "risk";
@@ -186,6 +209,10 @@ function buildRecruterCoachRadarV1(params: {
     overall: Math.round(score),
     confidence: confidence / 100,
     matches: scores.length,
+    l5,
+    l15,
+    l40,
+    hasPerformanceData,
     positionUsed: position,
     profile: "Profil Recruter",
     range: "L10" as const,
@@ -247,6 +274,37 @@ function buildRecruterCoachRadarV1(params: {
   };
 }
 
+function scoreToneV1(score: number | null) {
+  if (typeof score !== "number" || !Number.isFinite(score)) return "#64748B";
+  if (score >= 65) return "#38BDF8";
+  if (score >= 50) return "#22C55E";
+  if (score >= 40) return "#FACC15";
+  return "#EF4444";
+}
+
+function averageBoxV1(label: string, value: number | null) {
+  const color = scoreToneV1(value);
+  return (
+    <View
+      key={label}
+      style={{
+        flex: 1,
+        minWidth: 0,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: `${color}66`,
+        backgroundColor: "#10141b",
+        paddingHorizontal: 10,
+        paddingVertical: 9,
+        gap: 4,
+      }}
+    >
+      <Text numberOfLines={1} style={{ color: "#94A3B8", fontSize: 10, fontWeight: "900" }}>{label}</Text>
+      <Text numberOfLines={1} style={{ color, fontSize: 22, fontWeight: "900" }}>{value == null ? "—" : Math.round(value)}</Text>
+    </View>
+  );
+}
+
 export default function RecruterPlayerCardsScreen() {
   const router = useRouter();
   const { slug } = useLocalSearchParams<{ slug?: string }>();
@@ -256,6 +314,7 @@ export default function RecruterPlayerCardsScreen() {
   const [player, setPlayer] = useState<RecruterPlayer | null>(null);
   const [saleStatus, setSaleStatus] = useState<string | null>(null);
   const [coachPerf, setCoachPerf] = useState<PublicPlayerPerformance | null>(null);
+  const [coachHistory, setCoachHistory] = useState<RecruterHistoryPayloadV1 | null>(null);
   const [coachMatchContext, setCoachMatchContext] = useState<RecruterCoachContextV1 | null>(null);
   const [coachPlayerStatus, setCoachPlayerStatus] = useState<RecruterPlayerStatusV1 | null>(null);
   const [coachLoading, setCoachLoading] = useState(false);
@@ -295,16 +354,18 @@ export default function RecruterPlayerCardsScreen() {
       setCoachError(null);
       const teamName = text(player?.clubName || player?.activeClub?.name || items[0]?.clubName);
       const statusPath = `/player/status/${encodeURIComponent(playerSlug)}${teamName ? `?teamName=${encodeURIComponent(teamName)}` : ""}`;
-      const [perfRes, matchRes, statusRes] = await Promise.allSettled([
+      const [perfRes, historyRes, matchRes, statusRes] = await Promise.allSettled([
         publicPlayerPerformance(playerSlug, { limit: 40 }),
+        apiFetch<RecruterHistoryPayloadV1>(`/history/player-chart/${encodeURIComponent(playerSlug)}?limit=40`),
         apiFetch<RecruterCoachContextV1>(`/player/next-match-context/${encodeURIComponent(playerSlug)}`),
         apiFetch<RecruterPlayerStatusV1>(statusPath),
       ]);
 
       if (perfRes.status === "fulfilled") setCoachPerf(perfRes.value);
+      if (historyRes.status === "fulfilled") setCoachHistory(historyRes.value);
       if (matchRes.status === "fulfilled") setCoachMatchContext(matchRes.value);
       if (statusRes.status === "fulfilled") setCoachPlayerStatus(statusRes.value);
-      if (perfRes.status === "rejected" && matchRes.status === "rejected" && statusRes.status === "rejected") {
+      if (perfRes.status === "rejected" && historyRes.status === "rejected" && matchRes.status === "rejected" && statusRes.status === "rejected") {
         setCoachError("Analyse coach indisponible pour ce joueur.");
       }
     } catch (e: any) {
@@ -329,24 +390,26 @@ export default function RecruterPlayerCardsScreen() {
       : recruterSaleStatus(player || { saleStatus, salesCount: items.length, cardsCount: items.length, hasSale: items.length > 0 });
 
     return {
-      playerName: text(player?.displayName || player?.playerName || first?.playerName, playerSlug || "Joueur"),
-      clubName: text(player?.clubName || first?.clubName || player?.activeClub?.name, "Club inconnu"),
-      position: text(player?.position || first?.position, "N/A"),
+      playerName: text(player?.displayName || player?.playerName || first?.playerName || coachPerf?.playerName || coachHistory?.playerName, playerSlug || "Joueur"),
+      clubName: text(player?.clubName || first?.clubName || player?.activeClub?.name || coachPerf?.activeClub?.name || coachHistory?.activeClub?.name, "Club inconnu"),
+      position: text(player?.position || first?.position || coachPerf?.position || coachHistory?.position, "N/A"),
       leagueName: text(player?.leagueName || first?.leagueName, "Ligue inconnue"),
       pictureUrl: text(player?.pictureUrl || first?.pictureUrl, "https://frontend-assets.sorare.com/placeholders/player-v2.png"),
       minEur,
       status,
     };
-  }, [items, player, playerSlug, saleStatus]);
+  }, [coachHistory, coachPerf, items, player, playerSlug, saleStatus]);
 
   const coachRadar = useMemo(
     () => buildRecruterCoachRadarV1({
       perf: coachPerf,
+      historyItems: Array.isArray(coachHistory?.items) ? coachHistory.items : [],
+      historyAverages: coachHistory?.averages || null,
       matchContext: coachMatchContext,
       playerStatus: coachPlayerStatus,
-      fallbackPosition: header.position,
+      fallbackPosition: coachHistory?.position || header.position,
     }),
-    [coachMatchContext, coachPerf, coachPlayerStatus, header.position]
+    [coachHistory, coachMatchContext, coachPerf, coachPlayerStatus, header.position]
   );
 
   return (
@@ -401,25 +464,41 @@ export default function RecruterPlayerCardsScreen() {
               {coachError ? (
                 <Text style={{ color: "#ff9aa8", marginBottom: 10, fontWeight: "800" }}>{coachError}</Text>
               ) : null}
-              <FifaRadarChart
-                title="Décision Coach"
-                values={coachRadar.values}
-                overall={coachRadar.overall}
-                confidence={coachRadar.confidence}
-                matches={coachRadar.matches}
-                positionUsed={coachRadar.positionUsed}
-                profile={coachRadar.profile}
-                range={coachRadar.range}
-                coachDecision={coachRadar.coachDecision as any}
-                decisionV2={coachRadar.decisionV2 as any}
-                trend={coachRadar.coachDecision.trend}
-                volatility={coachRadar.coachDecision.volatility}
-                ceiling={coachRadar.coachDecision.ceiling}
-                recommendation={coachRadar.recommendation as any}
-                matchContext={coachRadar.matchContext as any}
-                positionPercentile={coachRadar.positionPercentile as any}
-                subtitle="Analyse avant achat basée sur performances, statut et prochain match."
-              />
+              {coachRadar.hasPerformanceData ? (
+                <>
+                  <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
+                    {averageBoxV1("L5", coachRadar.l5)}
+                    {averageBoxV1("L15", coachRadar.l15)}
+                    {averageBoxV1("L40", coachRadar.l40)}
+                  </View>
+                  <FifaRadarChart
+                    title="Décision Coach"
+                    values={coachRadar.values}
+                    overall={coachRadar.overall}
+                    confidence={coachRadar.confidence}
+                    matches={coachRadar.matches}
+                    positionUsed={coachRadar.positionUsed}
+                    profile={coachRadar.profile}
+                    range={coachRadar.range}
+                    coachDecision={coachRadar.coachDecision as any}
+                    decisionV2={coachRadar.decisionV2 as any}
+                    trend={coachRadar.coachDecision.trend}
+                    volatility={coachRadar.coachDecision.volatility}
+                    ceiling={coachRadar.coachDecision.ceiling}
+                    recommendation={coachRadar.recommendation as any}
+                    matchContext={coachRadar.matchContext as any}
+                    positionPercentile={coachRadar.positionPercentile as any}
+                    subtitle="Analyse avant achat basée sur performances, statut et prochain match."
+                  />
+                </>
+              ) : (
+                <View style={{ padding: 14, borderRadius: 14, backgroundColor: "#10141b", borderWidth: 1, borderColor: "#273244" }}>
+                  <Text style={{ color: "#F8FAFC", fontSize: 15, fontWeight: "900" }}>Performances non disponibles pour ce joueur.</Text>
+                  <Text style={{ color: "#9BA1A6", marginTop: 6, lineHeight: 18 }}>
+                    La Décision Coach apparaîtra dès que l'historique L5/L15/L40 sera disponible.
+                  </Text>
+                </View>
+              )}
             </View>
           }
           ListEmptyComponent={
