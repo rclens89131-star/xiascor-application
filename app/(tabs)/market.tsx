@@ -49,6 +49,34 @@ const XS_RECRUTER_FRONT_VISIBLE_LEAGUES_V1 = [
   { label: "Chinese Super League", slug: "chinese-super-league" },
 ];
 
+// XS_RECRUTER_FIX_LEAGUE_SWITCH_DISPLAY_V1: filter with backend league slugs, not display aliases.
+const XS_RECRUTER_FRONT_LEAGUE_SLUG_ALIASES_V1: Record<string, string> = {
+  "premier-league": "premier-league-gb-eng",
+  laliga: "laliga-es",
+  "serie-a": "serie-a-it",
+  bundesliga: "bundesliga-de",
+  "ligue-2": "ligue-2-fr",
+  "liga-portugal": "primeira-liga-pt",
+  championship: "championship-gb-eng",
+  mls: "mlspa",
+  "belgium-pro-league": "jupiler-pro-league",
+  "scottish-premiership": "premiership-gb-sct",
+  "swiss-super-league": "super-league-ch",
+  "super-lig": "spor-toto-super-lig",
+  "danish-superliga": "superliga-dk",
+  "croatian-hnl": "1-hnl",
+  "bundesliga-2": "2-bundesliga",
+  "laliga-hypermotion": "segunda-division-es",
+  brasileirao: "campeonato-brasileiro-serie-a",
+  "argentina-primera": "superliga-argentina-de-futbol",
+  "ecuador-liga-pro": "liga-pro",
+  "colombia-primera-a": "primera-a",
+  "peru-liga-1": "primera-division-pe",
+  "uruguay-primera": "primera-division-uy",
+  "j-league": "j1-100-year-vision-league",
+  "k-league": "k-league-1",
+};
+
 function text(v: unknown, fallback = "") {
   const s = String(v ?? "").trim();
   return s || fallback;
@@ -56,6 +84,11 @@ function text(v: unknown, fallback = "") {
 
 function norm(v: unknown) {
   return String(v ?? "").trim().toLowerCase();
+}
+
+function xsRecruterFrontLeagueSlugV1(value: unknown) {
+  const slug = norm(value);
+  return XS_RECRUTER_FRONT_LEAGUE_SLUG_ALIASES_V1[slug] || slug;
 }
 
 function saleBadge(player: RecruterPlayer) {
@@ -142,7 +175,10 @@ export default function RecruiterTabScreen() {
         const merged = xsRecruterMergeLeagueItemsV1(fulfilled);
         setLeagueIndex(merged);
         setItems(Array.isArray(merged.items) ? merged.items : []);
-        setSelectedLeague((current) => current && !merged.items.some((item) => norm(item.leagueSlug) === current) ? "" : current);
+        setSelectedLeague((current) => {
+          const canonical = xsRecruterFrontLeagueSlugV1(current);
+          return canonical && !merged.items.some((item) => norm(item.leagueSlug) === canonical) ? "" : canonical;
+        });
       } else {
         throw playersRes.reason;
       }
@@ -179,8 +215,9 @@ export default function RecruiterTabScreen() {
   const leagues = useMemo(() => {
     const counts = new Map(collectOptions(items, "league").map((league) => [league.slug, league]));
     return XS_RECRUTER_FRONT_VISIBLE_LEAGUES_V1.map((league) => {
-      const row = counts.get(norm(league.slug));
-      return { slug: norm(league.slug), name: league.label, count: row?.count || 0 };
+      const slug = xsRecruterFrontLeagueSlugV1(league.slug);
+      const row = counts.get(slug);
+      return { slug, name: league.label, count: row?.count || 0 };
     });
   }, [items]);
   const clubs = useMemo(() => {
@@ -290,7 +327,7 @@ export default function RecruiterTabScreen() {
           keyExtractor={(item, index) => String(item.slug || item.playerSlug || index)}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor="#ff5d73" />}
           contentContainerStyle={{ padding: 12, paddingBottom: 30 }}
-          ListEmptyComponent={<Text style={{ color: "#9ba1a6", textAlign: "center", marginTop: 30 }}>Aucun joueur trouvé dans l'index.</Text>}
+          ListEmptyComponent={<Text style={{ color: "#9ba1a6", textAlign: "center", marginTop: 30 }}>{selectedLeague ? "Données en cours d'indexation." : "Aucun joueur trouvé dans l'index."}</Text>}
           renderItem={({ item }) => {
             const slug = text(item.slug || item.playerSlug);
             const displayName = text(item.displayName || item.playerName, slug || "Joueur");
