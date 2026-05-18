@@ -58,6 +58,8 @@ type RecruterHistoryPayloadV1 = {
   activeClub?: { name?: string | null; slug?: string | null } | null;
 };
 
+const XS_RECRUTER_PERF_FALLBACK_BASE_V1 = "https://xiascor-backend-tssdy62zqa-ez.a.run.app";
+
 function num(v: unknown, fallback = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
@@ -90,6 +92,84 @@ function normalizePositionV1(value: unknown) {
 
 function scoreFromRowV1(row: any) {
   return num(row?.scoreSorare ?? row?.score ?? row?.totalScore ?? row?.so5Score, NaN);
+}
+
+function hasRecruterHistoryDataV1(payload: RecruterHistoryPayloadV1 | null | undefined) {
+  if (!payload) return false;
+  const averages = payload.averages || null;
+  return (
+    (Array.isArray(payload.items) && payload.items.length > 0) ||
+    Number.isFinite(Number(averages?.l5)) ||
+    Number.isFinite(Number(averages?.l10)) ||
+    Number.isFinite(Number(averages?.l15)) ||
+    Number.isFinite(Number(averages?.l40))
+  );
+}
+
+function normalizeRecruterHistoryPayloadV1(payload: any): RecruterHistoryPayloadV1 {
+  const items = Array.isArray(payload?.items)
+    ? payload.items
+    : Array.isArray(payload?.historyChart)
+      ? payload.historyChart
+      : Array.isArray(payload?.recentScores)
+        ? payload.recentScores.map((score: any) => ({ scoreSorare: score, score }))
+        : [];
+  const averagesSource = payload?.averages && typeof payload.averages === "object" ? payload.averages : payload;
+  const averages = {
+    l5: Number.isFinite(Number(averagesSource?.l5)) ? Number(averagesSource.l5) : null,
+    l10: Number.isFinite(Number(averagesSource?.l10)) ? Number(averagesSource.l10) : null,
+    l15: Number.isFinite(Number(averagesSource?.l15)) ? Number(averagesSource.l15) : null,
+    l40: Number.isFinite(Number(averagesSource?.l40)) ? Number(averagesSource.l40) : null,
+  };
+  return {
+    ...payload,
+    items,
+    averages,
+    playerName: payload?.playerName || payload?.name || null,
+    position: payload?.position || null,
+    activeClub: payload?.activeClub || payload?.club || null,
+  };
+}
+
+async function fetchRecruterHistoryForCoachV1(slug: string): Promise<RecruterHistoryPayloadV1> {
+  // XS_RECRUTER_PERFORMANCE_DATA_WIRING_FIX_V1: Recruter needs a robust performance source, not an empty Cloud history fallback.
+  const playerSlug = String(slug || "").trim().toLowerCase();
+  if (!playerSlug) return { items: [], averages: null };
+
+  try {
+    const direct = normalizeRecruterHistoryPayloadV1(
+      await apiFetch<RecruterHistoryPayloadV1>(`/history/player-chart/${encodeURIComponent(playerSlug)}?limit=40`)
+    );
+    if (hasRecruterHistoryDataV1(direct)) {
+      console.log("[XS_RECRUTER_PERFORMANCE_DATA_WIRING_FIX_V1]", {
+        slug: playerSlug,
+        source: "history-player-chart",
+        averages: direct.averages,
+        itemsCount: direct.items?.length || 0,
+      });
+      return direct;
+    }
+  } catch (e: any) {
+    console.log("[XS_RECRUTER_PERFORMANCE_DATA_WIRING_FIX_V1]", {
+      slug: playerSlug,
+      source: "history-player-chart",
+      error: String(e?.message || e),
+    });
+  }
+
+  const base = XS_RECRUTER_PERF_FALLBACK_BASE_V1.replace(/\/+$/, "");
+  const url = `${base}/public-player-performance?slug=${encodeURIComponent(playerSlug)}&limit=40`;
+  const response = await fetch(url, { headers: { accept: "application/json" } });
+  const json = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(json?.error || json?.message || `HTTP ${response.status}`);
+  const fallback = normalizeRecruterHistoryPayloadV1(json);
+  console.log("[XS_RECRUTER_PERFORMANCE_DATA_WIRING_FIX_V1]", {
+    slug: playerSlug,
+    source: "public-player-performance",
+    averages: fallback.averages,
+    itemsCount: fallback.items?.length || 0,
+  });
+  return fallback;
 }
 
 function pickScoresV1(perf: PublicPlayerPerformance | null, historyItems?: any[] | null) {
@@ -356,7 +436,7 @@ export default function RecruterPlayerCardsScreen() {
       const statusPath = `/player/status/${encodeURIComponent(playerSlug)}${teamName ? `?teamName=${encodeURIComponent(teamName)}` : ""}`;
       const [perfRes, historyRes, matchRes, statusRes] = await Promise.allSettled([
         publicPlayerPerformance(playerSlug, { limit: 40 }),
-        apiFetch<RecruterHistoryPayloadV1>(`/history/player-chart/${encodeURIComponent(playerSlug)}?limit=40`),
+        fetchRecruterHistoryForCoachV1(playerSlug),
         apiFetch<RecruterCoachContextV1>(`/player/next-match-context/${encodeURIComponent(playerSlug)}`),
         apiFetch<RecruterPlayerStatusV1>(statusPath),
       ]);
