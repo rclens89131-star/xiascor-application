@@ -14,6 +14,7 @@ import {
 // XS_FRONT_RECRUTER_PLAYERS_INDEX_V1
 // XS_RECRUTER_FRONT_LEAGUE_INDEX_V1: Recruter uses the full backend league cache for Ligue 1.
 // XS_RECRUTER_FRONT_LEAGUES_VISIBLE_V1: Recruter loads every available league-index cache.
+// XS_RECRUTER_GLOBAL_LEAGUES_PRIORITY_123_V1: show global Sorare league-index filters.
 const XS_RECRUTER_FRONT_LEAGUE_INDEX_DEFAULT_V1 = "ligue-1-fr";
 const XS_RECRUTER_FRONT_VISIBLE_LEAGUES_V1 = [
   { label: "Ligue 1", slug: "ligue-1-fr" },
@@ -26,6 +27,26 @@ const XS_RECRUTER_FRONT_VISIBLE_LEAGUES_V1 = [
   { label: "Liga Portugal", slug: "liga-portugal" },
   { label: "Championship", slug: "championship" },
   { label: "MLS", slug: "mls" },
+  { label: "Jupiler Pro League", slug: "belgium-pro-league" },
+  { label: "Scottish Premiership", slug: "scottish-premiership" },
+  { label: "Swiss Super League", slug: "swiss-super-league" },
+  { label: "Austrian Bundesliga", slug: "austrian-bundesliga" },
+  { label: "Süper Lig", slug: "super-lig" },
+  { label: "Danish Superliga", slug: "danish-superliga" },
+  { label: "Eliteserien", slug: "eliteserien" },
+  { label: "Croatian HNL", slug: "croatian-hnl" },
+  { label: "2. Bundesliga", slug: "bundesliga-2" },
+  { label: "LALIGA HYPERMOTION", slug: "laliga-hypermotion" },
+  { label: "Brasileirão Série A", slug: "brasileirao" },
+  { label: "Argentine Primera", slug: "argentina-primera" },
+  { label: "Liga MX", slug: "liga-mx" },
+  { label: "Liga Pro Ecuador", slug: "ecuador-liga-pro" },
+  { label: "Primera A Colombie", slug: "colombia-primera-a" },
+  { label: "Liga 1 Pérou", slug: "peru-liga-1" },
+  { label: "Primera Uruguay", slug: "uruguay-primera" },
+  { label: "J League", slug: "j-league" },
+  { label: "K League", slug: "k-league" },
+  { label: "Chinese Super League", slug: "chinese-super-league" },
 ];
 
 function text(v: unknown, fallback = "") {
@@ -155,7 +176,13 @@ export default function RecruiterTabScreen() {
     }, [load]),
   );
 
-  const leagues = useMemo(() => collectOptions(items, "league"), [items]);
+  const leagues = useMemo(() => {
+    const counts = new Map(collectOptions(items, "league").map((league) => [league.slug, league]));
+    return XS_RECRUTER_FRONT_VISIBLE_LEAGUES_V1.map((league) => {
+      const row = counts.get(norm(league.slug));
+      return { slug: norm(league.slug), name: league.label, count: row?.count || 0 };
+    });
+  }, [items]);
   const clubs = useMemo(() => {
     const base = selectedLeague ? items.filter((item) => norm(item.leagueSlug) === selectedLeague) : items;
     return collectOptions(base, "club");
