@@ -96,7 +96,13 @@ function normalizePositionV1(value: unknown) {
   return normalizeRecruterPositionV1(value);
 }
 
-function getRecruterPlayerPositionV1(player: any, cards: any[] = [], offers: any[] = [], params: any = {}) {
+function pickRecruterPositionFallbackPlayerV1(payload: any, slug: string) {
+  const items = Array.isArray(payload?.items) ? payload.items : [];
+  const wanted = String(slug || "").trim().toLowerCase();
+  return items.find((item: any) => String(item?.slug || item?.playerSlug || "").trim().toLowerCase() === wanted) || items[0] || null;
+}
+
+function getRecruterPlayerPositionV1(player: any, cards: any[] = [], offers: any[] = [], params: any = {}, fallbacks: any = {}) {
   const firstCard = cards[0] || null;
   const firstOffer = offers[0] || null;
   const rawCandidates = [
@@ -105,9 +111,21 @@ function getRecruterPlayerPositionV1(player: any, cards: any[] = [], offers: any
     player?.cardPosition,
     player?.activePosition,
     firstCard?.position,
+    ...cards.map((card) => card?.position),
+    firstCard?.anyPlayer?.position,
+    ...cards.map((card) => card?.anyPlayer?.position),
     firstCard?.player?.position,
+    ...cards.map((card) => card?.player?.position),
     firstOffer?.position,
+    ...offers.map((offer) => offer?.position),
+    firstOffer?.anyPlayer?.position,
+    ...offers.map((offer) => offer?.anyPlayer?.position),
     firstOffer?.player?.position,
+    ...offers.map((offer) => offer?.player?.position),
+    fallbacks?.indexPlayer?.position,
+    fallbacks?.indexPlayer?.primaryPosition,
+    fallbacks?.dbPlayer?.position,
+    fallbacks?.dbPlayer?.primaryPosition,
     params?.position,
   ];
   for (const candidate of rawCandidates) {
@@ -570,6 +588,7 @@ export default function RecruterPlayerCardsScreen() {
   const [coachHistory, setCoachHistory] = useState<RecruterHistoryPayloadV1 | null>(null);
   const [coachMatchContext, setCoachMatchContext] = useState<RecruterCoachContextV1 | null>(null);
   const [coachPlayerStatus, setCoachPlayerStatus] = useState<RecruterPlayerStatusV1 | null>(null);
+  const [positionFallbacks, setPositionFallbacks] = useState<{ indexPlayer?: any | null; dbPlayer?: any | null; attempted?: boolean }>({});
   const [coachLoading, setCoachLoading] = useState(false);
   const [coachError, setCoachError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -585,6 +604,7 @@ export default function RecruterPlayerCardsScreen() {
     try {
       setLoading(true);
       setError(null);
+      setPositionFallbacks({});
       const res = await recruterPlayerCards(playerSlug, { first: 20 });
       setItems(Array.isArray(res.items) ? res.items : []);
       setPlayer((res.player as RecruterPlayer | null) || null);
@@ -629,12 +649,42 @@ export default function RecruterPlayerCardsScreen() {
   }, [items, loading, player, playerSlug]);
 
   useEffect(() => {
+    if (!playerSlug || loading) return;
+    if (positionFallbacks.attempted || positionFallbacks.indexPlayer || positionFallbacks.dbPlayer) return;
+    const current = getRecruterPlayerPositionV1(player, items, items, routeParams, positionFallbacks);
+    if (current.position) return;
+    let alive = true;
+    // XS_RECRUTER_POSITION_FALLBACK_SOURCES_V1: only query fallback sources when cards/offers do not expose a usable position.
+    Promise.allSettled([
+      apiFetch<any>(`/recruter/players?q=${encodeURIComponent(playerSlug)}&first=5`),
+      apiFetch<any>(`/recruter/players-db?q=${encodeURIComponent(playerSlug)}&limit=5`),
+    ]).then(([indexRes, dbRes]) => {
+      if (!alive) return;
+      const indexPlayer = indexRes.status === "fulfilled" ? pickRecruterPositionFallbackPlayerV1(indexRes.value, playerSlug) : null;
+      const dbPlayer = dbRes.status === "fulfilled" ? pickRecruterPositionFallbackPlayerV1(dbRes.value, playerSlug) : null;
+      setPositionFallbacks({ indexPlayer, dbPlayer, attempted: true });
+      if (typeof __DEV__ !== "undefined" && __DEV__) {
+        console.log("[XS_RECRUTER_POSITION_FALLBACK_SOURCES_V1]", {
+          slug: playerSlug,
+          indexPosition: indexPlayer?.position || null,
+          dbPosition: dbPlayer?.position || null,
+        });
+      }
+    }).catch(() => {
+      if (alive) setPositionFallbacks({ indexPlayer: null, dbPlayer: null, attempted: true });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [items, loading, player, playerSlug, positionFallbacks, routeParams]);
+
+  useEffect(() => {
     loadCoach();
   }, [loadCoach]);
 
   const header = useMemo(() => {
     const first = items[0] || null;
-    const positionInfo = getRecruterPlayerPositionV1(player, items, items, routeParams);
+    const positionInfo = getRecruterPlayerPositionV1(player, items, items, routeParams, positionFallbacks);
     const prices = items
       .map((card) => card?.price?.eur)
       .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
@@ -653,7 +703,7 @@ export default function RecruterPlayerCardsScreen() {
       minEur,
       status,
     };
-  }, [coachHistory, coachPerf, items, player, playerSlug, routeParams, saleStatus]);
+  }, [coachHistory, coachPerf, items, player, playerSlug, positionFallbacks, routeParams, saleStatus]);
 
   const coachRadar = useMemo(
     () => buildRecruterCoachRadarV1({
