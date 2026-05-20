@@ -235,6 +235,130 @@ function statusPenaltyV1(status: RecruterPlayerStatusV1 | null) {
   return 0;
 }
 
+// XS_RECRUTER_RADAR_SAME_AS_CARDS_V1: mirror card-detail FIFA radar profiles by position for Recruter.
+function recruterPositionGroupLabelV1(position: string) {
+  if (position === "GK") return "gardiens";
+  if (position === "DEF") return "défenseurs";
+  if (position === "MID") return "milieux";
+  if (position === "FW") return "attaquants";
+  return "joueurs";
+}
+
+function recruterWeightedOverallByPositionV1(position: string, m: Record<string, number>) {
+  if (position === "GK") return clamp(m.saves * 0.3 + m.cleanSheets * 0.2 + m.regularity * 0.15 + m.reliability * 0.15 + m.impact * 0.1 + m.gameTime * 0.1);
+  if (position === "DEF") return clamp(m.defense * 0.3 + m.duels * 0.2 + m.regularity * 0.15 + m.reliability * 0.15 + m.impact * 0.1 + m.gameTime * 0.1);
+  if (position === "MID") return clamp(m.creation * 0.25 + m.impact * 0.2 + m.regularity * 0.2 + m.defense * 0.15 + m.reliability * 0.1 + m.gameTime * 0.1);
+  if (position === "FW") return clamp(m.attack * 0.3 + m.impact * 0.25 + m.creation * 0.15 + m.regularity * 0.15 + m.reliability * 0.1 + m.gameTime * 0.05);
+  return clamp((m.form + m.regularity + m.gameTime + m.impact + m.attack + m.creation + m.defense + m.reliability) / 8);
+}
+
+function recruterRadarValuesByPositionV1(position: string, m: Record<string, number>) {
+  const base = [
+    { label: "Forme", value: m.form },
+    { label: "Régularité", value: m.regularity },
+    { label: "Temps de jeu", value: m.gameTime },
+  ];
+  if (position === "GK") {
+    return [
+      ...base,
+      { label: "Sécurité", value: m.cleanSheets },
+      { label: "Arrêts", value: m.saves },
+      { label: "Fiabilité", value: m.reliability },
+    ];
+  }
+  if (position === "DEF") {
+    return [
+      ...base,
+      { label: "Défense", value: m.defense },
+      { label: "Duels", value: m.duels },
+      { label: "Fiabilité", value: m.reliability },
+    ];
+  }
+  if (position === "MID") {
+    return [
+      ...base,
+      { label: "Création", value: m.creation },
+      { label: "Impact", value: m.impact },
+      { label: "Volume", value: m.defense },
+    ];
+  }
+  if (position === "FW") {
+    return [
+      ...base,
+      { label: "Attaque", value: m.attack },
+      { label: "Décisif", value: m.impact },
+      { label: "Plafond", value: m.ceiling },
+    ];
+  }
+  return [
+    ...base,
+    { label: "Impact", value: m.impact },
+    { label: "Création", value: m.creation },
+    { label: "Fiabilité", value: m.reliability },
+  ];
+}
+
+function recruterAutoProfileV1(position: string, m: Record<string, number>, matches: number) {
+  if (matches < 3) return { label: "Profil en construction", reason: "Pas encore assez de matchs fiables." };
+  if (position === "GK") {
+    if (m.gameTime < 45) return { label: "Gardien à risque", reason: "Temps de jeu faible sur la fenêtre récente." };
+    if (m.saves >= 65 && m.cleanSheets >= 60 && m.reliability >= 60) return { label: "Mur défensif", reason: "Sécurité, arrêts et fiabilité au-dessus du repère." };
+    if (m.reliability >= 65 && m.regularity >= 60) return { label: "Gardien fiable", reason: "Fiabilité et régularité solides." };
+    return { label: "Gardien équilibré", reason: "Profil stable sans pic majeur." };
+  }
+  if (position === "DEF") {
+    if (m.regularity < 45) return { label: "Défenseur irrégulier", reason: "Régularité basse pour un profil défensif." };
+    if (m.defense >= 65 && m.duels >= 60) return { label: "Stoppeur", reason: "Défense et duels forts sur la fenêtre récente." };
+    if (m.reliability >= 65 && m.regularity >= 65) return { label: "Défenseur sûr", reason: "Fiabilité et régularité fortes." };
+    return { label: "Défenseur équilibré", reason: "Base défensive exploitable." };
+  }
+  if (position === "MID") {
+    if (m.regularity < 45) return { label: "Milieu irrégulier", reason: "Régularité fragile pour un profil milieu." };
+    if (m.creation >= 65 && m.impact >= 60) return { label: "Créateur", reason: "Création et impact forts." };
+    if (m.defense >= 60 && m.regularity >= 60) return { label: "Milieu complet", reason: "Volume et régularité solides." };
+    return { label: "Milieu équilibré", reason: "Profil polyvalent." };
+  }
+  if (position === "FW") {
+    if (m.gameTime < 45) return { label: "Attaquant à risque", reason: "Temps de jeu fragile pour un profil offensif." };
+    if (m.attack >= 65 && m.impact >= 60) return { label: "Finisseur", reason: "Attaque et impact décisif élevés." };
+    if (m.ceiling >= 75 && m.regularity < 55) return { label: "High risk / high reward", reason: "Plafond fort mais régularité instable." };
+    return { label: "Attaquant équilibré", reason: "Profil offensif stable." };
+  }
+  return { label: "Profil général", reason: "Lecture générale faute de poste confirmé." };
+}
+
+function recruterPositionSignalsV1(position: string, m: Record<string, number>) {
+  if (position === "GK") {
+    return {
+      positive: m.reliability >= 60 ? "Fiabilité gardien correcte" : m.cleanSheets >= 60 ? "Sécurité intéressante" : null,
+      risk: m.gameTime < 50 ? "Temps de jeu gardien fragile" : m.cleanSheets < 45 ? "Sécurité défensive limitée" : null,
+      main: m.reliability >= 60 ? "Fiabilité du gardien" : "Sécurité gardien",
+    };
+  }
+  if (position === "DEF") {
+    return {
+      positive: m.defense >= 60 ? "Base défensive solide" : m.duels >= 60 ? "Duels solides" : null,
+      risk: m.regularity < 50 ? "Régularité défensive fragile" : null,
+      main: m.defense >= m.duels ? "Impact défensif" : "Duels défensifs",
+    };
+  }
+  if (position === "MID") {
+    return {
+      positive: m.creation >= 60 ? "Création intéressante" : m.defense >= 60 ? "Volume complet" : null,
+      risk: m.impact < 45 ? "Impact milieu limité" : null,
+      main: m.creation >= m.defense ? "Création au milieu" : "Volume de jeu",
+    };
+  }
+  if (position === "FW") {
+    return {
+      positive: m.attack >= 60 ? "Menace offensive nette" : m.ceiling >= 70 ? "Plafond offensif intéressant" : null,
+      risk: m.regularity < 50 ? "Profil offensif irrégulier" : m.gameTime < 50 ? "Temps de jeu offensif fragile" : null,
+      main: m.attack >= m.ceiling ? "Impact offensif" : "Plafond offensif",
+    };
+  }
+  return { positive: null, risk: null, main: "Profil général" };
+}
+
 function buildRecruterCoachRadarV1(params: {
   perf: PublicPlayerPerformance | null;
   historyItems?: any[];
@@ -255,8 +379,34 @@ function buildRecruterCoachRadarV1(params: {
   const ceiling = scores.length ? Math.max(...scores.slice(0, 15)) : Math.round(overallBase);
   const regularity = clamp(100 - std(scores.slice(0, 15)) * 2.4);
   const confidence = clamp((scores.length >= 15 ? 78 : scores.length >= 8 ? 62 : scores.length >= 4 ? 45 : 28) - (volatility === "high" ? 12 : volatility === "medium" ? 5 : 0));
-  const score = clamp(overallBase + difficultyBonusV1(params.matchContext) + (trend === "up" ? 4 : trend === "down" ? -4 : 0) + (ceiling >= 80 ? 4 : ceiling >= 70 ? 2 : 0) - (volatility === "high" ? 8 : volatility === "medium" ? 3 : 0) - statusPenaltyV1(params.playerStatus));
   const position = normalizePositionV1((params.perf as any)?.position || params.fallbackPosition);
+  const gameTime = clamp((l40 ?? overallBase) + 8);
+  const impact = clamp((l5 ?? overallBase) * 0.45 + (l10 ?? overallBase) * 0.2 + (ceiling || overallBase) * 0.35);
+  const attack = clamp((l5 ?? overallBase) * 0.45 + impact * 0.35 + (ceiling || overallBase) * 0.2);
+  const creation = clamp((l10 ?? overallBase) * 0.5 + impact * 0.25 + regularity * 0.25);
+  const defense = clamp((l40 ?? overallBase) * 0.4 + regularity * 0.35 + gameTime * 0.25);
+  const duels = clamp(defense * 0.62 + impact * 0.38);
+  const saves = clamp(confidence * 0.35 + regularity * 0.25 + (ceiling || overallBase) * 0.2 + gameTime * 0.2);
+  const cleanSheets = clamp(defense * 0.45 + confidence * 0.3 + (params.matchContext?.difficulty === "easy" ? 12 : params.matchContext?.difficulty === "hard" ? -8 : 0) + 20);
+  const reliability = confidence;
+  const positionMetrics = {
+    form: l5 ?? overallBase,
+    regularity,
+    gameTime,
+    impact,
+    attack,
+    creation,
+    defense,
+    duels,
+    saves,
+    cleanSheets,
+    reliability,
+    ceiling: clamp(ceiling || overallBase),
+  };
+  const positionOverall = recruterWeightedOverallByPositionV1(position, positionMetrics);
+  const score = clamp(positionOverall + difficultyBonusV1(params.matchContext) + (trend === "up" ? 4 : trend === "down" ? -4 : 0) + (ceiling >= 80 ? 4 : ceiling >= 70 ? 2 : 0) - (volatility === "high" ? 8 : volatility === "medium" ? 3 : 0) - statusPenaltyV1(params.playerStatus));
+  const autoProfile = recruterAutoProfileV1(position, positionMetrics, scores.length);
+  const positionSignals = recruterPositionSignalsV1(position, positionMetrics);
   const hasPerformanceData = scores.length > 0 || l5 != null || l15 != null || l40 != null;
   const statusRaw = String(params.playerStatus?.status || "").toLowerCase();
   const forcedAvoid = statusRaw === "injured" || statusRaw === "suspended";
@@ -267,25 +417,20 @@ function buildRecruterCoachRadarV1(params: {
   const why = [
     l5 != null && l5 >= 60 ? "Forme récente solide" : null,
     regularity >= 62 ? "Régularité correcte" : null,
+    positionSignals.positive,
     params.matchContext?.difficulty === "easy" ? "Contexte favorable" : null,
     ceiling >= 75 ? "Plafond intéressant" : null,
   ].filter(Boolean) as string[];
   const risks = [
     statusPenaltyV1(params.playerStatus) >= 45 ? "Indisponibilité joueur" : null,
     volatility === "high" ? "Scores très irréguliers" : null,
+    positionSignals.risk,
     confidence < 50 ? "Confiance limitée" : null,
     params.matchContext?.difficulty === "hard" ? "Match difficile" : null,
   ].filter(Boolean) as string[];
 
   return {
-    values: [
-      { label: "Forme", value: l5 ?? overallBase },
-      { label: "Régularité", value: regularity },
-      { label: "Temps de jeu", value: clamp((l40 ?? overallBase) + 8) },
-      { label: position === "DEF" ? "Défense" : position === "MID" ? "Création" : position === "GK" ? "Fiabilité" : "Impact", value: l10 ?? overallBase },
-      { label: "Impact", value: clamp((l5 ?? overallBase) * 0.55 + (ceiling || overallBase) * 0.45) },
-      { label: "Fiabilité", value: confidence },
-    ],
+    values: recruterRadarValuesByPositionV1(position, positionMetrics),
     overall: Math.round(score),
     confidence: confidence / 100,
     matches: scores.length,
@@ -294,20 +439,20 @@ function buildRecruterCoachRadarV1(params: {
     l40,
     hasPerformanceData,
     positionUsed: position,
-    profile: "Profil Recruter",
+    profile: autoProfile.label,
     range: "L10" as const,
     coachDecision: {
       score: Math.round(score),
       decision,
       tone,
       adjustedOverall: Math.round(score),
-      rawOverall: Math.round(overallBase),
+      rawOverall: Math.round(positionOverall),
       matchBonus: difficultyBonusV1(params.matchContext),
       trend,
       volatility,
       ceiling: Math.round(ceiling || 0),
       reasons: [...why, ...risks].slice(0, 4),
-      reason: [...why, ...risks][0] || "Analyse basée sur les performances disponibles.",
+      reason: [...why, ...risks][0] || autoProfile.reason || "Analyse basée sur les performances disponibles.",
       windowBlendLabel: "L5 40% · L10 35% · L40 25%",
     },
     decisionV2: {
@@ -316,15 +461,15 @@ function buildRecruterCoachRadarV1(params: {
       playStyle: finalTone === "strongPlay" || finalTone === "play" ? "Safe pick" : finalTone === "risk" ? "Watchlist" : finalTone === "avoid" ? "Rotation risk" : "Option",
       summary: forcedAvoid
         ? "À éviter : statut joueur défavorable."
-        : `${finalLabel} : ${why[0] || "données exploitables"}${risks[0] ? `, mais ${risks[0].toLowerCase()}` : "."}`,
+        : `${finalLabel} : ${why[0] || autoProfile.reason || "données exploitables"}${risks[0] ? `, mais ${risks[0].toLowerCase()}` : "."}`,
       bullets: [...why, ...risks].slice(0, 3),
       whyItems: why.slice(0, 3).map((title) => ({ title, text: "Signal positif détecté sur les données disponibles." })),
       riskItems: (risks.length ? risks : ["Aucun signal bloquant"]).slice(0, 2).map((title) => ({ title, text: title === "Aucun signal bloquant" ? "Risque principal limité par les données actuelles." : "Point à surveiller avant achat." })),
       deepAnalysis: {
         verdict: forcedAvoid ? "À éviter : statut joueur défavorable." : `${finalLabel} avant achat.`,
-        mainReason: { title: why[0] || risks[0] || "Données limitées", text: why[0] ? "Point fort principal du profil actuel." : "Analyse prudente faute de signaux complets." },
-        positiveSignals: why.slice(0, 3).map((title) => ({ title, text: "Signal favorable pour le prochain match." })),
-        negativeSignals: risks.slice(0, 3).map((title) => ({ title, text: "Risque à intégrer avant achat." })),
+        mainReason: { title: why[0] || risks[0] || positionSignals.main || "Données limitées", text: why[0] ? `${positionSignals.main} : point fort principal du profil ${position}.` : "Analyse prudente faute de signaux complets." },
+        positiveSignals: why.slice(0, 3).map((title) => ({ title, text: `Signal favorable pour un profil ${position}.` })),
+        negativeSignals: risks.slice(0, 3).map((title) => ({ title, text: `Risque spécifique à intégrer pour ce profil ${position}.` })),
         actionAdvice: { title: finalLabel, text: finalTone === "avoid" ? "À éviter sauf besoin de différentiel très spécifique." : "À comparer avec les options disponibles à ce poste." },
         availability: params.playerStatus ? { title: String(params.playerStatus.status || "unknown"), text: params.playerStatus.reason || "Statut joueur récupéré côté backend." } : undefined,
         playerStatus: params.playerStatus,
@@ -346,7 +491,7 @@ function buildRecruterCoachRadarV1(params: {
       reason: params.matchContext?.reason || "Contexte match en attente.",
     },
     positionPercentile: {
-      percentileLabel: score >= 70 ? `Profil fort local des ${position}` : score >= 55 ? `Profil correct local des ${position}` : `Profil à surveiller local des ${position}`,
+      percentileLabel: score >= 70 ? `Profil fort local des ${recruterPositionGroupLabelV1(position)}` : score >= 55 ? `Profil correct local des ${recruterPositionGroupLabelV1(position)}` : `Profil à surveiller local des ${recruterPositionGroupLabelV1(position)}`,
       deltaLabel: `${Math.round(score - 55) >= 0 ? "+" : ""}${Math.round(score - 55)} au-dessus moyenne`,
       tier: score >= 75 ? "elite" : score >= 65 ? "strong" : score >= 45 ? "average" : "weak",
       reason: "Comparaison locale provisoire basée sur le score coach Recruter.",
