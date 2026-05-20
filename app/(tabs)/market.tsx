@@ -18,6 +18,7 @@ import {
 // XS_RECRUTER_FRONT_LEAGUES_VISIBLE_V1: Recruter loads every available league-index cache.
 // XS_RECRUTER_GLOBAL_LEAGUES_PRIORITY_123_V1: show global Sorare league-index filters.
 // XS_RECRUTER_PREMIUM_UI_REFERENCE_V1: premium scouting UI inspired by the reference screen.
+// XS_RECRUTER_PLAYER_FACE_CROP_FIX_V1: crop player pictures toward face/upper body in Recruter cards.
 const XS_RECRUTER_FRONT_LEAGUE_INDEX_DEFAULT_V1 = "ligue-1-fr";
 const XS_RECRUTER_FRONT_VISIBLE_LEAGUES_V1 = [
   { label: "Ligue 1", slug: "ligue-1-fr" },
@@ -181,6 +182,38 @@ function StatCell({ icon, value, label }: { icon: keyof typeof Ionicons.glyphMap
       <Ionicons name={icon} size={21} color="#AEB7C4" />
       <Text style={{ color: "#F8FAFC", fontSize: 20, fontWeight: "900", fontVariant: ["tabular-nums"] }}>{value}</Text>
       <Text style={{ color: "#A4ABB6", fontSize: 12 }}>{label}</Text>
+    </View>
+  );
+}
+
+function RecruterFaceImageV1({
+  uri,
+  size,
+  radius,
+  mode = "avatar",
+}: {
+  uri?: string | null;
+  size: { width: number; height: number };
+  radius: number;
+  mode?: "avatar" | "card";
+}) {
+  const imageHeight = mode === "card" ? size.height + 54 : size.height + 30;
+  const imageWidth = mode === "card" ? size.width + 34 : size.width + 22;
+  const offsetY = mode === "card" ? -34 : -20;
+  return (
+    <View style={{ width: size.width, height: size.height, borderRadius: radius, overflow: "hidden", backgroundColor: "#050509", alignItems: "center" }}>
+      <Image
+        source={{ uri: uri || PLAYER_PLACEHOLDER }}
+        resizeMode="cover"
+        style={{
+          width: imageWidth,
+          height: imageHeight,
+          marginTop: offsetY,
+        }}
+      />
+      {mode === "card" ? (
+        <LinearGradient colors={["transparent", "rgba(5,7,12,0.72)"]} style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 44 }} />
+      ) : null}
     </View>
   );
 }
@@ -428,7 +461,9 @@ export default function RecruiterTabScreen() {
                     </View>
                     <Ionicons name="heart-outline" size={23} color="#F8FAFC" />
                   </View>
-                  <Image source={{ uri: item.pictureUrl || PLAYER_PLACEHOLDER }} style={{ alignSelf: "center", width: 128, height: 116, borderRadius: 12, marginTop: 8, backgroundColor: "#050509" }} resizeMode="cover" />
+                  <View style={{ alignItems: "center", marginTop: 8 }}>
+                    <RecruterFaceImageV1 uri={item.pictureUrl} size={{ width: 128, height: 116 }} radius={12} mode="card" />
+                  </View>
                   <Text style={{ color: "white", fontWeight: "900", fontSize: 17, marginTop: 10 }} numberOfLines={1}>{text(item.displayName || item.playerName, slug)}</Text>
                   <Text style={{ color: "#B8BEC8", marginTop: 3 }} numberOfLines={1}>{text(item.clubName, "Club inconnu")} · {text(item.leagueName, "Ligue inconnue")}</Text>
                   <Text style={{ color: "#A4ABB6", marginTop: 5 }}>{item.age != null ? `${item.age} ans` : "Âge —"}</Text>
@@ -491,7 +526,7 @@ export default function RecruiterTabScreen() {
                   activeOpacity={0.88}
                   style={{ flexDirection: "row", gap: 12, backgroundColor: "#101722", borderRadius: 15, borderWidth: 1, borderColor: "#2B3444", padding: 10, alignItems: "center" }}
                 >
-                  <Image source={{ uri: item.pictureUrl || PLAYER_PLACEHOLDER }} style={{ width: 72, height: 72, borderRadius: 12, backgroundColor: "#050509" }} />
+                  <RecruterFaceImageV1 uri={item.pictureUrl} size={{ width: 72, height: 72 }} radius={12} mode="avatar" />
                   <View style={{ flex: 1, gap: 4 }}>
                     <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }} numberOfLines={1}>{displayName}</Text>
                     <Text style={{ color: "#B8BEC8" }} numberOfLines={1}>{text(item.clubName, "Club inconnu")} · {text(item.leagueName, "Ligue inconnue")}</Text>

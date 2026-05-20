@@ -8,6 +8,7 @@ import { publicPlayerPerformance, recruterPlayerCards, recruterSaleStatus, type 
 
 // XS_FRONT_RECRUTER_PLAYERS_INDEX_V1
 // XS_RECRUTER_PREMIUM_UI_REFERENCE_V1: premium Recruter detail UI aligned with the reference screen.
+// XS_RECRUTER_PLAYER_FACE_CROP_FIX_V1: crop Recruter player images toward face/upper body.
 function text(v: unknown, fallback = "") {
   const s = String(v ?? "").trim();
   return s || fallback;
@@ -586,6 +587,32 @@ function PremiumMetricBarV1({ label, value }: { label: string; value: number }) 
   );
 }
 
+function RecruterFaceImageV1({
+  uri,
+  size,
+  radius,
+  mode = "portrait",
+}: {
+  uri?: string | null;
+  size: { width: number; height: number };
+  radius: number;
+  mode?: "portrait" | "card";
+}) {
+  const imageHeight = mode === "portrait" ? size.height + 64 : size.height + 34;
+  const imageWidth = mode === "portrait" ? size.width + 38 : size.width + 18;
+  const offsetY = mode === "portrait" ? -42 : -22;
+  return (
+    <View style={{ width: size.width, height: size.height, borderRadius: radius, overflow: "hidden", backgroundColor: "#050509", alignItems: "center" }}>
+      <Image
+        source={{ uri: uri || XS_RECRUTER_PLAYER_PLACEHOLDER_V1 }}
+        resizeMode="cover"
+        style={{ width: imageWidth, height: imageHeight, marginTop: offsetY }}
+      />
+      <LinearGradient colors={["transparent", "rgba(5,7,12,0.66)"]} style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: mode === "portrait" ? 58 : 34 }} />
+    </View>
+  );
+}
+
 function averageBoxV1(label: string, value: number | null) {
   const color = scoreToneV1(value);
   return (
@@ -807,7 +834,7 @@ export default function RecruterPlayerCardsScreen() {
               <View style={{ gap: 14, marginBottom: 14 }}>
                 <LinearGradient colors={["#141B27", "#0D121A"]} style={{ borderRadius: 17, borderWidth: 1, borderColor: "#2B3444", padding: 10 }}>
                   <View style={{ flexDirection: "row", gap: 13 }}>
-                    <Image source={{ uri: header.pictureUrl || XS_RECRUTER_PLAYER_PLACEHOLDER_V1 }} style={{ width: 132, height: 172, borderRadius: 13, backgroundColor: "#050509" }} />
+                    <RecruterFaceImageV1 uri={header.pictureUrl} size={{ width: 132, height: 172 }} radius={13} mode="portrait" />
                     <View style={{ flex: 1, paddingVertical: 8, gap: 7 }}>
                       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                         <Text style={{ color: "#fff", fontSize: 22, fontWeight: "900", flex: 1 }} numberOfLines={2}>{header.playerName}</Text>
@@ -901,7 +928,7 @@ export default function RecruterPlayerCardsScreen() {
               const seller = text(item?.seller?.nickname || item?.seller?.slug);
               return (
                 <View style={{ flexDirection: "row", gap: 12, padding: 12, marginBottom: 12, borderRadius: 15, backgroundColor: "#101722", borderWidth: 1, borderColor: "#2B3444" }}>
-                  <Image source={{ uri: item.pictureUrl || XS_RECRUTER_PLAYER_PLACEHOLDER_V1 }} style={{ width: 76, height: 102, borderRadius: 10, backgroundColor: "#050509" }} />
+                  <RecruterFaceImageV1 uri={item.pictureUrl} size={{ width: 76, height: 102 }} radius={10} mode="card" />
                   <View style={{ flex: 1, justifyContent: "center", gap: 5 }}>
                     <Text style={{ color: "white", fontWeight: "900" }} numberOfLines={1}>{text(item.playerName, header.playerName)}</Text>
                     <Text style={{ color: "#72e6a2", fontWeight: "900" }}>{priceLabel(item)}</Text>
