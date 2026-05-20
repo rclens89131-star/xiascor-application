@@ -96,43 +96,59 @@ function normalizePositionV1(value: unknown) {
   return normalizeRecruterPositionV1(value);
 }
 
+function recruterSlugV1(value: unknown) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function recruterAnyPlayerSlugV1(item: any) {
+  return recruterSlugV1(item?.playerSlug || item?.player?.slug || item?.anyPlayer?.slug || item?.slug);
+}
+
 function pickRecruterPositionFallbackPlayerV1(payload: any, slug: string) {
   const items = Array.isArray(payload?.items) ? payload.items : [];
   const wanted = String(slug || "").trim().toLowerCase();
-  return items.find((item: any) => String(item?.slug || item?.playerSlug || "").trim().toLowerCase() === wanted) || items[0] || null;
+  return items.find((item: any) => recruterSlugV1(item?.slug || item?.playerSlug) === wanted) || null;
 }
 
 function getRecruterPlayerPositionV1(player: any, cards: any[] = [], offers: any[] = [], params: any = {}, fallbacks: any = {}) {
-  const firstCard = cards[0] || null;
-  const firstOffer = offers[0] || null;
-  const rawCandidates = [
-    player?.position,
-    player?.primaryPosition,
-    player?.cardPosition,
-    player?.activePosition,
-    firstCard?.position,
-    ...cards.map((card) => card?.position),
-    firstCard?.anyPlayer?.position,
-    ...cards.map((card) => card?.anyPlayer?.position),
-    firstCard?.player?.position,
-    ...cards.map((card) => card?.player?.position),
-    firstOffer?.position,
-    ...offers.map((offer) => offer?.position),
-    firstOffer?.anyPlayer?.position,
-    ...offers.map((offer) => offer?.anyPlayer?.position),
-    firstOffer?.player?.position,
-    ...offers.map((offer) => offer?.player?.position),
-    fallbacks?.indexPlayer?.position,
-    fallbacks?.indexPlayer?.primaryPosition,
-    fallbacks?.dbPlayer?.position,
-    fallbacks?.dbPlayer?.primaryPosition,
-    params?.position,
-  ];
-  for (const candidate of rawCandidates) {
-    const normalized = normalizeRecruterPositionV1(candidate);
-    if (normalized !== "GEN") return { position: normalized, rawCandidates };
+  const routeSlug = recruterSlugV1(params?.slug);
+  const rawCandidates: any[] = [];
+  const addCandidate = (source: string, value: unknown, sourceSlug: unknown, trusted: boolean) => {
+    const normalized = normalizeRecruterPositionV1(value);
+    rawCandidates.push({ source, value: value || null, normalized, sourceSlug: recruterSlugV1(sourceSlug), trusted });
+  };
+  const addExactPlayer = (source: string, entity: any) => {
+    const sourceSlug = recruterSlugV1(entity?.slug || entity?.playerSlug);
+    const trusted = !!routeSlug && sourceSlug === routeSlug;
+    addCandidate(`${source}.position`, entity?.position, sourceSlug, trusted);
+    addCandidate(`${source}.primaryPosition`, entity?.primaryPosition, sourceSlug, trusted);
+    addCandidate(`${source}.cardPosition`, entity?.cardPosition, sourceSlug, trusted);
+    addCandidate(`${source}.activePosition`, entity?.activePosition, sourceSlug, trusted);
+  };
+  const addExactCard = (source: string, item: any) => {
+    const sourceSlug = recruterAnyPlayerSlugV1(item);
+    const trusted = !!routeSlug && sourceSlug === routeSlug;
+    addCandidate(`${source}.position`, item?.position, sourceSlug, trusted);
+    addCandidate(`${source}.anyPlayer.position`, item?.anyPlayer?.position, sourceSlug, trusted);
+    addCandidate(`${source}.player.position`, item?.player?.position, sourceSlug, trusted);
+  };
+
+  addExactPlayer("player", player);
+  cards.forEach((card, index) => addExactCard(`cards[${index}]`, card));
+  offers.forEach((offer, index) => addExactCard(`offers[${index}]`, offer));
+  addExactPlayer("recruterIndex", fallbacks?.indexPlayer);
+  addExactPlayer("postgresPlayer", fallbacks?.dbPlayer);
+  addCandidate("route.position", params?.position, routeSlug, false);
+
+  const trusted = rawCandidates.filter((candidate) => candidate.trusted && candidate.normalized !== "GEN");
+  const unique = Array.from(new Set(trusted.map((candidate) => candidate.normalized)));
+  const conflicts = unique.length > 1 ? trusted : [];
+  if (conflicts.length) return { position: null, sourceUsed: "conflict", rawCandidates, conflicts };
+  if (unique.length === 1) {
+    const source = trusted.find((candidate) => candidate.normalized === unique[0]);
+    return { position: unique[0], sourceUsed: source?.source || "trusted", rawCandidates, conflicts: [] };
   }
-  return { position: null, rawCandidates };
+  return { position: null, sourceUsed: "none", rawCandidates, conflicts: [] };
 }
 
 function scoreFromRowV1(row: any) {
@@ -666,7 +682,9 @@ export default function RecruterPlayerCardsScreen() {
       if (typeof __DEV__ !== "undefined" && __DEV__) {
         console.log("[XS_RECRUTER_POSITION_FALLBACK_SOURCES_V1]", {
           slug: playerSlug,
+          indexSlug: indexPlayer?.slug || indexPlayer?.playerSlug || null,
           indexPosition: indexPlayer?.position || null,
+          dbSlug: dbPlayer?.slug || dbPlayer?.playerSlug || null,
           dbPosition: dbPlayer?.position || null,
         });
       }
@@ -696,8 +714,10 @@ export default function RecruterPlayerCardsScreen() {
     return {
       playerName: text(player?.displayName || player?.playerName || first?.playerName || coachPerf?.playerName || coachHistory?.playerName, playerSlug || "Joueur"),
       clubName: text(player?.clubName || first?.clubName || player?.activeClub?.name || coachPerf?.activeClub?.name || coachHistory?.activeClub?.name, "Club inconnu"),
-      position: positionInfo.position || "N/A",
+      position: positionInfo.position || "Position inconnue",
       positionRawCandidates: positionInfo.rawCandidates,
+      positionSourceUsed: positionInfo.sourceUsed,
+      positionConflicts: positionInfo.conflicts,
       leagueName: text(player?.leagueName || first?.leagueName, "Ligue inconnue"),
       pictureUrl: text(player?.pictureUrl || first?.pictureUrl, "https://frontend-assets.sorare.com/placeholders/player-v2.png"),
       minEur,
@@ -719,6 +739,14 @@ export default function RecruterPlayerCardsScreen() {
 
   useEffect(() => {
     if (typeof __DEV__ !== "undefined" && __DEV__ && coachRadar.hasPerformanceData) {
+      // XS_RECRUTER_POSITION_TRUST_FIX_V1: only exact player slug sources can drive GK/DEF/MID/FW.
+      console.log("[XS_RECRUTER_POSITION_TRUST_FIX_V1]", {
+        slug: playerSlug,
+        detectedPosition: header.position === "Position inconnue" ? null : header.position,
+        sourceUsed: (header as any).positionSourceUsed,
+        rawCandidates: (header as any).positionRawCandidates,
+        conflicts: (header as any).positionConflicts,
+      });
       console.log("[XS_RECRUTER_DECISION_BY_POSITION_FULL_V1]", {
         slug: playerSlug,
         detectedPosition: coachRadar.positionUsed,
@@ -744,6 +772,11 @@ export default function RecruterPlayerCardsScreen() {
             <Text style={{ color: "#b8bec8" }} numberOfLines={1}>
               {header.clubName} · {header.position} · {header.leagueName}
             </Text>
+            {typeof __DEV__ !== "undefined" && __DEV__ ? (
+              <Text style={{ color: "#6f7782", fontSize: 11 }} numberOfLines={1}>
+                Position détectée: {header.position === "Position inconnue" ? "GEN" : header.position} · Source: {(header as any).positionSourceUsed || "none"}
+              </Text>
+            ) : null}
             <Text style={{ color: header.status === "for_sale" ? "#72e6a2" : "#ff5d73", fontWeight: "900" }}>
               {header.status === "for_sale"
                 ? `${items.length} carte(s) en vente · Prix min ${header.minEur != null ? `€${header.minEur.toFixed(2)}` : "—"}`
