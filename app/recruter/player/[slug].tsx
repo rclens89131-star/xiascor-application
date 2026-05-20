@@ -81,13 +81,40 @@ function std(values: number[]) {
   return Math.sqrt(xs.reduce((a, b) => a + Math.pow(b - m, 2), 0) / xs.length);
 }
 
+function normalizeRecruterPositionV1(value: unknown) {
+  const raw = String(value || "").trim();
+  const upper = raw.toUpperCase();
+  if (!upper) return "GEN";
+  if (/\b(GK|G)\b|GOALKEEPER|GOALIE|KEEPER|GARDIEN/.test(upper)) return "GK";
+  if (/\b(DEF|DF|D)\b|DEFENDER|DEFENSE|DÉFENSE|DEFENCE|DÉFENSEUR|DEFENSEUR|CENTRE BACK|CENTER BACK|FULL BACK|FULLBACK|LEFT BACK|RIGHT BACK|BACK/.test(upper)) return "DEF";
+  if (/\b(MID|MD|M|CM|CDM|CAM|LM|RM)\b|MIDFIELDER|MILIEU/.test(upper)) return "MID";
+  if (/\b(FW|FWD|ST|CF|LW|RW)\b|FORWARD|ATTACKER|STRIKER|WINGER|ATTAQUANT|ATT/.test(upper)) return "FW";
+  return "GEN";
+}
+
 function normalizePositionV1(value: unknown) {
-  const raw = String(value || "").trim().toUpperCase();
-  if (/GK|GOAL/.test(raw)) return "GK";
-  if (/DEF|DF|BACK/.test(raw)) return "DEF";
-  if (/MID|MD|MIL/.test(raw)) return "MID";
-  if (/FW|FWD|ATT|FORWARD|ST/.test(raw)) return "FW";
-  return raw || "GEN";
+  return normalizeRecruterPositionV1(value);
+}
+
+function getRecruterPlayerPositionV1(player: any, cards: any[] = [], offers: any[] = [], params: any = {}) {
+  const firstCard = cards[0] || null;
+  const firstOffer = offers[0] || null;
+  const rawCandidates = [
+    player?.position,
+    player?.primaryPosition,
+    player?.cardPosition,
+    player?.activePosition,
+    firstCard?.position,
+    firstCard?.player?.position,
+    firstOffer?.position,
+    firstOffer?.player?.position,
+    params?.position,
+  ];
+  for (const candidate of rawCandidates) {
+    const normalized = normalizeRecruterPositionV1(candidate);
+    if (normalized !== "GEN") return { position: normalized, rawCandidates };
+  }
+  return { position: null, rawCandidates };
 }
 
 function scoreFromRowV1(row: any) {
@@ -293,7 +320,7 @@ function recruterRadarValuesByPositionV1(position: string, m: Record<string, num
   return [
     ...base,
     { label: "Impact", value: m.impact },
-    { label: "Création", value: m.creation },
+    { label: "Plafond", value: m.ceiling },
     { label: "Fiabilité", value: m.reliability },
   ];
 }
@@ -330,29 +357,29 @@ function recruterAutoProfileV1(position: string, m: Record<string, number>, matc
 function recruterPositionSignalsV1(position: string, m: Record<string, number>) {
   if (position === "GK") {
     return {
-      positive: m.reliability >= 60 ? "Fiabilité gardien correcte" : m.cleanSheets >= 60 ? "Sécurité intéressante" : null,
-      risk: m.gameTime < 50 ? "Temps de jeu gardien fragile" : m.cleanSheets < 45 ? "Sécurité défensive limitée" : null,
+      positive: m.gameTime >= 62 ? "Temps de jeu fiable" : m.reliability >= 60 ? "Profil stable" : m.cleanSheets >= 60 ? "Sécurité correcte" : null,
+      risk: m.gameTime < 50 ? "Temps de jeu gardien fragile" : m.ceiling < 58 ? "Plafond limité" : m.cleanSheets < 45 ? "Dépend fortement du clean sheet" : "Peu de marge si but encaissé",
       main: m.reliability >= 60 ? "Fiabilité du gardien" : "Sécurité gardien",
     };
   }
   if (position === "DEF") {
     return {
-      positive: m.defense >= 60 ? "Base défensive solide" : m.duels >= 60 ? "Duels solides" : null,
-      risk: m.regularity < 50 ? "Régularité défensive fragile" : null,
+      positive: m.defense >= 60 ? "Régularité défensive" : m.gameTime >= 62 ? "Temps de jeu solide" : m.regularity >= 58 ? "Score stable" : null,
+      risk: m.regularity < 50 ? "Régularité défensive fragile" : m.ceiling < 60 ? "Plafond moyen" : "Dépend du clean sheet",
       main: m.defense >= m.duels ? "Impact défensif" : "Duels défensifs",
     };
   }
   if (position === "MID") {
     return {
-      positive: m.creation >= 60 ? "Création intéressante" : m.defense >= 60 ? "Volume complet" : null,
-      risk: m.impact < 45 ? "Impact milieu limité" : null,
+      positive: m.defense >= 60 ? "Volume intéressant" : m.creation >= 60 ? "Création utile" : m.regularity >= 58 ? "Profil régulier" : null,
+      risk: m.impact < 45 ? "Impact décisif limité" : m.regularity < 50 ? "Irrégularité possible" : "Dépend du rôle dans l'équipe",
       main: m.creation >= m.defense ? "Création au milieu" : "Volume de jeu",
     };
   }
   if (position === "FW") {
     return {
-      positive: m.attack >= 60 ? "Menace offensive nette" : m.ceiling >= 70 ? "Plafond offensif intéressant" : null,
-      risk: m.regularity < 50 ? "Profil offensif irrégulier" : m.gameTime < 50 ? "Temps de jeu offensif fragile" : null,
+      positive: m.ceiling >= 70 ? "Plafond élevé" : m.impact >= 60 ? "Potentiel décisif" : m.attack >= 58 ? "Forme offensive" : null,
+      risk: m.regularity < 50 ? "Scores irréguliers" : m.impact < 50 ? "Dépend des buts/passes" : "Risque de faible AA",
       main: m.attack >= m.ceiling ? "Impact offensif" : "Plafond offensif",
     };
   }
@@ -379,7 +406,7 @@ function buildRecruterCoachRadarV1(params: {
   const ceiling = scores.length ? Math.max(...scores.slice(0, 15)) : Math.round(overallBase);
   const regularity = clamp(100 - std(scores.slice(0, 15)) * 2.4);
   const confidence = clamp((scores.length >= 15 ? 78 : scores.length >= 8 ? 62 : scores.length >= 4 ? 45 : 28) - (volatility === "high" ? 12 : volatility === "medium" ? 5 : 0));
-  const position = normalizePositionV1((params.perf as any)?.position || params.fallbackPosition);
+  const position = normalizeRecruterPositionV1(params.fallbackPosition);
   const gameTime = clamp((l40 ?? overallBase) + 8);
   const impact = clamp((l5 ?? overallBase) * 0.45 + (l10 ?? overallBase) * 0.2 + (ceiling || overallBase) * 0.35);
   const attack = clamp((l5 ?? overallBase) * 0.45 + impact * 0.35 + (ceiling || overallBase) * 0.2);
@@ -532,7 +559,8 @@ function averageBoxV1(label: string, value: number | null) {
 
 export default function RecruterPlayerCardsScreen() {
   const router = useRouter();
-  const { slug } = useLocalSearchParams<{ slug?: string }>();
+  const routeParams = useLocalSearchParams<{ slug?: string; position?: string }>();
+  const { slug } = routeParams;
   const playerSlug = String(slug || "").trim().toLowerCase();
 
   const [items, setItems] = useState<RecruterOffer[]>([]);
@@ -606,6 +634,7 @@ export default function RecruterPlayerCardsScreen() {
 
   const header = useMemo(() => {
     const first = items[0] || null;
+    const positionInfo = getRecruterPlayerPositionV1(player, items, items, routeParams);
     const prices = items
       .map((card) => card?.price?.eur)
       .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
@@ -617,13 +646,14 @@ export default function RecruterPlayerCardsScreen() {
     return {
       playerName: text(player?.displayName || player?.playerName || first?.playerName || coachPerf?.playerName || coachHistory?.playerName, playerSlug || "Joueur"),
       clubName: text(player?.clubName || first?.clubName || player?.activeClub?.name || coachPerf?.activeClub?.name || coachHistory?.activeClub?.name, "Club inconnu"),
-      position: text(player?.position || first?.position || coachPerf?.position || coachHistory?.position, "N/A"),
+      position: positionInfo.position || "N/A",
+      positionRawCandidates: positionInfo.rawCandidates,
       leagueName: text(player?.leagueName || first?.leagueName, "Ligue inconnue"),
       pictureUrl: text(player?.pictureUrl || first?.pictureUrl, "https://frontend-assets.sorare.com/placeholders/player-v2.png"),
       minEur,
       status,
     };
-  }, [coachHistory, coachPerf, items, player, playerSlug, saleStatus]);
+  }, [coachHistory, coachPerf, items, player, playerSlug, routeParams, saleStatus]);
 
   const coachRadar = useMemo(
     () => buildRecruterCoachRadarV1({
@@ -632,10 +662,21 @@ export default function RecruterPlayerCardsScreen() {
       historyAverages: coachHistory?.averages || null,
       matchContext: coachMatchContext,
       playerStatus: coachPlayerStatus,
-      fallbackPosition: coachHistory?.position || header.position,
+      fallbackPosition: header.position,
     }),
     [coachHistory, coachMatchContext, coachPerf, coachPlayerStatus, header.position]
   );
+
+  useEffect(() => {
+    if (typeof __DEV__ !== "undefined" && __DEV__ && coachRadar.hasPerformanceData) {
+      console.log("[XS_RECRUTER_DECISION_BY_POSITION_FULL_V1]", {
+        slug: playerSlug,
+        detectedPosition: coachRadar.positionUsed,
+        rawCandidates: (header as any).positionRawCandidates,
+        axesLabels: (coachRadar.values || []).map((item: any) => item.label),
+      });
+    }
+  }, [coachRadar.hasPerformanceData, coachRadar.positionUsed, coachRadar.values, header, playerSlug]);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#08090d" }}>
@@ -757,3 +798,4 @@ export default function RecruterPlayerCardsScreen() {
     </SafeAreaView>
   );
 }
+
