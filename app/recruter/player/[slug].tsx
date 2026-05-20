@@ -10,6 +10,7 @@ import { publicPlayerPerformance, recruterPlayerCards, recruterSaleStatus, type 
 // XS_RECRUTER_PREMIUM_UI_REFERENCE_V1: premium Recruter detail UI aligned with the reference screen.
 // XS_RECRUTER_PLAYER_FACE_CROP_FIX_V1: crop Recruter player images toward face/upper body.
 // XS_RECRUTER_FACE_CROP_STRONG_OFFSET_V1: stronger vertical crop offsets for Recruter player faces.
+// XS_RECRUTER_FACE_CROP_EXTRA_HIGH_V1: push Recruter crops higher so faces are visible first.
 function text(v: unknown, fallback = "") {
   const s = String(v ?? "").trim();
   return s || fallback;
@@ -599,9 +600,9 @@ function RecruterFaceImageV1({
   radius: number;
   variant?: "detail" | "card";
 }) {
-  const imageHeight = variant === "detail" ? size.height * 1.36 : size.height * 1.3;
-  const imageWidth = variant === "detail" ? size.width * 1.14 : size.width * 1.1;
-  const offsetY = variant === "detail" ? -Math.round(size.height * 0.3) : -Math.round(size.height * 0.24);
+  const imageHeight = variant === "detail" ? size.height * 1.62 : size.height * 1.5;
+  const imageWidth = variant === "detail" ? size.width * 1.2 : size.width * 1.16;
+  const offsetY = variant === "detail" ? -Math.round(size.height * 0.46) : -Math.round(size.height * 0.38);
   return (
     <View style={{ width: size.width, height: size.height, borderRadius: radius, overflow: "hidden", backgroundColor: "#050509", alignItems: "center" }}>
       <Image

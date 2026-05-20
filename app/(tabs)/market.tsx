@@ -20,6 +20,7 @@ import {
 // XS_RECRUTER_PREMIUM_UI_REFERENCE_V1: premium scouting UI inspired by the reference screen.
 // XS_RECRUTER_PLAYER_FACE_CROP_FIX_V1: crop player pictures toward face/upper body in Recruter cards.
 // XS_RECRUTER_FACE_CROP_STRONG_OFFSET_V1: stronger vertical crop offsets for player faces.
+// XS_RECRUTER_FACE_CROP_EXTRA_HIGH_V1: push Recruter crops higher so faces are visible first.
 const XS_RECRUTER_FRONT_LEAGUE_INDEX_DEFAULT_V1 = "ligue-1-fr";
 const XS_RECRUTER_FRONT_VISIBLE_LEAGUES_V1 = [
   { label: "Ligue 1", slug: "ligue-1-fr" },
@@ -198,9 +199,9 @@ function RecruterFaceImageV1({
   radius: number;
   variant?: "avatar" | "card";
 }) {
-  const imageHeight = variant === "card" ? size.height * 1.34 : size.height * 1.24;
-  const imageWidth = variant === "card" ? size.width * 1.14 : size.width * 1.08;
-  const offsetY = variant === "card" ? -Math.round(size.height * 0.27) : -Math.round(size.height * 0.18);
+  const imageHeight = variant === "card" ? size.height * 1.62 : size.height * 1.42;
+  const imageWidth = variant === "card" ? size.width * 1.22 : size.width * 1.14;
+  const offsetY = variant === "card" ? -Math.round(size.height * 0.48) : -Math.round(size.height * 0.32);
   return (
     <View style={{ width: size.width, height: size.height, borderRadius: radius, overflow: "hidden", backgroundColor: "#050509", alignItems: "center" }}>
       <Image
