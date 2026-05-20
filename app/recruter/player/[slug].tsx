@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Image, SafeAreaView, Text, TouchableOpacity, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { apiFetch } from "../../../src/api";
-import FifaRadarChart from "../../../src/components/FifaRadarChart";
 import { publicPlayerPerformance, recruterPlayerCards, recruterSaleStatus, type PublicPlayerPerformance, type RecruterOffer, type RecruterPlayer } from "../../../src/scoutApi";
 
 // XS_FRONT_RECRUTER_PLAYERS_INDEX_V1
+// XS_RECRUTER_PREMIUM_UI_REFERENCE_V1: premium Recruter detail UI aligned with the reference screen.
 function text(v: unknown, fallback = "") {
   const s = String(v ?? "").trim();
   return s || fallback;
@@ -59,6 +61,7 @@ type RecruterHistoryPayloadV1 = {
 };
 
 const XS_RECRUTER_PERF_FALLBACK_BASE_V1 = "https://xiascor-backend-tssdy62zqa-ez.a.run.app";
+const XS_RECRUTER_PLAYER_PLACEHOLDER_V1 = "https://frontend-assets.sorare.com/placeholders/player-v2.png";
 
 function num(v: unknown, fallback = 0) {
   const n = Number(v);
@@ -562,10 +565,25 @@ function buildRecruterCoachRadarV1(params: {
 
 function scoreToneV1(score: number | null) {
   if (typeof score !== "number" || !Number.isFinite(score)) return "#64748B";
-  if (score >= 65) return "#38BDF8";
+  if (score >= 55) return "#22C55E";
   if (score >= 50) return "#22C55E";
   if (score >= 40) return "#FACC15";
   return "#EF4444";
+}
+
+function PremiumMetricBarV1({ label, value }: { label: string; value: number }) {
+  const color = scoreToneV1(value);
+  return (
+    <View style={{ gap: 7 }}>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+        <Text style={{ color: "#F8FAFC", fontWeight: "800" }}>{label}</Text>
+        <Text style={{ color, fontWeight: "900", fontVariant: ["tabular-nums"] }}>{Math.round(value)}</Text>
+      </View>
+      <View style={{ height: 8, borderRadius: 999, backgroundColor: "#1B2230", overflow: "hidden" }}>
+        <View style={{ width: `${Math.max(4, Math.min(100, Math.round(value)))}%`, height: "100%", borderRadius: 999, backgroundColor: color }} />
+      </View>
+    </View>
+  );
 }
 
 function averageBoxV1(label: string, value: number | null) {
@@ -757,127 +775,146 @@ export default function RecruterPlayerCardsScreen() {
   }, [coachRadar.hasPerformanceData, coachRadar.positionUsed, coachRadar.values, header, playerSlug]);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#08090d" }}>
-      <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: "#241014", backgroundColor: "#0d0f14" }}>
-        <TouchableOpacity onPress={() => router.back()} style={{ alignSelf: "flex-start", paddingVertical: 7, paddingHorizontal: 10, borderRadius: 8, backgroundColor: "#2b1117", borderWidth: 1, borderColor: "#5c1f2a" }}>
-          <Text style={{ color: "#ffccd2", fontWeight: "800" }}>Retour</Text>
-        </TouchableOpacity>
-
-        <View style={{ flexDirection: "row", gap: 12, alignItems: "center", marginTop: 12 }}>
-          <Image source={{ uri: header.pictureUrl }} style={{ width: 74, height: 74, borderRadius: 10, backgroundColor: "#050509" }} />
-          <View style={{ flex: 1, gap: 5 }}>
-            <Text style={{ color: "#fff", fontSize: 22, fontWeight: "900" }} numberOfLines={1}>
-              {header.playerName}
-            </Text>
-            <Text style={{ color: "#b8bec8" }} numberOfLines={1}>
-              {header.clubName} · {header.position} · {header.leagueName}
-            </Text>
-            {typeof __DEV__ !== "undefined" && __DEV__ ? (
-              <Text style={{ color: "#6f7782", fontSize: 11 }} numberOfLines={1}>
-                Position détectée: {header.position === "Position inconnue" ? "GEN" : header.position} · Source: {(header as any).positionSourceUsed || "none"}
-              </Text>
-            ) : null}
-            <Text style={{ color: header.status === "for_sale" ? "#72e6a2" : "#ff5d73", fontWeight: "900" }}>
-              {header.status === "for_sale"
-                ? `${items.length} carte(s) en vente · Prix min ${header.minEur != null ? `€${header.minEur.toFixed(2)}` : "—"}`
-                : "Aucune carte en vente actuellement"}
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      {loading ? (
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <ActivityIndicator color="#ff5d73" />
-        </View>
-      ) : error ? (
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 18 }}>
-          <Text style={{ color: "#ff9aa8", textAlign: "center", marginBottom: 12 }}>{error}</Text>
-          <TouchableOpacity onPress={load} style={{ backgroundColor: "#c92a3d", borderRadius: 8, paddingHorizontal: 14, paddingVertical: 9 }}>
-            <Text style={{ color: "white", fontWeight: "800" }}>Réessayer</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#070A10" }}>
+      <LinearGradient colors={["#090D14", "#070A10", "#13080E"]} style={{ flex: 1 }}>
+        <View style={{ paddingHorizontal: 14, paddingTop: 10, paddingBottom: 10, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <TouchableOpacity onPress={() => router.back()} style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: "#101722", borderWidth: 1, borderColor: "#273142", alignItems: "center", justifyContent: "center" }}>
+            <Ionicons name="arrow-back" size={24} color="#F8FAFC" />
+          </TouchableOpacity>
+          <Text style={{ color: "#F8FAFC", fontSize: 18, fontWeight: "900" }}>Détails joueur</Text>
+          <TouchableOpacity style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: "#101722", borderWidth: 1, borderColor: "#273142", alignItems: "center", justifyContent: "center" }}>
+            <Ionicons name="share-social-outline" size={21} color="#F8FAFC" />
           </TouchableOpacity>
         </View>
-      ) : (
-        <FlatList
-          data={items}
-          keyExtractor={(item, index) => String(item.cardId || item.cardSlug || item.offerId || index)}
-          contentContainerStyle={{ padding: 14, paddingBottom: 30, flexGrow: 1 }}
-          ListHeaderComponent={
-            <View style={{ marginBottom: 14 }}>
-              {coachLoading && !coachPerf ? (
-                <View style={{ padding: 14, borderRadius: 14, backgroundColor: "#10141b", borderWidth: 1, borderColor: "#273244", marginBottom: 12 }}>
-                  <ActivityIndicator color="#72e6a2" />
-                  <Text style={{ color: "#9ba1a6", textAlign: "center", marginTop: 8, fontWeight: "800" }}>Analyse coach en cours...</Text>
-                </View>
-              ) : null}
-              {coachError ? (
-                <Text style={{ color: "#ff9aa8", marginBottom: 10, fontWeight: "800" }}>{coachError}</Text>
-              ) : null}
-              {coachRadar.hasPerformanceData ? (
-                <>
-                  <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
-                    {averageBoxV1("L5", coachRadar.l5)}
-                    {averageBoxV1("L15", coachRadar.l15)}
-                    {averageBoxV1("L40", coachRadar.l40)}
+
+        {loading ? (
+          <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+            <ActivityIndicator color="#ff5d73" />
+          </View>
+        ) : error ? (
+          <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 18 }}>
+            <Text style={{ color: "#ff9aa8", textAlign: "center", marginBottom: 12 }}>{error}</Text>
+            <TouchableOpacity onPress={load} style={{ backgroundColor: "#D51F3C", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 }}>
+              <Text style={{ color: "white", fontWeight: "900" }}>Réessayer</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <FlatList
+            data={items}
+            keyExtractor={(item, index) => String(item.cardId || item.cardSlug || item.offerId || index)}
+            contentContainerStyle={{ padding: 14, paddingBottom: 30, flexGrow: 1 }}
+            ListHeaderComponent={
+              <View style={{ gap: 14, marginBottom: 14 }}>
+                <LinearGradient colors={["#141B27", "#0D121A"]} style={{ borderRadius: 17, borderWidth: 1, borderColor: "#2B3444", padding: 10 }}>
+                  <View style={{ flexDirection: "row", gap: 13 }}>
+                    <Image source={{ uri: header.pictureUrl || XS_RECRUTER_PLAYER_PLACEHOLDER_V1 }} style={{ width: 132, height: 172, borderRadius: 13, backgroundColor: "#050509" }} />
+                    <View style={{ flex: 1, paddingVertical: 8, gap: 7 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                        <Text style={{ color: "#fff", fontSize: 22, fontWeight: "900", flex: 1 }} numberOfLines={2}>{header.playerName}</Text>
+                        <Ionicons name="heart-outline" size={26} color="#F43F5E" />
+                      </View>
+                      <Text style={{ color: "#B8BEC8" }} numberOfLines={1}>{header.clubName} · {header.leagueName}</Text>
+                      <Text style={{ color: "#A4ABB6" }} numberOfLines={1}>{header.position} · {(player as any)?.age != null ? `${(player as any).age} ans` : "Âge —"}</Text>
+                      {typeof __DEV__ !== "undefined" && __DEV__ ? (
+                        <Text style={{ color: "#6f7782", fontSize: 11 }} numberOfLines={1}>Position détectée: {header.position === "Position inconnue" ? "GEN" : header.position} · Source: {(header as any).positionSourceUsed || "none"}</Text>
+                      ) : null}
+                      <View style={{ height: 1, backgroundColor: "#273142", marginVertical: 5 }} />
+                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                        <View>
+                          <Text style={{ color: scoreToneV1(coachRadar.overall), fontSize: 34, fontWeight: "900" }}>{coachRadar.hasPerformanceData ? Math.round(coachRadar.overall) : "—"}</Text>
+                          <Text style={{ color: "#A4ABB6", fontSize: 12 }}>Score global</Text>
+                        </View>
+                        <View style={{ alignItems: "flex-end" }}>
+                          <Text style={{ color: "#F8FAFC", fontWeight: "900" }}>Potentiel</Text>
+                          <Text style={{ color: "#C6CDD7" }}>—</Text>
+                        </View>
+                      </View>
+                    </View>
                   </View>
-                  <FifaRadarChart
-                    title="Décision Coach"
-                    values={coachRadar.values}
-                    overall={coachRadar.overall}
-                    confidence={coachRadar.confidence}
-                    matches={coachRadar.matches}
-                    positionUsed={coachRadar.positionUsed}
-                    profile={coachRadar.profile}
-                    range={coachRadar.range}
-                    coachDecision={coachRadar.coachDecision as any}
-                    decisionV2={coachRadar.decisionV2 as any}
-                    trend={coachRadar.coachDecision.trend}
-                    volatility={coachRadar.coachDecision.volatility}
-                    ceiling={coachRadar.coachDecision.ceiling}
-                    recommendation={coachRadar.recommendation as any}
-                    matchContext={coachRadar.matchContext as any}
-                    positionPercentile={coachRadar.positionPercentile as any}
-                    subtitle="Analyse avant achat basée sur performances, statut et prochain match."
-                  />
-                </>
-              ) : (
-                <View style={{ padding: 14, borderRadius: 14, backgroundColor: "#10141b", borderWidth: 1, borderColor: "#273244" }}>
-                  <Text style={{ color: "#F8FAFC", fontSize: 15, fontWeight: "900" }}>Performances non disponibles pour ce joueur.</Text>
-                  <Text style={{ color: "#9BA1A6", marginTop: 6, lineHeight: 18 }}>
-                    La Décision Coach apparaîtra dès que l'historique L5/L15/L40 sera disponible.
-                  </Text>
+                </LinearGradient>
+
+                <View style={{ flexDirection: "row", backgroundColor: "#101722", borderRadius: 14, borderWidth: 1, borderColor: "#1E2634", padding: 4 }}>
+                  {["Analyse", "Stats", "Historique", "Similaire"].map((tab) => (
+                    <View key={tab} style={{ flex: 1, borderRadius: 11, paddingVertical: 10, alignItems: "center", backgroundColor: tab === "Analyse" ? "#171D29" : "transparent", borderBottomWidth: tab === "Analyse" ? 2 : 0, borderBottomColor: "#F43F5E" }}>
+                      <Text style={{ color: tab === "Analyse" ? "#F8FAFC" : "#9AA3AF", fontWeight: "800" }}>{tab}</Text>
+                    </View>
+                  ))}
                 </View>
-              )}
-            </View>
-          }
-          ListEmptyComponent={
-            <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingTop: 60 }}>
-              <Text style={{ color: "#ff9aa8", fontWeight: "900", fontSize: 16, textAlign: "center" }}>Aucune carte en vente actuellement</Text>
-              <Text style={{ color: "#9ba1a6", textAlign: "center", marginTop: 8 }}>
-                Le profil vient de l'index joueurs. Les ventes seront revérifiées au prochain clic ou à la prochaine mise à jour marché.
-              </Text>
-            </View>
-          }
-          renderItem={({ item }) => {
-            const seller = text(item?.seller?.nickname || item?.seller?.slug);
-            return (
-              <View style={{ flexDirection: "row", gap: 12, padding: 12, marginBottom: 12, borderRadius: 12, backgroundColor: "#12151c", borderWidth: 1, borderColor: "#2a1218" }}>
-                <Image
-                  source={{ uri: item.pictureUrl || "https://frontend-assets.sorare.com/placeholders/player-v2.png" }}
-                  style={{ width: 76, height: 102, borderRadius: 8, backgroundColor: "#050509" }}
-                />
-                <View style={{ flex: 1, justifyContent: "center", gap: 5 }}>
-                  <Text style={{ color: "white", fontWeight: "900" }} numberOfLines={1}>{text(item.playerName, header.playerName)}</Text>
-                  <Text style={{ color: "#72e6a2", fontWeight: "900" }}>{priceLabel(item)}</Text>
-                  <Text style={{ color: "#c9d1d9" }} numberOfLines={1}>{rarityLabel(item)} · Saison {seasonLabel(item)}</Text>
-                  <Text style={{ color: "#9ba1a6" }} numberOfLines={1}>{text(item.clubName, header.clubName)} · {text(item.position, header.position)}</Text>
-                  <Text style={{ color: "#8b949e" }} numberOfLines={1}>{seller ? `Vendeur ${seller}` : text(item.leagueName, header.leagueName)}</Text>
-                </View>
+
+                {coachLoading && !coachPerf ? (
+                  <View style={{ padding: 14, borderRadius: 14, backgroundColor: "#101722", borderWidth: 1, borderColor: "#273142" }}>
+                    <ActivityIndicator color="#72e6a2" />
+                    <Text style={{ color: "#9ba1a6", textAlign: "center", marginTop: 8, fontWeight: "800" }}>Analyse coach en cours...</Text>
+                  </View>
+                ) : null}
+                {coachError ? <Text style={{ color: "#ff9aa8", fontWeight: "800" }}>{coachError}</Text> : null}
+
+                {coachRadar.hasPerformanceData ? (
+                  <LinearGradient colors={["#101722", "#0C1119"]} style={{ borderRadius: 17, borderWidth: 1, borderColor: "#263143", padding: 16, gap: 14 }}>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: "#F8FAFC", fontSize: 18, fontWeight: "900" }}>Analyse Décision Coach</Text>
+                        <Text style={{ color: "#A4ABB6", marginTop: 4 }}>Analyse basée sur ses performances et le contexte</Text>
+                      </View>
+                      <View style={{ backgroundColor: header.status === "for_sale" ? "#102219" : "#241A0B", borderColor: header.status === "for_sale" ? "#245B39" : "#5A3F16", borderWidth: 1, borderRadius: 9, paddingHorizontal: 10, paddingVertical: 6 }}>
+                        <Text style={{ color: header.status === "for_sale" ? "#72E6A2" : "#FFD18A", fontWeight: "900", fontSize: 12 }}>{header.status === "for_sale" ? "En vente" : "Vente à vérifier"}</Text>
+                      </View>
+                    </View>
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      {averageBoxV1("L5", coachRadar.l5)}
+                      {averageBoxV1("L15", coachRadar.l15)}
+                      {averageBoxV1("L40", coachRadar.l40)}
+                    </View>
+                    <View style={{ gap: 13 }}>
+                      {(coachRadar.values || []).map((metric: any, index: number) => (
+                        <PremiumMetricBarV1 key={`${metric.label}-${index}`} label={metric.label} value={num(metric.value)} />
+                      ))}
+                    </View>
+                    <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
+                      <TouchableOpacity style={{ flex: 1, borderRadius: 13, paddingVertical: 14, backgroundColor: "#141B27", borderWidth: 1, borderColor: "#2B3444", flexDirection: "row", justifyContent: "center", gap: 8 }}>
+                        <Ionicons name="options-outline" size={19} color="#F8FAFC" />
+                        <Text style={{ color: "#F8FAFC", fontWeight: "900" }}>Comparer</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={{ flex: 1, borderRadius: 13, paddingVertical: 14, backgroundColor: "#D51F3C", flexDirection: "row", justifyContent: "center", gap: 8 }}>
+                        <Ionicons name="notifications-outline" size={19} color="#FFFFFF" />
+                        <Text style={{ color: "#FFFFFF", fontWeight: "900" }}>Surveiller</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </LinearGradient>
+                ) : (
+                  <View style={{ padding: 14, borderRadius: 14, backgroundColor: "#101722", borderWidth: 1, borderColor: "#273142" }}>
+                    <Text style={{ color: "#F8FAFC", fontSize: 15, fontWeight: "900" }}>Performances non disponibles pour ce joueur.</Text>
+                    <Text style={{ color: "#9BA1A6", marginTop: 6, lineHeight: 18 }}>La Décision Coach apparaîtra dès que l'historique L5/L15/L40 sera disponible.</Text>
+                  </View>
+                )}
+
+                <Text style={{ color: "#F8FAFC", fontSize: 19, fontWeight: "900" }}>Cartes en vente</Text>
               </View>
-            );
-          }}
-        />
-      )}
+            }
+            ListEmptyComponent={
+              <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingTop: 40 }}>
+                <Text style={{ color: "#ff9aa8", fontWeight: "900", fontSize: 16, textAlign: "center" }}>Aucune carte en vente actuellement</Text>
+                <Text style={{ color: "#9ba1a6", textAlign: "center", marginTop: 8 }}>Le profil vient de l'index joueurs. Les ventes seront revérifiées au prochain clic ou à la prochaine mise à jour marché.</Text>
+              </View>
+            }
+            renderItem={({ item }) => {
+              const seller = text(item?.seller?.nickname || item?.seller?.slug);
+              return (
+                <View style={{ flexDirection: "row", gap: 12, padding: 12, marginBottom: 12, borderRadius: 15, backgroundColor: "#101722", borderWidth: 1, borderColor: "#2B3444" }}>
+                  <Image source={{ uri: item.pictureUrl || XS_RECRUTER_PLAYER_PLACEHOLDER_V1 }} style={{ width: 76, height: 102, borderRadius: 10, backgroundColor: "#050509" }} />
+                  <View style={{ flex: 1, justifyContent: "center", gap: 5 }}>
+                    <Text style={{ color: "white", fontWeight: "900" }} numberOfLines={1}>{text(item.playerName, header.playerName)}</Text>
+                    <Text style={{ color: "#72e6a2", fontWeight: "900" }}>{priceLabel(item)}</Text>
+                    <Text style={{ color: "#c9d1d9" }} numberOfLines={1}>{rarityLabel(item)} · Saison {seasonLabel(item)}</Text>
+                    <Text style={{ color: "#9ba1a6" }} numberOfLines={1}>{text(item.clubName, header.clubName)} · {text(item.position, header.position)}</Text>
+                    <Text style={{ color: "#8b949e" }} numberOfLines={1}>{seller ? `Vendeur ${seller}` : text(item.leagueName, header.leagueName)}</Text>
+                  </View>
+                </View>
+              );
+            }}
+          />
+        )}
+      </LinearGradient>
     </SafeAreaView>
   );
 }

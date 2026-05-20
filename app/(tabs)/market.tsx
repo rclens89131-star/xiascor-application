@@ -1,5 +1,7 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Image, RefreshControl, SafeAreaView, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useRouter } from "expo-router";
 import { apiFetch } from "../../src/api";
 import {
@@ -15,6 +17,7 @@ import {
 // XS_RECRUTER_FRONT_LEAGUE_INDEX_V1: Recruter uses the full backend league cache for Ligue 1.
 // XS_RECRUTER_FRONT_LEAGUES_VISIBLE_V1: Recruter loads every available league-index cache.
 // XS_RECRUTER_GLOBAL_LEAGUES_PRIORITY_123_V1: show global Sorare league-index filters.
+// XS_RECRUTER_PREMIUM_UI_REFERENCE_V1: premium scouting UI inspired by the reference screen.
 const XS_RECRUTER_FRONT_LEAGUE_INDEX_DEFAULT_V1 = "ligue-1-fr";
 const XS_RECRUTER_FRONT_VISIBLE_LEAGUES_V1 = [
   { label: "Ligue 1", slug: "ligue-1-fr" },
@@ -49,7 +52,6 @@ const XS_RECRUTER_FRONT_VISIBLE_LEAGUES_V1 = [
   { label: "Chinese Super League", slug: "chinese-super-league" },
 ];
 
-// XS_RECRUTER_FIX_LEAGUE_SWITCH_DISPLAY_V1: filter with backend league slugs, not display aliases.
 const XS_RECRUTER_FRONT_LEAGUE_SLUG_ALIASES_V1: Record<string, string> = {
   "premier-league": "premier-league-gb-eng",
   laliga: "laliga-es",
@@ -77,6 +79,9 @@ const XS_RECRUTER_FRONT_LEAGUE_SLUG_ALIASES_V1: Record<string, string> = {
   "k-league": "k-league-1",
 };
 
+const POSITIONS = ["GK", "DEF", "MID", "FW"];
+const PLAYER_PLACEHOLDER = "https://frontend-assets.sorare.com/placeholders/player-v2.png";
+
 function text(v: unknown, fallback = "") {
   const s = String(v ?? "").trim();
   return s || fallback;
@@ -86,15 +91,31 @@ function norm(v: unknown) {
   return String(v ?? "").trim().toLowerCase();
 }
 
+function compactNumber(value: number) {
+  return new Intl.NumberFormat("fr-FR").format(Math.max(0, Math.round(value || 0)));
+}
+
 function xsRecruterFrontLeagueSlugV1(value: unknown) {
   const slug = norm(value);
   return XS_RECRUTER_FRONT_LEAGUE_SLUG_ALIASES_V1[slug] || slug;
 }
 
+function playerScore(item: RecruterPlayer) {
+  const row: any = item;
+  const value = Number(row.lastL5 ?? row.last_l5 ?? row.l5 ?? row.average ?? row.score);
+  return Number.isFinite(value) && value > 0 ? Math.round(value) : null;
+}
+
+function scoreColor(score: number | null) {
+  if (score == null) return "#64748B";
+  if (score >= 55) return "#22C55E";
+  if (score >= 45) return "#FACC15";
+  return "#EF4444";
+}
+
 function saleBadge(player: RecruterPlayer) {
   const status = recruterSaleStatus(player);
   if (status === "for_sale") return { label: "En vente", color: "#72e6a2", border: "#245b39", background: "#102219" };
-  if (status === "no_sale") return { label: "Aucune vente", color: "#c4cad3", border: "#343a45", background: "#171b22" };
   return { label: "Vente à vérifier", color: "#ffd18a", border: "#5a3f16", background: "#241a0b" };
 }
 
@@ -111,8 +132,6 @@ function collectOptions(items: RecruterPlayer[], type: "league" | "club") {
   }
   return Array.from(map.values()).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 }
-
-const POSITIONS = ["GK", "DEF", "MID", "FW"];
 
 function xsRecruterMergeLeagueItemsV1(payloads: RecruterLeagueIndexResponse[]) {
   const bySlug = new Map<string, RecruterPlayer>();
@@ -136,6 +155,34 @@ function xsRecruterMergeLeagueItemsV1(payloads: RecruterLeagueIndexResponse[]) {
     playersCount: playersCount || items.length,
     items,
   } as RecruterLeagueIndexResponse;
+}
+
+function FilterChip({ label, active, onPress }: { label: string; active?: boolean; onPress: () => void }) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={{
+        borderRadius: 10,
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        backgroundColor: active ? "#D51F3C" : "#121722",
+        borderWidth: 1,
+        borderColor: active ? "#F04A62" : "#273142",
+      }}
+    >
+      <Text style={{ color: "white", fontWeight: "900" }} numberOfLines={1}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function StatCell({ icon, value, label }: { icon: keyof typeof Ionicons.glyphMap; value: string; label: string }) {
+  return (
+    <View style={{ flex: 1, alignItems: "center", gap: 5 }}>
+      <Ionicons name={icon} size={21} color="#AEB7C4" />
+      <Text style={{ color: "#F8FAFC", fontSize: 20, fontWeight: "900", fontVariant: ["tabular-nums"] }}>{value}</Text>
+      <Text style={{ color: "#A4ABB6", fontSize: 12 }}>{label}</Text>
+    </View>
+  );
 }
 
 export default function RecruiterTabScreen() {
@@ -220,6 +267,7 @@ export default function RecruiterTabScreen() {
       return { slug, name: league.label, count: row?.count || 0 };
     });
   }, [items]);
+
   const clubs = useMemo(() => {
     const base = selectedLeague ? items.filter((item) => norm(item.leagueSlug) === selectedLeague) : items;
     return collectOptions(base, "club");
@@ -239,126 +287,231 @@ export default function RecruiterTabScreen() {
 
   const summary = useMemo(() => {
     const forSale = filtered.filter((item) => recruterSaleStatus(item) === "for_sale").length;
-    return { total: filtered.length, forSale, leagues: leagues.length, clubs: clubs.length };
-  }, [clubs.length, filtered, leagues.length]);
+    return {
+      total: filtered.length,
+      allPlayers: leagueIndex?.playersCount ?? items.length,
+      forSale,
+      leagues: leagues.length,
+      clubs: selectedLeague ? clubs.length : (leagueIndex?.clubsCount ?? collectOptions(items, "club").length),
+    };
+  }, [clubs.length, filtered, items, leagueIndex, leagues.length, selectedLeague]);
 
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#08090d" }}>
-      <View style={{ padding: 12, gap: 10, backgroundColor: "#0d0f14", borderBottomWidth: 1, borderBottomColor: "#251016" }}>
-        <Text style={{ color: "white", fontSize: 24, fontWeight: "900" }}>Recruter</Text>
-        <Text style={{ color: "#a8b0ba" }}>
-          Index {leagues.length || XS_RECRUTER_FRONT_VISIBLE_LEAGUES_V1.length} ligues · santé API: {health === "ok" ? "OK" : health === "ko" ? "KO" : "..."}
-        </Text>
+  const recommended = useMemo(() => {
+    return [...filtered]
+      .sort((a, b) => (playerScore(b) ?? -1) - (playerScore(a) ?? -1))
+      .slice(0, 8);
+  }, [filtered]);
 
-        <TouchableOpacity
-          onPress={continueIndex}
-          disabled={building}
-          style={{ backgroundColor: building ? "#60202a" : "#c92a3d", borderRadius: 9, paddingHorizontal: 12, paddingVertical: 10, alignItems: "center" }}
-        >
-          <Text style={{ color: "white", fontWeight: "900" }}>{building ? "Indexation..." : "Continuer l'index joueurs"}</Text>
+  const latest = useMemo(() => filtered.slice(0, 12), [filtered]);
+
+  const openPlayer = useCallback((item: RecruterPlayer) => {
+    const slug = text(item.slug || item.playerSlug);
+    if (!slug) return;
+    router.push({ pathname: "/recruter/player/[slug]", params: { slug } });
+  }, [router]);
+
+  const listHeader = (
+    <View style={{ gap: 16, paddingBottom: 12 }}>
+      <View style={{ paddingTop: 10, gap: 6 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <View>
+            <Text style={{ color: "white", fontSize: 34, fontWeight: "900", letterSpacing: 0 }}>Recruter</Text>
+            <Text style={{ color: "#B8BEC8", fontSize: 16, marginTop: 4 }}>Trouvez les pépites avant tout le monde</Text>
+          </View>
+          <View style={{ width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: "#111722", borderWidth: 1, borderColor: "#273142" }}>
+            <Ionicons name="notifications-outline" size={23} color="#F8FAFC" />
+            <View style={{ position: "absolute", right: 9, top: 8, width: 10, height: 10, borderRadius: 5, backgroundColor: "#F43F5E" }} />
+          </View>
+        </View>
+      </View>
+
+      <LinearGradient colors={["#18141d", "#10151e"]} style={{ borderRadius: 18, borderWidth: 1, borderColor: "#572331", padding: 16 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+          <View style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: "#221924", alignItems: "center", justifyContent: "center" }}>
+            <Ionicons name="scan-circle-outline" size={36} color="#F43F5E" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: "#C6CDD7", fontSize: 15 }}>Index en cours</Text>
+            <Text style={{ color: "white", fontSize: 24, fontWeight: "900" }}>{summary.leagues} ligues indexées</Text>
+            <Text style={{ color: health === "ok" ? "#22C55E" : "#F59E0B", fontWeight: "800" }}>Santé API : {health === "ok" ? "OK" : health === "ko" ? "KO" : "..."}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={24} color="#F8FAFC" />
+        </View>
+      </LinearGradient>
+
+      <TouchableOpacity onPress={continueIndex} disabled={building} activeOpacity={0.88}>
+        <LinearGradient colors={building ? ["#6B1E2B", "#8E2032"] : ["#F02548", "#C91435"]} style={{ borderRadius: 15, paddingVertical: 17, paddingHorizontal: 18, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 12 }}>
+          <Text style={{ color: "white", fontSize: 18, fontWeight: "900" }}>{building ? "Indexation..." : "Continuer l'index joueurs"}</Text>
+          <Ionicons name="chevron-forward" size={22} color="white" />
+        </LinearGradient>
+      </TouchableOpacity>
+
+      <View style={{ borderRadius: 18, backgroundColor: "#111722", borderWidth: 1, borderColor: "#273142", paddingVertical: 15, flexDirection: "row" }}>
+        <StatCell icon="person-outline" value={compactNumber(summary.allPlayers)} label="Joueurs" />
+        <View style={{ width: 1, backgroundColor: "#273142" }} />
+        <StatCell icon="shield-checkmark-outline" value={compactNumber(summary.clubs)} label="Clubs" />
+        <View style={{ width: 1, backgroundColor: "#273142" }} />
+        <StatCell icon="globe-outline" value={compactNumber(summary.leagues)} label="Ligues" />
+        <View style={{ width: 1, backgroundColor: "#273142" }} />
+        <StatCell icon="pricetag-outline" value={compactNumber(summary.forSale)} label="En vente" />
+      </View>
+
+      <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
+        <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "#111722", borderRadius: 14, borderWidth: 1, borderColor: "#273142", paddingHorizontal: 14 }}>
+          <Ionicons name="search" size={22} color="#B8BEC8" />
+          <TextInput
+            placeholder="Rechercher joueur, club, ligue..."
+            placeholderTextColor="#8A93A0"
+            value={query}
+            onChangeText={setQuery}
+            style={{ flex: 1, color: "#fff", paddingVertical: 13, fontSize: 15 }}
+          />
+        </View>
+        <TouchableOpacity style={{ width: 50, height: 50, borderRadius: 14, backgroundColor: "#111722", borderWidth: 1, borderColor: "#273142", alignItems: "center", justifyContent: "center" }}>
+          <Ionicons name="options-outline" size={24} color="#F8FAFC" />
         </TouchableOpacity>
+      </View>
 
-        {buildMeta?.summary ? (
-          <Text style={{ color: "#ff9aa8" }}>
-            Cache: {buildMeta.summary.playersCount ?? 0} joueurs · {buildMeta.summary.clubsCount ?? 0} clubs · {buildMeta.summary.leaguesCount ?? 0} ligues
-          </Text>
-        ) : (
-          <Text style={{ color: "#ff9aa8" }}>
-            {leagueIndex?.playersCount ?? summary.total} joueurs · {leagueIndex?.clubsCount ?? summary.clubs} clubs · {summary.leagues} ligue{summary.leagues > 1 ? "s" : ""} · {summary.forSale} en vente
-          </Text>
-        )}
-
-        <TextInput
-          placeholder="Rechercher joueur, club, ligue"
-          placeholderTextColor="#70757a"
-          value={query}
-          onChangeText={setQuery}
-          style={{ backgroundColor: "#171a22", color: "#fff", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 }}
-        />
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-          <TouchableOpacity onPress={() => setSelectedPosition("")} style={{ borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: selectedPosition ? "#141821" : "#c92a3d" }}>
-            <Text style={{ color: "white", fontWeight: "800" }}>Tous</Text>
+      <View style={{ gap: 12 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <Text style={{ color: "#F8FAFC", fontSize: 19, fontWeight: "900" }}>Filtres rapides</Text>
+          <TouchableOpacity onPress={() => { setSelectedPosition(""); setSelectedLeague(""); setSelectedClub(""); setQuery(""); }}>
+            <Text style={{ color: "#F43F5E", fontWeight: "800" }}>Tout réinitialiser</Text>
           </TouchableOpacity>
-          {POSITIONS.map((pos) => (
-            <TouchableOpacity key={pos} onPress={() => setSelectedPosition(pos)} style={{ borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: selectedPosition === pos ? "#c92a3d" : "#141821", borderWidth: 1, borderColor: "#2a1218" }}>
-              <Text style={{ color: "white", fontWeight: "800" }}>{pos}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        </View>
+        <View style={{ gap: 10 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Text style={{ color: "#F8FAFC", width: 62, fontWeight: "900" }}>Poste</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              <FilterChip label="Tous" active={!selectedPosition} onPress={() => setSelectedPosition("")} />
+              {POSITIONS.map((pos) => <FilterChip key={pos} label={pos} active={selectedPosition === pos} onPress={() => setSelectedPosition(pos)} />)}
+            </ScrollView>
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Text style={{ color: "#F8FAFC", width: 62, fontWeight: "900" }}>Ligues</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {leagues.slice(0, 8).map((league) => (
+                <FilterChip key={league.slug} label={`${league.name} (${league.count})`} active={selectedLeague === league.slug} onPress={() => { setSelectedLeague(selectedLeague === league.slug ? "" : league.slug); setSelectedClub(""); }} />
+              ))}
+              <FilterChip label="+" onPress={() => {}} />
+            </ScrollView>
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Text style={{ color: "#F8FAFC", width: 62, fontWeight: "900" }}>Clubs</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {clubs.slice(0, 8).map((club) => (
+                <FilterChip key={club.slug} label={`${club.name} (${club.count})`} active={selectedClub === club.slug} onPress={() => setSelectedClub(selectedClub === club.slug ? "" : club.slug)} />
+              ))}
+              <FilterChip label="+" onPress={() => {}} />
+            </ScrollView>
+          </View>
+        </View>
+      </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-          <TouchableOpacity onPress={() => { setSelectedLeague(""); setSelectedClub(""); }} style={{ borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: selectedLeague ? "#141821" : "#c92a3d" }}>
-            <Text style={{ color: "white", fontWeight: "800" }}>Ligues</Text>
-          </TouchableOpacity>
-          {leagues.slice(0, 24).map((league) => (
-            <TouchableOpacity key={league.slug} onPress={() => { setSelectedLeague(league.slug); setSelectedClub(""); }} style={{ borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: selectedLeague === league.slug ? "#c92a3d" : "#141821", borderWidth: 1, borderColor: "#2a1218" }}>
-              <Text style={{ color: "white", fontWeight: "800" }}>{league.name} ({league.count})</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+      <View style={{ height: 1, backgroundColor: "#202734" }} />
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-          <TouchableOpacity onPress={() => setSelectedClub("")} style={{ borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: selectedClub ? "#141821" : "#c92a3d" }}>
-            <Text style={{ color: "white", fontWeight: "800" }}>Clubs</Text>
-          </TouchableOpacity>
-          {clubs.slice(0, 24).map((club) => (
-            <TouchableOpacity key={club.slug} onPress={() => setSelectedClub(club.slug)} style={{ borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: selectedClub === club.slug ? "#c92a3d" : "#141821", borderWidth: 1, borderColor: "#2a1218" }}>
-              <Text style={{ color: "white", fontWeight: "800" }}>{club.name} ({club.count})</Text>
-            </TouchableOpacity>
-          ))}
+      <View style={{ gap: 12 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <Text style={{ color: "#F8FAFC", fontSize: 21, fontWeight: "900" }}>Joueurs recommandés</Text>
+          <Text style={{ color: "#F43F5E", fontWeight: "800" }}>Voir tout</Text>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
+          {recommended.map((item, index) => {
+            const slug = text(item.slug || item.playerSlug, String(index));
+            const score = playerScore(item);
+            return (
+              <TouchableOpacity key={`${slug}-${index}`} onPress={() => openPlayer(item)} activeOpacity={0.9} style={{ width: 174, borderRadius: 16, overflow: "hidden", borderWidth: 1, borderColor: "#2B3444", backgroundColor: "#111722" }}>
+                <LinearGradient colors={["#1A1220", "#0D121A"]} style={{ padding: 12, minHeight: 242 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <View style={{ paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8, backgroundColor: "#102B1D" }}>
+                      <Text style={{ color: "#55E38D", fontWeight: "900", fontSize: 12 }}>{text(item.position, "—")}</Text>
+                    </View>
+                    <Ionicons name="heart-outline" size={23} color="#F8FAFC" />
+                  </View>
+                  <Image source={{ uri: item.pictureUrl || PLAYER_PLACEHOLDER }} style={{ alignSelf: "center", width: 128, height: 116, borderRadius: 12, marginTop: 8, backgroundColor: "#050509" }} resizeMode="cover" />
+                  <Text style={{ color: "white", fontWeight: "900", fontSize: 17, marginTop: 10 }} numberOfLines={1}>{text(item.displayName || item.playerName, slug)}</Text>
+                  <Text style={{ color: "#B8BEC8", marginTop: 3 }} numberOfLines={1}>{text(item.clubName, "Club inconnu")} · {text(item.leagueName, "Ligue inconnue")}</Text>
+                  <Text style={{ color: "#A4ABB6", marginTop: 5 }}>{item.age != null ? `${item.age} ans` : "Âge —"}</Text>
+                  <View style={{ alignSelf: "center", marginTop: 10, borderRadius: 10, borderWidth: 1, borderColor: `${scoreColor(score)}80`, backgroundColor: `${scoreColor(score)}22`, paddingHorizontal: 12, paddingVertical: 5 }}>
+                    <Text style={{ color: scoreColor(score), fontSize: 21, fontWeight: "900" }}>{score == null ? "—" : score}</Text>
+                    <Text style={{ color: "#C6CDD7", fontSize: 11, textAlign: "center" }}>Score</Text>
+                  </View>
+                </LinearGradient>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
       </View>
 
-      {loading ? (
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <ActivityIndicator color="#ff5d73" />
-        </View>
-      ) : error ? (
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <Text style={{ color: "#ff9aa8", textAlign: "center", marginBottom: 10 }}>{error}</Text>
-          <TouchableOpacity onPress={() => load(false)} style={{ backgroundColor: "#c92a3d", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }}>
-            <Text style={{ color: "white", fontWeight: "800" }}>Réessayer</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <FlatList
-          data={filtered}
-          keyExtractor={(item, index) => String(item.slug || item.playerSlug || index)}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor="#ff5d73" />}
-          contentContainerStyle={{ padding: 12, paddingBottom: 30 }}
-          ListEmptyComponent={<Text style={{ color: "#9ba1a6", textAlign: "center", marginTop: 30 }}>{selectedLeague ? "Données en cours d'indexation." : "Aucun joueur trouvé dans l'index."}</Text>}
-          renderItem={({ item }) => {
-            const slug = text(item.slug || item.playerSlug);
-            const displayName = text(item.displayName || item.playerName, slug || "Joueur");
-            const clubName = text(item.clubName, "Club inconnu");
-            const leagueName = text(item.leagueName, "Ligue inconnue");
-            const badge = saleBadge(item);
+      <View style={{ height: 1, backgroundColor: "#202734" }} />
 
-            return (
-              <TouchableOpacity
-                onPress={() => { if (!slug) return; router.push({ pathname: "/recruter/player/[slug]", params: { slug } }); }}
-                style={{ flexDirection: "row", gap: 12, marginBottom: 10, backgroundColor: "#12151c", borderRadius: 12, borderWidth: 1, borderColor: "#2a1218", padding: 12 }}
-              >
-                <Image
-                  source={{ uri: item.pictureUrl || "https://frontend-assets.sorare.com/placeholders/player-v2.png" }}
-                  style={{ width: 64, height: 64, borderRadius: 8, backgroundColor: "#050509" }}
-                />
-                <View style={{ flex: 1, justifyContent: "center", gap: 5 }}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                    <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16, flex: 1 }} numberOfLines={1}>{displayName}</Text>
-                    <View style={{ backgroundColor: badge.background, borderColor: badge.border, borderWidth: 1, borderRadius: 7, paddingHorizontal: 8, paddingVertical: 4 }}>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+        <Text style={{ color: "#F8FAFC", fontSize: 21, fontWeight: "900" }}>{selectedPosition ? `${summary.total} ${selectedPosition} trouvés` : "Derniers ajoutés"}</Text>
+        <Text style={{ color: "#F43F5E", fontWeight: "800" }}>Trier</Text>
+      </View>
+
+      {buildMeta?.summary ? (
+        <Text style={{ color: "#FCA5B4" }}>
+          Cache: {buildMeta.summary.playersCount ?? 0} joueurs · {buildMeta.summary.clubsCount ?? 0} clubs · {buildMeta.summary.leaguesCount ?? 0} ligues
+        </Text>
+      ) : null}
+    </View>
+  );
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#070A10" }}>
+      <LinearGradient colors={["#090D14", "#070A10", "#13080E"]} style={{ flex: 1 }}>
+        {loading ? (
+          <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+            <ActivityIndicator color="#ff5d73" />
+          </View>
+        ) : error ? (
+          <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 16 }}>
+            <Text style={{ color: "#ff9aa8", textAlign: "center", marginBottom: 10 }}>{error}</Text>
+            <TouchableOpacity onPress={() => load(false)} style={{ backgroundColor: "#D51F3C", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 }}>
+              <Text style={{ color: "white", fontWeight: "900" }}>Réessayer</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <FlatList
+            data={latest}
+            keyExtractor={(item, index) => String(item.slug || item.playerSlug || index)}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor="#ff5d73" />}
+            ListHeaderComponent={listHeader}
+            contentContainerStyle={{ padding: 18, paddingBottom: 34, gap: 10 }}
+            ListEmptyComponent={<Text style={{ color: "#9ba1a6", textAlign: "center", marginTop: 30 }}>{selectedLeague ? "Données en cours d'indexation." : "Aucun joueur trouvé dans l'index."}</Text>}
+            renderItem={({ item }) => {
+              const slug = text(item.slug || item.playerSlug);
+              const displayName = text(item.displayName || item.playerName, slug || "Joueur");
+              const badge = saleBadge(item);
+              const score = playerScore(item);
+              return (
+                <TouchableOpacity
+                  onPress={() => openPlayer(item)}
+                  activeOpacity={0.88}
+                  style={{ flexDirection: "row", gap: 12, backgroundColor: "#101722", borderRadius: 15, borderWidth: 1, borderColor: "#2B3444", padding: 10, alignItems: "center" }}
+                >
+                  <Image source={{ uri: item.pictureUrl || PLAYER_PLACEHOLDER }} style={{ width: 72, height: 72, borderRadius: 12, backgroundColor: "#050509" }} />
+                  <View style={{ flex: 1, gap: 4 }}>
+                    <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }} numberOfLines={1}>{displayName}</Text>
+                    <Text style={{ color: "#B8BEC8" }} numberOfLines={1}>{text(item.clubName, "Club inconnu")} · {text(item.leagueName, "Ligue inconnue")}</Text>
+                    <Text style={{ color: "#8B95A4" }} numberOfLines={1}>{text(item.position, "—")} · {item.age != null ? `${item.age} ans` : "Âge inconnu"}</Text>
+                    <View style={{ alignSelf: "flex-start", backgroundColor: badge.background, borderColor: badge.border, borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 }}>
                       <Text style={{ color: badge.color, fontWeight: "900", fontSize: 12 }}>{badge.label}</Text>
                     </View>
                   </View>
-                  <Text style={{ color: "#b8bec8" }} numberOfLines={1}>{clubName} · {leagueName}</Text>
-                  <Text style={{ color: "#8b949e" }}>{text(item.position, "N/A")} · {item.age != null ? `${item.age} ans` : "Age inconnu"}</Text>
-                </View>
-              </TouchableOpacity>
-            );
-          }}
-        />
-      )}
+                  <View style={{ alignItems: "center", gap: 8 }}>
+                    <Ionicons name="heart-outline" size={23} color="#F8FAFC" />
+                    <View style={{ minWidth: 48, borderRadius: 11, borderWidth: 1, borderColor: `${scoreColor(score)}99`, backgroundColor: `${scoreColor(score)}1F`, paddingVertical: 6, alignItems: "center" }}>
+                      <Text style={{ color: scoreColor(score), fontWeight: "900", fontSize: 19 }}>{score == null ? "—" : score}</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            }}
+          />
+        )}
+      </LinearGradient>
     </SafeAreaView>
   );
 }
