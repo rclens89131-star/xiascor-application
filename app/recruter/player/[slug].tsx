@@ -16,6 +16,7 @@ import { publicPlayerPerformance, recruterPlayerCards, recruterSaleStatus, type 
 // XS_RECRUTER_PLAYER_IMAGE_CONTAIN_V1: show full Recruter player images without aggressive crop.
 // XS_RECRUTER_MOVE_RADAR_TO_STATS_V1: keep coach decision in Analyse and move radar metrics to Stats.
 // XS_RECRUTER_STATS_GRAPH_L5_L10_L40_V1: reuse card performance graph in Recruter Stats.
+// XS_RECRUTER_STATS_GRAPH_LOGOS_RANGE_V1: Stats graph supports L5/L10/L40 ranges and opponent logos.
 function text(v: unknown, fallback = "") {
   const s = String(v ?? "").trim();
   return s || fallback;
@@ -81,6 +82,8 @@ type RecruterPlayerLightV1 = {
   } | null;
   imageCandidates?: { field?: string | null; url?: string | null; kind?: string | null }[];
 };
+
+type RecruterStatsRangeV1 = 5 | 10 | 40;
 
 const XS_RECRUTER_PERF_FALLBACK_BASE_V1 = "https://xiascor-backend-tssdy62zqa-ez.a.run.app";
 const XS_RECRUTER_PLAYER_PLACEHOLDER_V1 = "https://frontend-assets.sorare.com/placeholders/player-v2.png";
@@ -203,9 +206,17 @@ function xsRecruterHistoryOpponentShortV1(row: any) {
   return text(
     row?.opponentShort ||
     row?.opponentCode ||
+    row?.opponentClub?.shortName ||
+    row?.opponentClub?.name ||
+    row?.opponentTeam?.shortName ||
+    row?.opponentTeam?.name ||
     row?.opponentName ||
     row?.opponent?.shortName ||
     row?.opponent?.name ||
+    row?.team?.shortName ||
+    row?.team?.name ||
+    row?.club?.shortName ||
+    row?.club?.name ||
     row?.awayTeam?.shortName ||
     row?.awayTeam?.name ||
     row?.homeTeam?.shortName ||
@@ -217,8 +228,30 @@ function xsRecruterHistoryOpponentShortV1(row: any) {
 function xsRecruterHistoryOpponentLogoV1(row: any) {
   return text(
     row?.opponentLogoUrl ||
+    row?.opponentLogo ||
+    row?.logoUrl ||
+    row?.clubLogoUrl ||
+    row?.teamLogoUrl ||
+    row?.crestUrl ||
+    row?.logo ||
+    row?.pictureUrl ||
+    row?.opponentClub?.pictureUrl ||
+    row?.opponentClub?.logoUrl ||
+    row?.opponentClub?.crestUrl ||
+    row?.opponentTeam?.pictureUrl ||
+    row?.opponentTeam?.logoUrl ||
+    row?.opponentTeam?.crestUrl ||
+    row?.opponent?.club?.pictureUrl ||
+    row?.opponent?.club?.logoUrl ||
+    row?.opponent?.club?.crestUrl ||
     row?.opponent?.pictureUrl ||
     row?.opponent?.logoUrl ||
+    row?.team?.pictureUrl ||
+    row?.team?.logoUrl ||
+    row?.team?.crestUrl ||
+    row?.club?.pictureUrl ||
+    row?.club?.logoUrl ||
+    row?.club?.crestUrl ||
     row?.awayTeam?.pictureUrl ||
     row?.awayTeam?.logoUrl ||
     row?.homeTeam?.pictureUrl ||
@@ -766,6 +799,7 @@ export default function RecruterPlayerCardsScreen() {
   const [coachPlayerStatus, setCoachPlayerStatus] = useState<RecruterPlayerStatusV1 | null>(null);
   const [positionFallbacks, setPositionFallbacks] = useState<{ indexPlayer?: any | null; dbPlayer?: any | null; attempted?: boolean }>({});
   const [activeDetailTab, setActiveDetailTab] = useState<"Analyse" | "Stats" | "Historique" | "Similaire">("Analyse");
+  const [selectedStatsRange, setSelectedStatsRange] = useState<RecruterStatsRangeV1>(10);
   const [coachLoading, setCoachLoading] = useState(false);
   const [coachError, setCoachError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -910,17 +944,19 @@ export default function RecruterPlayerCardsScreen() {
 
   const statsGraph = useMemo(() => {
     const rows = Array.isArray(coachHistory?.items) ? coachHistory.items : [];
+    const wanted = selectedStatsRange;
     const scoredRows = rows
       .map((row) => ({ row, score: xsRecruterHistoryScoreV1(row) }))
       .filter((item): item is { row: any; score: number } => item.score != null)
-      .slice(0, 40);
+      .slice(0, wanted);
     return {
       scores: scoredRows.map((item) => item.score),
       opponentShort: scoredRows.map((item) => xsRecruterHistoryOpponentShortV1(item.row)),
       opponentLogoUrls: scoredRows.map((item) => xsRecruterHistoryOpponentLogoV1(item.row)),
-      partial: scoredRows.length > 0 && scoredRows.length < 40,
+      partial: scoredRows.length > 0 && scoredRows.length < wanted,
+      range: wanted,
     };
-  }, [coachHistory]);
+  }, [coachHistory, selectedStatsRange]);
 
   useEffect(() => {
     if (typeof __DEV__ !== "undefined" && __DEV__ && coachRadar.hasPerformanceData) {
@@ -1060,6 +1096,28 @@ export default function RecruterPlayerCardsScreen() {
                       {averageBoxV1("L5", coachRadar.l5)}
                       {averageBoxV1("L10", (coachRadar as any).l10 ?? null)}
                       {averageBoxV1("L40", coachRadar.l40)}
+                    </View>
+                    <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+                      {([5, 10, 40] as RecruterStatsRangeV1[]).map((range) => {
+                        const active = selectedStatsRange === range;
+                        return (
+                          <TouchableOpacity
+                            key={`stats-range-${range}`}
+                            onPress={() => setSelectedStatsRange(range)}
+                            activeOpacity={0.86}
+                            style={{
+                              borderRadius: 999,
+                              paddingHorizontal: 14,
+                              paddingVertical: 8,
+                              backgroundColor: active ? "#D51F3C" : "#121A27",
+                              borderWidth: 1,
+                              borderColor: active ? "#FF6B82" : "#273142",
+                            }}
+                          >
+                            <Text style={{ color: active ? "#FFFFFF" : "#C6CDD7", fontWeight: "900" }}>L{range}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
                     </View>
                     {statsGraph.scores.length ? (
                       <ScrollView horizontal showsHorizontalScrollIndicator nestedScrollEnabled contentContainerStyle={{ paddingRight: 16 }}>
