@@ -65,6 +65,20 @@ type RecruterHistoryPayloadV1 = {
   activeClub?: { name?: string | null; slug?: string | null } | null;
 };
 
+type RecruterPlayerLightV1 = {
+  ok?: boolean;
+  player?: {
+    slug?: string | null;
+    displayName?: string | null;
+    position?: string | null;
+    age?: number | null;
+    avatarPictureUrl?: string | null;
+    pictureUrl?: string | null;
+    activeClub?: { slug?: string | null; name?: string | null; pictureUrl?: string | null } | null;
+  } | null;
+  imageCandidates?: { field?: string | null; url?: string | null; kind?: string | null }[];
+};
+
 const XS_RECRUTER_PERF_FALLBACK_BASE_V1 = "https://xiascor-backend-tssdy62zqa-ez.a.run.app";
 const XS_RECRUTER_PLAYER_PLACEHOLDER_V1 = "https://frontend-assets.sorare.com/placeholders/player-v2.png";
 const XS_RECRUTER_HEADSHOT_LOGGED_V1 = new Set<string>();
@@ -599,23 +613,33 @@ function getRecruterPlayerImageV1(player: any, card?: any, offer?: any) {
   };
   const candidates = [
     pick("player.avatarUrl", player?.avatarUrl, "headshot"),
+    pick("player.avatarPictureUrl", player?.avatarPictureUrl, "headshot"),
     pick("player.player.avatarUrl", player?.player?.avatarUrl, "headshot"),
+    pick("player.player.avatarPictureUrl", player?.player?.avatarPictureUrl, "headshot"),
     pick("player.anyPlayer.avatarUrl", player?.anyPlayer?.avatarUrl, "headshot"),
+    pick("player.anyPlayer.avatarPictureUrl", player?.anyPlayer?.avatarPictureUrl, "headshot"),
     pick("player.photoUrl", player?.photoUrl, "headshot"),
     pick("player.raw.avatarUrl", player?.raw?.avatarUrl, "headshot"),
+    pick("player.raw.avatarPictureUrl", player?.raw?.avatarPictureUrl, "headshot"),
     pick("player.raw.player.avatarUrl", player?.raw?.player?.avatarUrl, "headshot"),
+    pick("player.raw.player.avatarPictureUrl", player?.raw?.player?.avatarPictureUrl, "headshot"),
     pick("player.raw.anyPlayer.avatarUrl", player?.raw?.anyPlayer?.avatarUrl, "headshot"),
+    pick("player.raw.anyPlayer.avatarPictureUrl", player?.raw?.anyPlayer?.avatarPictureUrl, "headshot"),
     pick("player.player.pictureUrl", player?.player?.pictureUrl, "fullBody"),
     pick("player.anyPlayer.pictureUrl", player?.anyPlayer?.pictureUrl, "fullBody"),
     pick("player.pictureUrl", player?.pictureUrl, "fullBody"),
     pick("card.player.avatarUrl", card?.player?.avatarUrl, "headshot"),
+    pick("card.player.avatarPictureUrl", card?.player?.avatarPictureUrl, "headshot"),
     pick("card.anyPlayer.avatarUrl", card?.anyPlayer?.avatarUrl, "headshot"),
+    pick("card.anyPlayer.avatarPictureUrl", card?.anyPlayer?.avatarPictureUrl, "headshot"),
     pick("card.player.pictureUrl", card?.player?.pictureUrl, "fullBody"),
     pick("card.anyPlayer.pictureUrl", card?.anyPlayer?.pictureUrl, "fullBody"),
     pick("card.pictureUrl", card?.pictureUrl, "fullBody"),
     pick("card.imageUrl", card?.imageUrl, "fullBody"),
     pick("offer.player.avatarUrl", offer?.player?.avatarUrl, "headshot"),
+    pick("offer.player.avatarPictureUrl", offer?.player?.avatarPictureUrl, "headshot"),
     pick("offer.anyPlayer.avatarUrl", offer?.anyPlayer?.avatarUrl, "headshot"),
+    pick("offer.anyPlayer.avatarPictureUrl", offer?.anyPlayer?.avatarPictureUrl, "headshot"),
     pick("offer.player.pictureUrl", offer?.player?.pictureUrl, "fullBody"),
     pick("offer.anyPlayer.pictureUrl", offer?.anyPlayer?.pictureUrl, "fullBody"),
     pick("offer.pictureUrl", offer?.pictureUrl, "fullBody"),
@@ -697,6 +721,7 @@ export default function RecruterPlayerCardsScreen() {
 
   const [items, setItems] = useState<RecruterOffer[]>([]);
   const [player, setPlayer] = useState<RecruterPlayer | null>(null);
+  const [lightPlayer, setLightPlayer] = useState<RecruterPlayerLightV1["player"] | null>(null);
   const [saleStatus, setSaleStatus] = useState<string | null>(null);
   const [coachPerf, setCoachPerf] = useState<PublicPlayerPerformance | null>(null);
   const [coachHistory, setCoachHistory] = useState<RecruterHistoryPayloadV1 | null>(null);
@@ -719,9 +744,16 @@ export default function RecruterPlayerCardsScreen() {
       setLoading(true);
       setError(null);
       setPositionFallbacks({});
-      const res = await recruterPlayerCards(playerSlug, { first: 20 });
+      const [cardsRes, lightRes] = await Promise.allSettled([
+        recruterPlayerCards(playerSlug, { first: 20 }),
+        apiFetch<RecruterPlayerLightV1>(`/recruter/player/${encodeURIComponent(playerSlug)}/light`),
+      ]);
+      if (cardsRes.status === "rejected") throw cardsRes.reason;
+      const res = cardsRes.value;
+      const light = lightRes.status === "fulfilled" ? lightRes.value?.player || null : null;
       setItems(Array.isArray(res.items) ? res.items : []);
-      setPlayer((res.player as RecruterPlayer | null) || null);
+      setLightPlayer(light);
+      setPlayer({ ...((res.player as RecruterPlayer | null) || {}), ...(light || {}) } as RecruterPlayer);
       setSaleStatus(res.saleStatus || null);
     } catch (e: any) {
       setError(e?.message || "Erreur chargement cartes");
@@ -808,11 +840,11 @@ export default function RecruterPlayerCardsScreen() {
     const status = saleStatus === "none_seen" || items.length === 0
       ? "no_sale"
       : recruterSaleStatus(player || { saleStatus, salesCount: items.length, cardsCount: items.length, hasSale: items.length > 0 });
-    const image = getRecruterPlayerImageV1(player, first, first);
+    const image = getRecruterPlayerImageV1(lightPlayer || player, first, first);
 
     return {
-      playerName: text(player?.displayName || player?.playerName || first?.playerName || coachPerf?.playerName || coachHistory?.playerName, playerSlug || "Joueur"),
-      clubName: text(player?.clubName || first?.clubName || player?.activeClub?.name || coachPerf?.activeClub?.name || coachHistory?.activeClub?.name, "Club inconnu"),
+      playerName: text(lightPlayer?.displayName || player?.displayName || player?.playerName || first?.playerName || coachPerf?.playerName || coachHistory?.playerName, playerSlug || "Joueur"),
+      clubName: text(lightPlayer?.activeClub?.name || player?.clubName || first?.clubName || player?.activeClub?.name || coachPerf?.activeClub?.name || coachHistory?.activeClub?.name, "Club inconnu"),
       position: positionInfo.position || "Position inconnue",
       positionRawCandidates: positionInfo.rawCandidates,
       positionSourceUsed: positionInfo.sourceUsed,
@@ -824,7 +856,7 @@ export default function RecruterPlayerCardsScreen() {
       minEur,
       status,
     };
-  }, [coachHistory, coachPerf, items, player, playerSlug, positionFallbacks, routeParams, saleStatus]);
+  }, [coachHistory, coachPerf, items, lightPlayer, player, playerSlug, positionFallbacks, routeParams, saleStatus]);
 
   const coachRadar = useMemo(
     () => buildRecruterCoachRadarV1({
@@ -982,7 +1014,7 @@ export default function RecruterPlayerCardsScreen() {
             }
             renderItem={({ item }) => {
               const seller = text(item?.seller?.nickname || item?.seller?.slug);
-              const image = getRecruterPlayerImageV1(player, item, item);
+              const image = getRecruterPlayerImageV1(lightPlayer || player, item, item);
               return (
                 <View style={{ flexDirection: "row", gap: 12, padding: 12, marginBottom: 12, borderRadius: 15, backgroundColor: "#101722", borderWidth: 1, borderColor: "#2B3444" }}>
                   <RecruterFaceImageV1 uri={image.uri} size={{ width: 76, height: 102 }} radius={10} variant="card" imageKind={image.kind} />
