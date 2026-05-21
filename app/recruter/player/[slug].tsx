@@ -17,6 +17,7 @@ import { publicPlayerPerformance, recruterPlayerCards, recruterSaleStatus, type 
 // XS_RECRUTER_MOVE_RADAR_TO_STATS_V1: keep coach decision in Analyse and move radar metrics to Stats.
 // XS_RECRUTER_STATS_GRAPH_L5_L10_L40_V1: reuse card performance graph in Recruter Stats.
 // XS_RECRUTER_STATS_GRAPH_LOGOS_RANGE_V1: Stats graph supports L5/L10/L40 ranges and opponent logos.
+// XS_RECRUTER_STATS_ALL_LABEL_V1: display the 40-match stats range as All without changing history logic.
 function text(v: unknown, fallback = "") {
   const s = String(v ?? "").trim();
   return s || fallback;
@@ -1095,7 +1096,7 @@ export default function RecruterPlayerCardsScreen() {
                     <View style={{ flexDirection: "row", gap: 8 }}>
                       {averageBoxV1("L5", coachRadar.l5)}
                       {averageBoxV1("L10", (coachRadar as any).l10 ?? null)}
-                      {averageBoxV1("L40", coachRadar.l40)}
+                      {averageBoxV1("All", coachRadar.l40)}
                     </View>
                     <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
                       {([5, 10, 40] as RecruterStatsRangeV1[]).map((range) => {
@@ -1114,7 +1115,7 @@ export default function RecruterPlayerCardsScreen() {
                               borderColor: active ? "#FF6B82" : "#273142",
                             }}
                           >
-                            <Text style={{ color: active ? "#FFFFFF" : "#C6CDD7", fontWeight: "900" }}>L{range}</Text>
+                            <Text style={{ color: active ? "#FFFFFF" : "#C6CDD7", fontWeight: "900" }}>{range === 40 ? "All" : `L${range}`}</Text>
                           </TouchableOpacity>
                         );
                       })}
