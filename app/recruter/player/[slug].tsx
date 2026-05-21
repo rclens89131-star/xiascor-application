@@ -13,6 +13,7 @@ import { publicPlayerPerformance, recruterPlayerCards, recruterSaleStatus, type 
 // XS_RECRUTER_FACE_CROP_EXTRA_HIGH_V1: push Recruter crops higher so faces are visible first.
 // XS_RECRUTER_HEADSHOT_IMAGE_PRIORITY_V1: prefer player avatar/headshot images before full-body card pictures.
 // XS_RECRUTER_PLAYER_IMAGE_CONTAIN_V1: show full Recruter player images without aggressive crop.
+// XS_RECRUTER_MOVE_RADAR_TO_STATS_V1: keep coach decision in Analyse and move radar metrics to Stats.
 function text(v: unknown, fallback = "") {
   const s = String(v ?? "").trim();
   return s || fallback;
@@ -728,6 +729,7 @@ export default function RecruterPlayerCardsScreen() {
   const [coachMatchContext, setCoachMatchContext] = useState<RecruterCoachContextV1 | null>(null);
   const [coachPlayerStatus, setCoachPlayerStatus] = useState<RecruterPlayerStatusV1 | null>(null);
   const [positionFallbacks, setPositionFallbacks] = useState<{ indexPlayer?: any | null; dbPlayer?: any | null; attempted?: boolean }>({});
+  const [activeDetailTab, setActiveDetailTab] = useState<"Analyse" | "Stats" | "Historique" | "Similaire">("Analyse");
   const [coachLoading, setCoachLoading] = useState(false);
   const [coachError, setCoachError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -950,9 +952,9 @@ export default function RecruterPlayerCardsScreen() {
 
                 <View style={{ flexDirection: "row", backgroundColor: "#101722", borderRadius: 14, borderWidth: 1, borderColor: "#1E2634", padding: 4 }}>
                   {["Analyse", "Stats", "Historique", "Similaire"].map((tab) => (
-                    <View key={tab} style={{ flex: 1, borderRadius: 11, paddingVertical: 10, alignItems: "center", backgroundColor: tab === "Analyse" ? "#171D29" : "transparent", borderBottomWidth: tab === "Analyse" ? 2 : 0, borderBottomColor: "#F43F5E" }}>
-                      <Text style={{ color: tab === "Analyse" ? "#F8FAFC" : "#9AA3AF", fontWeight: "800" }}>{tab}</Text>
-                    </View>
+                    <TouchableOpacity key={tab} onPress={() => setActiveDetailTab(tab as typeof activeDetailTab)} style={{ flex: 1, borderRadius: 11, paddingVertical: 10, alignItems: "center", backgroundColor: tab === activeDetailTab ? "#171D29" : "transparent", borderBottomWidth: tab === activeDetailTab ? 2 : 0, borderBottomColor: "#F43F5E" }}>
+                      <Text style={{ color: tab === activeDetailTab ? "#F8FAFC" : "#9AA3AF", fontWeight: "800" }}>{tab}</Text>
+                    </TouchableOpacity>
                   ))}
                 </View>
 
@@ -964,25 +966,27 @@ export default function RecruterPlayerCardsScreen() {
                 ) : null}
                 {coachError ? <Text style={{ color: "#ff9aa8", fontWeight: "800" }}>{coachError}</Text> : null}
 
-                {coachRadar.hasPerformanceData ? (
+                {coachRadar.hasPerformanceData && activeDetailTab === "Analyse" ? (
                   <LinearGradient colors={["#101722", "#0C1119"]} style={{ borderRadius: 17, borderWidth: 1, borderColor: "#263143", padding: 16, gap: 14 }}>
                     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
                       <View style={{ flex: 1 }}>
                         <Text style={{ color: "#F8FAFC", fontSize: 18, fontWeight: "900" }}>Analyse Décision Coach</Text>
-                        <Text style={{ color: "#A4ABB6", marginTop: 4 }}>Analyse basée sur ses performances et le contexte</Text>
+                        <Text style={{ color: "#A4ABB6", marginTop: 4 }}>{coachRadar.decisionV2?.summary || "Analyse basée sur ses performances et le contexte"}</Text>
                       </View>
                       <View style={{ backgroundColor: header.status === "for_sale" ? "#102219" : "#241A0B", borderColor: header.status === "for_sale" ? "#245B39" : "#5A3F16", borderWidth: 1, borderRadius: 9, paddingHorizontal: 10, paddingVertical: 6 }}>
                         <Text style={{ color: header.status === "for_sale" ? "#72E6A2" : "#FFD18A", fontWeight: "900", fontSize: 12 }}>{header.status === "for_sale" ? "En vente" : "Vente à vérifier"}</Text>
                       </View>
                     </View>
-                    <View style={{ flexDirection: "row", gap: 8 }}>
-                      {averageBoxV1("L5", coachRadar.l5)}
-                      {averageBoxV1("L15", coachRadar.l15)}
-                      {averageBoxV1("L40", coachRadar.l40)}
+                    <View style={{ borderRadius: 14, backgroundColor: "#121A27", borderWidth: 1, borderColor: "#273142", padding: 13, gap: 6 }}>
+                      <Text style={{ color: scoreToneV1(coachRadar.overall), fontSize: 26, fontWeight: "900" }}>{coachRadar.decisionV2?.finalLabel || coachRadar.coachDecision?.decision || "Décision prudente"}</Text>
+                      <Text style={{ color: "#C6CDD7", lineHeight: 19 }}>{coachRadar.decisionV2?.deepAnalysis?.mainReason?.text || coachRadar.coachDecision?.reason || "Décision basée sur les signaux disponibles."}</Text>
                     </View>
-                    <View style={{ gap: 13 }}>
-                      {(coachRadar.values || []).map((metric: any, index: number) => (
-                        <PremiumMetricBarV1 key={`${metric.label}-${index}`} label={metric.label} value={num(metric.value)} />
+                    <View style={{ gap: 10 }}>
+                      {(coachRadar.decisionV2?.whyItems || []).slice(0, 2).map((item: any, index: number) => (
+                        <Text key={`why-${index}`} style={{ color: "#A7F3D0", fontWeight: "800" }}>+ {item.title}</Text>
+                      ))}
+                      {(coachRadar.decisionV2?.riskItems || []).slice(0, 2).map((item: any, index: number) => (
+                        <Text key={`risk-${index}`} style={{ color: "#FCD34D", fontWeight: "800" }}>! {item.title}</Text>
                       ))}
                     </View>
                     <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
@@ -996,6 +1000,28 @@ export default function RecruterPlayerCardsScreen() {
                       </TouchableOpacity>
                     </View>
                   </LinearGradient>
+                ) : coachRadar.hasPerformanceData && activeDetailTab === "Stats" ? (
+                  <LinearGradient colors={["#101722", "#0C1119"]} style={{ borderRadius: 17, borderWidth: 1, borderColor: "#263143", padding: 16, gap: 14 }}>
+                    <View>
+                      <Text style={{ color: "#F8FAFC", fontSize: 18, fontWeight: "900" }}>Radar FIFA</Text>
+                      <Text style={{ color: "#A4ABB6", marginTop: 4 }}>Profil {coachRadar.positionUsed} · métriques joueur</Text>
+                    </View>
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      {averageBoxV1("L5", coachRadar.l5)}
+                      {averageBoxV1("L15", coachRadar.l15)}
+                      {averageBoxV1("L40", coachRadar.l40)}
+                    </View>
+                    <View style={{ gap: 13 }}>
+                      {(coachRadar.values || []).map((metric: any, index: number) => (
+                        <PremiumMetricBarV1 key={`${metric.label}-${index}`} label={metric.label} value={num(metric.value)} />
+                      ))}
+                    </View>
+                  </LinearGradient>
+                ) : coachRadar.hasPerformanceData ? (
+                  <View style={{ padding: 14, borderRadius: 14, backgroundColor: "#101722", borderWidth: 1, borderColor: "#273142" }}>
+                    <Text style={{ color: "#F8FAFC", fontSize: 15, fontWeight: "900" }}>{activeDetailTab} arrive bientôt.</Text>
+                    <Text style={{ color: "#9BA1A6", marginTop: 6, lineHeight: 18 }}>Les données principales restent disponibles dans Analyse et Stats.</Text>
+                  </View>
                 ) : (
                   <View style={{ padding: 14, borderRadius: 14, backgroundColor: "#101722", borderWidth: 1, borderColor: "#273142" }}>
                     <Text style={{ color: "#F8FAFC", fontSize: 15, fontWeight: "900" }}>Performances non disponibles pour ce joueur.</Text>
