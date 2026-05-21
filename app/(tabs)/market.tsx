@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Image, RefreshControl, SafeAreaView, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -28,6 +28,7 @@ import {
 // XS_RECRUTER_LOGO_WHITE_BADGE_MANUAL_V1
 // XS_RECRUTER_LOGO_NEUTRAL_BADGE_V1: premium logo-style quick filters for leagues and clubs.
 // XS_RECRUTER_LOGOS_BACKEND_V1: quick filters use backend cached league and club logos.
+// XS_RECRUTER_LIST_HEADSHOT_FROM_LIGHT_V1: visible list cards prefer lightweight player headshots.
 const XS_RECRUTER_FRONT_LEAGUE_INDEX_DEFAULT_V1 = "ligue-1-fr";
 const XS_RECRUTER_FRONT_VISIBLE_LEAGUES_V1 = [
   { label: "Ligue 1", slug: "ligue-1-fr" },
@@ -348,6 +349,28 @@ function getRecruterPlayerImageV1(player: any, card?: any, offer?: any) {
   return selected;
 }
 
+function xsRecruterExtractLightHeadshotV1(payload: any) {
+  const candidates = [
+    payload?.player?.avatarPictureUrl,
+    payload?.player?.avatarUrl,
+    payload?.avatarPictureUrl,
+    payload?.avatarUrl,
+    payload?.data?.player?.avatarPictureUrl,
+    payload?.data?.player?.avatarUrl,
+  ];
+  for (const value of candidates) {
+    const uri = text(value);
+    if (uri) return uri;
+  }
+
+  const imageCandidates = [
+    ...(Array.isArray(payload?.imageCandidates) ? payload.imageCandidates : []),
+    ...(Array.isArray(payload?.player?.imageCandidates) ? payload.player.imageCandidates : []),
+  ];
+  const headshot = imageCandidates.find((candidate: any) => norm(candidate?.kind) === "headshot" && text(candidate?.url || candidate?.uri || candidate?.pictureUrl));
+  return headshot ? text(headshot.url || headshot.uri || headshot.pictureUrl) : null;
+}
+
 function RecruterFaceImageV1({
   uri,
   size,
@@ -398,6 +421,7 @@ export default function RecruiterTabScreen() {
   const [buildMeta, setBuildMeta] = useState<RecruterPlayersIndexBuildResponse | null>(null);
   const [leagueIndex, setLeagueIndex] = useState<RecruterLeagueIndexResponse | null>(null);
   const [logos, setLogos] = useState<RecruterLogosPayloadV1 | null>(null);
+  const [headshotBySlug, setHeadshotBySlug] = useState<Record<string, string | null>>({});
 
   const load = useCallback(async (isRefresh = false) => {
     try {
@@ -506,6 +530,50 @@ export default function RecruiterTabScreen() {
   const latest = useMemo(() => filtered.slice(0, 12), [filtered]);
   const visibleLeagues = useMemo(() => showAllLeagues ? leagues : leagues.slice(0, 8), [leagues, showAllLeagues]);
   const visibleClubs = useMemo(() => showAllClubs ? clubs : clubs.slice(0, 8), [clubs, showAllClubs]);
+
+  useEffect(() => {
+    const seen = new Set<string>();
+    const targets = [...recommended, ...latest]
+      .map((item) => ({ slug: text(item.slug || item.playerSlug).toLowerCase() }))
+      .filter(({ slug }) => {
+        if (!slug || seen.has(slug) || Object.prototype.hasOwnProperty.call(headshotBySlug, slug)) return false;
+        seen.add(slug);
+        return true;
+      })
+      .slice(0, 12);
+
+    if (!targets.length) return;
+
+    let cancelled = false;
+    Promise.all(targets.map(async ({ slug }) => {
+      try {
+        const payload = await apiFetch<any>(`/recruter/player/${encodeURIComponent(slug)}/light`);
+        const headshot = xsRecruterExtractLightHeadshotV1(payload);
+        if (typeof __DEV__ !== "undefined" && __DEV__) {
+          console.log("[XS_RECRUTER_LIST_HEADSHOT_FROM_LIGHT_V1]", { slug, headshotFound: Boolean(headshot) });
+        }
+        return { slug, headshot };
+      } catch (e: any) {
+        if (typeof __DEV__ !== "undefined" && __DEV__) {
+          console.log("[XS_RECRUTER_LIST_HEADSHOT_FROM_LIGHT_V1]", { slug, error: e?.message || String(e) });
+        }
+        return { slug, headshot: null };
+      }
+    })).then((rows) => {
+      if (cancelled) return;
+      setHeadshotBySlug((current) => {
+        const next = { ...current };
+        rows.forEach(({ slug, headshot }) => {
+          next[slug] = headshot;
+        });
+        return next;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [headshotBySlug, latest, recommended]);
 
   const openPlayer = useCallback((item: RecruterPlayer) => {
     const slug = text(item.slug || item.playerSlug);
@@ -640,7 +708,8 @@ export default function RecruiterTabScreen() {
           {recommended.map((item, index) => {
             const slug = text(item.slug || item.playerSlug, String(index));
             const score = playerScore(item);
-            const image = getRecruterPlayerImageV1(item, item, item);
+            const imagePlayer = headshotBySlug[slug.toLowerCase()] ? { ...item, avatarPictureUrl: headshotBySlug[slug.toLowerCase()] } : item;
+            const image = getRecruterPlayerImageV1(imagePlayer, item, item);
             return (
               <TouchableOpacity key={`${slug}-${index}`} onPress={() => openPlayer(item)} activeOpacity={0.9} style={{ width: 174, borderRadius: 16, overflow: "hidden", borderWidth: 1, borderColor: "#2B3444", backgroundColor: "#111722" }}>
                 <LinearGradient colors={["#1A1220", "#0D121A"]} style={{ padding: 12, minHeight: 242 }}>
@@ -709,7 +778,8 @@ export default function RecruiterTabScreen() {
               const displayName = text(item.displayName || item.playerName, slug || "Joueur");
               const badge = saleBadge(item);
               const score = playerScore(item);
-              const image = getRecruterPlayerImageV1(item, item, item);
+              const imagePlayer = headshotBySlug[slug.toLowerCase()] ? { ...item, avatarPictureUrl: headshotBySlug[slug.toLowerCase()] } : item;
+              const image = getRecruterPlayerImageV1(imagePlayer, item, item);
               return (
                 <TouchableOpacity
                   onPress={() => openPlayer(item)}
