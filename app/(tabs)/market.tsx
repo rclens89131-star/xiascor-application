@@ -25,7 +25,8 @@ import {
 // XS_RECRUTER_PLAYER_IMAGE_CONTAIN_V1: show full Recruter player images without aggressive crop.
 // XS_RECRUTER_FILTERS_EXPAND_FULL_V1: quick filters can show every in-memory league and club.
 // XS_RECRUTER_FILTER_LOGOS_V1
-// XS_RECRUTER_LOGO_WHITE_BADGE_MANUAL_V1: premium logo-style quick filters for leagues and clubs.
+// XS_RECRUTER_LOGO_WHITE_BADGE_MANUAL_V1
+// XS_RECRUTER_LOGO_NEUTRAL_BADGE_V1: premium logo-style quick filters for leagues and clubs.
 // XS_RECRUTER_LOGOS_BACKEND_V1: quick filters use backend cached league and club logos.
 const XS_RECRUTER_FRONT_LEAGUE_INDEX_DEFAULT_V1 = "ligue-1-fr";
 const XS_RECRUTER_FRONT_VISIBLE_LEAGUES_V1 = [
@@ -266,7 +267,7 @@ function RecruterLogoChipV1({
         }}
       >
         {logoUrl ? (
-          <View style={{ width: 44, height: 44, borderRadius: 999, backgroundColor: "#F8FAFC", alignItems: "center", justifyContent: "center", padding: 5, borderWidth: 1, borderColor: "rgba(255,255,255,0.75)", shadowColor: "#FFFFFF", shadowOpacity: 0.16, shadowRadius: 8 }}>
+          <View style={{ width: 44, height: 44, borderRadius: 999, backgroundColor: "#CBD5E1", alignItems: "center", justifyContent: "center", padding: 5, borderWidth: 1, borderColor: "rgba(15,23,42,0.35)", shadowColor: "#000000", shadowOpacity: 0.22, shadowRadius: 8 }}>
             <Image source={{ uri: logoUrl }} resizeMode="contain" style={{ width: 34, height: 34 }} />
           </View>
         ) : (
@@ -739,4 +740,5 @@ export default function RecruiterTabScreen() {
     </SafeAreaView>
   );
 }
+
 
