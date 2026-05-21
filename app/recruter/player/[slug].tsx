@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Image, SafeAreaView, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, FlatList, Image, SafeAreaView, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { apiFetch } from "../../../src/api";
+import SorarePerformanceChart from "../../../src/components/SorarePerformanceChart";
 import { publicPlayerPerformance, recruterPlayerCards, recruterSaleStatus, type PublicPlayerPerformance, type RecruterOffer, type RecruterPlayer } from "../../../src/scoutApi";
 
 // XS_FRONT_RECRUTER_PLAYERS_INDEX_V1
@@ -14,6 +15,7 @@ import { publicPlayerPerformance, recruterPlayerCards, recruterSaleStatus, type 
 // XS_RECRUTER_HEADSHOT_IMAGE_PRIORITY_V1: prefer player avatar/headshot images before full-body card pictures.
 // XS_RECRUTER_PLAYER_IMAGE_CONTAIN_V1: show full Recruter player images without aggressive crop.
 // XS_RECRUTER_MOVE_RADAR_TO_STATS_V1: keep coach decision in Analyse and move radar metrics to Stats.
+// XS_RECRUTER_STATS_GRAPH_L5_L10_L40_V1: reuse card performance graph in Recruter Stats.
 function text(v: unknown, fallback = "") {
   const s = String(v ?? "").trim();
   return s || fallback;
@@ -189,6 +191,39 @@ function hasRecruterHistoryDataV1(payload: RecruterHistoryPayloadV1 | null | und
     Number.isFinite(Number(averages?.l15)) ||
     Number.isFinite(Number(averages?.l40))
   );
+}
+
+function xsRecruterHistoryScoreV1(row: any) {
+  const value = row?.scoreSorare ?? row?.score ?? row?.playerScore ?? row?.totalScore ?? row?.so5Score;
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.round(n) : null;
+}
+
+function xsRecruterHistoryOpponentShortV1(row: any) {
+  return text(
+    row?.opponentShort ||
+    row?.opponentCode ||
+    row?.opponentName ||
+    row?.opponent?.shortName ||
+    row?.opponent?.name ||
+    row?.awayTeam?.shortName ||
+    row?.awayTeam?.name ||
+    row?.homeTeam?.shortName ||
+    row?.homeTeam?.name,
+    "—"
+  );
+}
+
+function xsRecruterHistoryOpponentLogoV1(row: any) {
+  return text(
+    row?.opponentLogoUrl ||
+    row?.opponent?.pictureUrl ||
+    row?.opponent?.logoUrl ||
+    row?.awayTeam?.pictureUrl ||
+    row?.awayTeam?.logoUrl ||
+    row?.homeTeam?.pictureUrl ||
+    row?.homeTeam?.logoUrl
+  ) || null;
 }
 
 function normalizeRecruterHistoryPayloadV1(payload: any): RecruterHistoryPayloadV1 {
@@ -520,6 +555,7 @@ function buildRecruterCoachRadarV1(params: {
     confidence: confidence / 100,
     matches: scores.length,
     l5,
+    l10,
     l15,
     l40,
     hasPerformanceData,
@@ -872,6 +908,20 @@ export default function RecruterPlayerCardsScreen() {
     [coachHistory, coachMatchContext, coachPerf, coachPlayerStatus, header.position]
   );
 
+  const statsGraph = useMemo(() => {
+    const rows = Array.isArray(coachHistory?.items) ? coachHistory.items : [];
+    const scoredRows = rows
+      .map((row) => ({ row, score: xsRecruterHistoryScoreV1(row) }))
+      .filter((item): item is { row: any; score: number } => item.score != null)
+      .slice(0, 40);
+    return {
+      scores: scoredRows.map((item) => item.score),
+      opponentShort: scoredRows.map((item) => xsRecruterHistoryOpponentShortV1(item.row)),
+      opponentLogoUrls: scoredRows.map((item) => xsRecruterHistoryOpponentLogoV1(item.row)),
+      partial: scoredRows.length > 0 && scoredRows.length < 40,
+    };
+  }, [coachHistory]);
+
   useEffect(() => {
     if (typeof __DEV__ !== "undefined" && __DEV__ && coachRadar.hasPerformanceData) {
       // XS_RECRUTER_POSITION_TRUST_FIX_V1: only exact player slug sources can drive GK/DEF/MID/FW.
@@ -1003,13 +1053,33 @@ export default function RecruterPlayerCardsScreen() {
                 ) : coachRadar.hasPerformanceData && activeDetailTab === "Stats" ? (
                   <LinearGradient colors={["#101722", "#0C1119"]} style={{ borderRadius: 17, borderWidth: 1, borderColor: "#263143", padding: 16, gap: 14 }}>
                     <View>
-                      <Text style={{ color: "#F8FAFC", fontSize: 18, fontWeight: "900" }}>Radar FIFA</Text>
-                      <Text style={{ color: "#A4ABB6", marginTop: 4 }}>Profil {coachRadar.positionUsed} · métriques joueur</Text>
+                      <Text style={{ color: "#F8FAFC", fontSize: 18, fontWeight: "900" }}>Performances match par match</Text>
+                      <Text style={{ color: "#A4ABB6", marginTop: 4 }}>{statsGraph.partial ? "Historique partiel" : "Historique récent"} · scores Sorare disponibles</Text>
                     </View>
                     <View style={{ flexDirection: "row", gap: 8 }}>
                       {averageBoxV1("L5", coachRadar.l5)}
-                      {averageBoxV1("L15", coachRadar.l15)}
+                      {averageBoxV1("L10", (coachRadar as any).l10 ?? null)}
                       {averageBoxV1("L40", coachRadar.l40)}
+                    </View>
+                    {statsGraph.scores.length ? (
+                      <ScrollView horizontal showsHorizontalScrollIndicator nestedScrollEnabled contentContainerStyle={{ paddingRight: 16 }}>
+                        <View style={{ width: Math.max(360, statsGraph.scores.length * 58) }}>
+                          <SorarePerformanceChart
+                            recentScores={statsGraph.scores}
+                            opponentLogoUrls={statsGraph.opponentLogoUrls}
+                            opponentShort={statsGraph.opponentShort}
+                          />
+                        </View>
+                      </ScrollView>
+                    ) : (
+                      <View style={{ padding: 13, borderRadius: 13, backgroundColor: "#121A27", borderWidth: 1, borderColor: "#273142" }}>
+                        <Text style={{ color: "#F8FAFC", fontWeight: "900" }}>Aucun historique disponible pour ce joueur.</Text>
+                        <Text style={{ color: "#9BA1A6", marginTop: 6 }}>Le graphique apparaîtra dès que Sorare fournit des scores exploitables.</Text>
+                      </View>
+                    )}
+                    <View>
+                      <Text style={{ color: "#F8FAFC", fontSize: 18, fontWeight: "900" }}>Radar FIFA</Text>
+                      <Text style={{ color: "#A4ABB6", marginTop: 4 }}>Profil {coachRadar.positionUsed} · métriques joueur</Text>
                     </View>
                     <View style={{ gap: 13 }}>
                       {(coachRadar.values || []).map((metric: any, index: number) => (

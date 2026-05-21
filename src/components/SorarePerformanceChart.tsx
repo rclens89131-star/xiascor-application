@@ -80,7 +80,7 @@ export default function SorarePerformanceChart({
 
       <Text style={{ color: "#9ca3af", fontSize: 12, marginTop: 8 }}>
         {/* XS_SORARE_CHART_STYLE_V1 */}
-        Scores affichés selon L5 / L15 / L40 (barres verticales, couleur selon seuils).
+        Scores affichés selon L5 / L10 / L40 (barres verticales, couleur selon seuils).
       </Text>
     </View>
   );
