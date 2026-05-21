@@ -23,6 +23,7 @@ import {
 // XS_RECRUTER_FACE_CROP_EXTRA_HIGH_V1: push Recruter crops higher so faces are visible first.
 // XS_RECRUTER_HEADSHOT_IMAGE_PRIORITY_V1: prefer player avatar/headshot images before full-body card pictures.
 // XS_RECRUTER_PLAYER_IMAGE_CONTAIN_V1: show full Recruter player images without aggressive crop.
+// XS_RECRUTER_FILTERS_EXPAND_FULL_V1: quick filters can show every in-memory league and club.
 const XS_RECRUTER_FRONT_LEAGUE_INDEX_DEFAULT_V1 = "ligue-1-fr";
 const XS_RECRUTER_FRONT_VISIBLE_LEAGUES_V1 = [
   { label: "Ligue 1", slug: "ligue-1-fr" },
@@ -287,6 +288,8 @@ export default function RecruiterTabScreen() {
   const [selectedLeague, setSelectedLeague] = useState("");
   const [selectedClub, setSelectedClub] = useState("");
   const [selectedPosition, setSelectedPosition] = useState("");
+  const [showAllLeagues, setShowAllLeagues] = useState(true);
+  const [showAllClubs, setShowAllClubs] = useState(true);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [building, setBuilding] = useState(false);
@@ -398,6 +401,8 @@ export default function RecruiterTabScreen() {
   }, [filtered]);
 
   const latest = useMemo(() => filtered.slice(0, 12), [filtered]);
+  const visibleLeagues = useMemo(() => showAllLeagues ? leagues : leagues.slice(0, 8), [leagues, showAllLeagues]);
+  const visibleClubs = useMemo(() => showAllClubs ? clubs : clubs.slice(0, 8), [clubs, showAllClubs]);
 
   const openPlayer = useCallback((item: RecruterPlayer) => {
     const slug = text(item.slug || item.playerSlug);
@@ -470,7 +475,7 @@ export default function RecruiterTabScreen() {
       <View style={{ gap: 12 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <Text style={{ color: "#F8FAFC", fontSize: 19, fontWeight: "900" }}>Filtres rapides</Text>
-          <TouchableOpacity onPress={() => { setSelectedPosition(""); setSelectedLeague(""); setSelectedClub(""); setQuery(""); }}>
+          <TouchableOpacity onPress={() => { setSelectedPosition(""); setSelectedLeague(""); setSelectedClub(""); setQuery(""); setShowAllLeagues(true); setShowAllClubs(true); }}>
             <Text style={{ color: "#F43F5E", fontWeight: "800" }}>Tout réinitialiser</Text>
           </TouchableOpacity>
         </View>
@@ -485,19 +490,37 @@ export default function RecruiterTabScreen() {
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <Text style={{ color: "#F8FAFC", width: 62, fontWeight: "900" }}>Ligues</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-              {leagues.slice(0, 8).map((league) => (
+              {visibleLeagues.map((league) => (
                 <FilterChip key={league.slug} label={`${league.name} (${league.count})`} active={selectedLeague === league.slug} onPress={() => { setSelectedLeague(selectedLeague === league.slug ? "" : league.slug); setSelectedClub(""); }} />
               ))}
-              <FilterChip label="+" onPress={() => {}} />
+              {leagues.length > 8 ? (
+                <FilterChip
+                  label={showAllLeagues ? "Voir moins" : `+${leagues.length - visibleLeagues.length}`}
+                  onPress={() => {
+                    const next = !showAllLeagues;
+                    if (typeof __DEV__ !== "undefined" && __DEV__) console.log("[XS_RECRUTER_FILTERS_EXPAND_FULL_V1]", { type: "leagues", expanded: next, count: leagues.length });
+                    setShowAllLeagues(next);
+                  }}
+                />
+              ) : null}
             </ScrollView>
           </View>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <Text style={{ color: "#F8FAFC", width: 62, fontWeight: "900" }}>Clubs</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-              {clubs.slice(0, 8).map((club) => (
+              {visibleClubs.map((club) => (
                 <FilterChip key={club.slug} label={`${club.name} (${club.count})`} active={selectedClub === club.slug} onPress={() => setSelectedClub(selectedClub === club.slug ? "" : club.slug)} />
               ))}
-              <FilterChip label="+" onPress={() => {}} />
+              {clubs.length > 8 ? (
+                <FilterChip
+                  label={showAllClubs ? "Voir moins" : `+${clubs.length - visibleClubs.length}`}
+                  onPress={() => {
+                    const next = !showAllClubs;
+                    if (typeof __DEV__ !== "undefined" && __DEV__) console.log("[XS_RECRUTER_FILTERS_EXPAND_FULL_V1]", { type: "clubs", expanded: next, count: clubs.length, selectedLeague });
+                    setShowAllClubs(next);
+                  }}
+                />
+              ) : null}
             </ScrollView>
           </View>
         </View>
