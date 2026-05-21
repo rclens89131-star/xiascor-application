@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Image, RefreshControl, SafeAreaView, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -25,6 +25,7 @@ import {
 // XS_RECRUTER_PLAYER_IMAGE_CONTAIN_V1: show full Recruter player images without aggressive crop.
 // XS_RECRUTER_FILTERS_EXPAND_FULL_V1: quick filters can show every in-memory league and club.
 // XS_RECRUTER_FILTER_LOGOS_V1: premium logo-style quick filters for leagues and clubs.
+// XS_RECRUTER_CLUB_LOGOS_FROM_LIGHT_V1: enrich visible club filter chips from lightweight player endpoint.
 const XS_RECRUTER_FRONT_LEAGUE_INDEX_DEFAULT_V1 = "ligue-1-fr";
 const XS_RECRUTER_FRONT_VISIBLE_LEAGUES_V1 = [
   { label: "Ligue 1", slug: "ligue-1-fr" },
@@ -169,6 +170,23 @@ function xsRecruterFilterInitialsV1(name: string, slug: string) {
   if (!words.length) return "—";
   if (words.length === 1) return words[0].slice(0, 3).toUpperCase();
   return words.slice(0, 2).map((word) => word[0]).join("").toUpperCase();
+}
+
+function xsRecruterClubLogoFromLightV1(payload: any) {
+  const direct = [
+    payload?.activeClub?.pictureUrl,
+    payload?.player?.activeClub?.pictureUrl,
+    payload?.data?.activeClub?.pictureUrl,
+    payload?.data?.player?.activeClub?.pictureUrl,
+    payload?.club?.pictureUrl,
+  ].find((value) => text(value));
+  if (direct) return text(direct);
+  const candidates = [
+    ...(Array.isArray(payload?.imageCandidates) ? payload.imageCandidates : []),
+    ...(Array.isArray(payload?.data?.imageCandidates) ? payload.data.imageCandidates : []),
+  ];
+  const clubCandidate = candidates.find((candidate: any) => text(candidate?.kind).toLowerCase() === "club" && text(candidate?.url || candidate?.uri || candidate?.pictureUrl));
+  return text(clubCandidate?.url || clubCandidate?.uri || clubCandidate?.pictureUrl);
 }
 
 function xsRecruterMergeLeagueItemsV1(payloads: RecruterLeagueIndexResponse[]) {
@@ -386,6 +404,7 @@ export default function RecruiterTabScreen() {
   const [health, setHealth] = useState<"idle" | "ok" | "ko">("idle");
   const [buildMeta, setBuildMeta] = useState<RecruterPlayersIndexBuildResponse | null>(null);
   const [leagueIndex, setLeagueIndex] = useState<RecruterLeagueIndexResponse | null>(null);
+  const [clubLogoBySlug, setClubLogoBySlug] = useState<Record<string, string | null>>({});
 
   const load = useCallback(async (isRefresh = false) => {
     try {
@@ -493,6 +512,46 @@ export default function RecruiterTabScreen() {
   const visibleLeagues = useMemo(() => showAllLeagues ? leagues : leagues.slice(0, 8), [leagues, showAllLeagues]);
   const visibleClubs = useMemo(() => showAllClubs ? clubs : clubs.slice(0, 8), [clubs, showAllClubs]);
 
+  const clubRepresentativeBySlug = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const item of items) {
+      const clubSlug = norm(item.clubSlug);
+      const playerSlug = text(item.slug || item.playerSlug).toLowerCase();
+      if (clubSlug && playerSlug && !map.has(clubSlug)) map.set(clubSlug, playerSlug);
+    }
+    return map;
+  }, [items]);
+
+  useEffect(() => {
+    const targets = visibleClubs.slice(0, 10)
+      .filter((club) => club.slug && !club.logoUrl && !(club.slug in clubLogoBySlug))
+      .map((club) => ({ clubSlug: club.slug, representativeSlug: clubRepresentativeBySlug.get(club.slug) || "" }))
+      .filter((target) => target.representativeSlug);
+    if (!targets.length) return;
+    let cancelled = false;
+    Promise.all(targets.map(async (target) => {
+      try {
+        const payload = await apiFetch<any>(`/recruter/player/${encodeURIComponent(target.representativeSlug)}/light`);
+        const logoUrl = xsRecruterClubLogoFromLightV1(payload) || null;
+        if (typeof __DEV__ !== "undefined" && __DEV__) console.log("[XS_RECRUTER_CLUB_LOGOS_FROM_LIGHT_V1]", { clubSlug: target.clubSlug, representativeSlug: target.representativeSlug, logoFound: Boolean(logoUrl) });
+        return { clubSlug: target.clubSlug, logoUrl };
+      } catch (error: any) {
+        if (typeof __DEV__ !== "undefined" && __DEV__) console.log("[XS_RECRUTER_CLUB_LOGOS_FROM_LIGHT_V1]", { clubSlug: target.clubSlug, representativeSlug: target.representativeSlug, logoFound: false, error: error?.message || String(error) });
+        return { clubSlug: target.clubSlug, logoUrl: null };
+      }
+    })).then((rows) => {
+      if (cancelled) return;
+      setClubLogoBySlug((current) => {
+        const next = { ...current };
+        for (const row of rows) next[row.clubSlug] = row.logoUrl;
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [clubLogoBySlug, clubRepresentativeBySlug, visibleClubs]);
+
   const openPlayer = useCallback((item: RecruterPlayer) => {
     const slug = text(item.slug || item.playerSlug);
     if (!slug) return;
@@ -598,7 +657,7 @@ export default function RecruiterTabScreen() {
             <Text style={{ color: "#F8FAFC", width: 62, fontWeight: "900" }}>Clubs</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
               {visibleClubs.map((club) => (
-                <RecruterLogoChipV1 key={club.slug} name={club.name} slug={club.slug} count={club.count} logoUrl={club.logoUrl} active={selectedClub === club.slug} onPress={() => setSelectedClub(selectedClub === club.slug ? "" : club.slug)} />
+                <RecruterLogoChipV1 key={club.slug} name={club.name} slug={club.slug} count={club.count} logoUrl={club.logoUrl || clubLogoBySlug[club.slug]} active={selectedClub === club.slug} onPress={() => setSelectedClub(selectedClub === club.slug ? "" : club.slug)} />
               ))}
               {clubs.length > 8 ? (
                 <FilterChip
