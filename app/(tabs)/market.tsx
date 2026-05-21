@@ -23,6 +23,7 @@ import {
 // XS_RECRUTER_FACE_CROP_EXTRA_HIGH_V1: push Recruter crops higher so faces are visible first.
 // XS_RECRUTER_HEADSHOT_IMAGE_PRIORITY_V1: prefer player avatar/headshot images before full-body card pictures.
 // XS_RECRUTER_PLAYER_IMAGE_CONTAIN_V1: show full Recruter player images without aggressive crop.
+// XS_RECRUTER_ID_CARD_PORTRAIT_V1: identity-style portrait crop with face and shoulders visible.
 const XS_RECRUTER_FRONT_LEAGUE_INDEX_DEFAULT_V1 = "ligue-1-fr";
 const XS_RECRUTER_FRONT_VISIBLE_LEAGUES_V1 = [
   { label: "Ligue 1", slug: "ligue-1-fr" },
@@ -250,17 +251,22 @@ function RecruterFaceImageV1({
   variant?: "avatar" | "card";
   imageKind?: "headshot" | "fullBody";
 }) {
+  const fullBody = imageKind !== "headshot";
+  const imageWidth = fullBody ? (variant === "card" ? size.width * 1.2 : size.width * 1.15) : size.width;
+  const imageHeight = fullBody ? (variant === "card" ? size.height * 1.25 : size.height * 1.2) : size.height;
+  const offsetY = fullBody ? (variant === "card" ? -Math.round(size.height * 0.18) : -Math.round(size.height * 0.14)) : 0;
   if (typeof __DEV__ !== "undefined" && __DEV__ && uri) {
-    console.log("[XS_RECRUTER_PLAYER_IMAGE_CONTAIN_V1]", { variant, imageKind, uri });
+    console.log("[XS_RECRUTER_ID_CARD_PORTRAIT_V1]", { variant, imageKind, uri });
   }
   return (
     <View style={{ width: size.width, height: size.height, borderRadius: radius, overflow: "hidden", backgroundColor: "#050509", alignItems: "center", justifyContent: "center" }}>
       <Image
         source={{ uri: uri || PLAYER_PLACEHOLDER }}
-        resizeMode="contain"
+        resizeMode="cover"
         style={{
-          width: size.width,
-          height: size.height,
+          width: imageWidth,
+          height: imageHeight,
+          transform: [{ translateY: offsetY }],
         }}
       />
       {variant === "card" ? (
