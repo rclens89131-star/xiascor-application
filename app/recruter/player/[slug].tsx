@@ -18,6 +18,7 @@ import { publicPlayerPerformance, recruterPlayerCards, recruterSaleStatus, type 
 // XS_RECRUTER_STATS_GRAPH_L5_L10_L40_V1: reuse card performance graph in Recruter Stats.
 // XS_RECRUTER_STATS_GRAPH_LOGOS_RANGE_V1: Stats graph supports L5/L10/L40 ranges and opponent logos.
 // XS_RECRUTER_STATS_ALL_LABEL_V1: display the 40-match stats range as All without changing history logic.
+// XS_ALL_EXTENSIBLE_HISTORY_V1: load a larger history window only when All is selected.
 function text(v: unknown, fallback = "") {
   const s = String(v ?? "").trim();
   return s || fallback;
@@ -85,6 +86,8 @@ type RecruterPlayerLightV1 = {
 };
 
 type RecruterStatsRangeV1 = 5 | 10 | 40;
+const XS_RECRUTER_HISTORY_INITIAL_LIMIT_V1 = 40;
+const XS_RECRUTER_HISTORY_ALL_LIMIT_V1 = 100;
 
 const XS_RECRUTER_PERF_FALLBACK_BASE_V1 = "https://xiascor-backend-tssdy62zqa-ez.a.run.app";
 const XS_RECRUTER_PLAYER_PLACEHOLDER_V1 = "https://frontend-assets.sorare.com/placeholders/player-v2.png";
@@ -292,7 +295,7 @@ async function fetchRecruterHistoryForCoachV1(slug: string): Promise<RecruterHis
 
   try {
     const direct = normalizeRecruterHistoryPayloadV1(
-      await apiFetch<RecruterHistoryPayloadV1>(`/history/player-chart/${encodeURIComponent(playerSlug)}?limit=40`)
+      await apiFetch<RecruterHistoryPayloadV1>(`/history/player-chart/${encodeURIComponent(playerSlug)}?limit=${XS_RECRUTER_HISTORY_INITIAL_LIMIT_V1}`)
     );
     if (hasRecruterHistoryDataV1(direct)) {
       console.log("[XS_RECRUTER_PERFORMANCE_DATA_WIRING_FIX_V1]", {
@@ -312,7 +315,7 @@ async function fetchRecruterHistoryForCoachV1(slug: string): Promise<RecruterHis
   }
 
   const base = XS_RECRUTER_PERF_FALLBACK_BASE_V1.replace(/\/+$/, "");
-  const url = `${base}/public-player-performance?slug=${encodeURIComponent(playerSlug)}&limit=40`;
+  const url = `${base}/public-player-performance?slug=${encodeURIComponent(playerSlug)}&limit=${XS_RECRUTER_HISTORY_INITIAL_LIMIT_V1}`;
   const response = await fetch(url, { headers: { accept: "application/json" } });
   const json = await response.json().catch(() => null);
   if (!response.ok) throw new Error(json?.error || json?.message || `HTTP ${response.status}`);
@@ -801,10 +804,12 @@ export default function RecruterPlayerCardsScreen() {
   const [positionFallbacks, setPositionFallbacks] = useState<{ indexPlayer?: any | null; dbPlayer?: any | null; attempted?: boolean }>({});
   const [activeDetailTab, setActiveDetailTab] = useState<"Analyse" | "Stats" | "Historique" | "Similaire">("Analyse");
   const [selectedStatsRange, setSelectedStatsRange] = useState<RecruterStatsRangeV1>(10);
+  const [statsAllLoading, setStatsAllLoading] = useState(false);
   const [coachLoading, setCoachLoading] = useState(false);
   const [coachError, setCoachError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const statsAllLoadedBySlugRef = React.useRef<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
     if (!playerSlug) {
@@ -847,7 +852,7 @@ export default function RecruterPlayerCardsScreen() {
       const teamName = text(player?.clubName || player?.activeClub?.name || items[0]?.clubName);
       const statusPath = `/player/status/${encodeURIComponent(playerSlug)}${teamName ? `?teamName=${encodeURIComponent(teamName)}` : ""}`;
       const [perfRes, historyRes, matchRes, statusRes] = await Promise.allSettled([
-        publicPlayerPerformance(playerSlug, { limit: 40 }),
+        publicPlayerPerformance(playerSlug, { limit: XS_RECRUTER_HISTORY_INITIAL_LIMIT_V1 }),
         fetchRecruterHistoryForCoachV1(playerSlug),
         apiFetch<RecruterCoachContextV1>(`/player/next-match-context/${encodeURIComponent(playerSlug)}`),
         apiFetch<RecruterPlayerStatusV1>(statusPath),
@@ -903,6 +908,52 @@ export default function RecruterPlayerCardsScreen() {
     loadCoach();
   }, [loadCoach]);
 
+  useEffect(() => {
+    if (selectedStatsRange !== 40) return;
+    if (!playerSlug || statsAllLoading) return;
+    const currentCount = Array.isArray(coachHistory?.items) ? coachHistory.items.length : 0;
+    if (currentCount >= XS_RECRUTER_HISTORY_ALL_LIMIT_V1) return;
+    if (statsAllLoadedBySlugRef.current[playerSlug]) return;
+
+    let alive = true;
+    statsAllLoadedBySlugRef.current[playerSlug] = true;
+    setStatsAllLoading(true);
+
+    apiFetch<RecruterHistoryPayloadV1>(
+      `/history/player-chart/${encodeURIComponent(playerSlug)}?limit=${XS_RECRUTER_HISTORY_ALL_LIMIT_V1}`
+    )
+      .then((payload) => {
+        if (!alive) return;
+        const normalized = normalizeRecruterHistoryPayloadV1(payload);
+        const nextCount = Array.isArray(normalized.items) ? normalized.items.length : 0;
+        if (nextCount > currentCount) {
+          setCoachHistory(normalized);
+        }
+        if (typeof __DEV__ !== "undefined" && __DEV__) {
+          console.log("[XS_ALL_EXTENSIBLE_HISTORY_V1] recruter_all_fetch_success", {
+            slug: playerSlug,
+            count: nextCount,
+          });
+        }
+      })
+      .catch((err: any) => {
+        statsAllLoadedBySlugRef.current[playerSlug] = false;
+        if (typeof __DEV__ !== "undefined" && __DEV__) {
+          console.log("[XS_ALL_EXTENSIBLE_HISTORY_V1] recruter_all_fetch_error", {
+            slug: playerSlug,
+            error: String(err?.message || err),
+          });
+        }
+      })
+      .finally(() => {
+        if (alive) setStatsAllLoading(false);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [coachHistory, playerSlug, selectedStatsRange, statsAllLoading]);
+
   const header = useMemo(() => {
     const first = items[0] || null;
     const positionInfo = getRecruterPlayerPositionV1(player, items, items, routeParams, positionFallbacks);
@@ -945,7 +996,7 @@ export default function RecruterPlayerCardsScreen() {
 
   const statsGraph = useMemo(() => {
     const rows = Array.isArray(coachHistory?.items) ? coachHistory.items : [];
-    const wanted = selectedStatsRange;
+    const wanted = selectedStatsRange === 40 ? Math.max(40, rows.length) : selectedStatsRange;
     const scoredRows = rows
       .map((row) => ({ row, score: xsRecruterHistoryScoreV1(row) }))
       .filter((item): item is { row: any; score: number } => item.score != null)
@@ -1091,7 +1142,7 @@ export default function RecruterPlayerCardsScreen() {
                   <LinearGradient colors={["#101722", "#0C1119"]} style={{ borderRadius: 17, borderWidth: 1, borderColor: "#263143", padding: 16, gap: 14 }}>
                     <View>
                       <Text style={{ color: "#F8FAFC", fontSize: 18, fontWeight: "900" }}>Performances match par match</Text>
-                      <Text style={{ color: "#A4ABB6", marginTop: 4 }}>{statsGraph.partial ? "Historique partiel" : "Historique récent"} · scores Sorare disponibles</Text>
+                      <Text style={{ color: "#A4ABB6", marginTop: 4 }}>{statsAllLoading ? "Chargement de l'historique All..." : (statsGraph.partial ? "Historique partiel" : "Historique récent")} · scores Sorare disponibles</Text>
                     </View>
                     <View style={{ flexDirection: "row", gap: 8 }}>
                       {averageBoxV1("L5", coachRadar.l5)}

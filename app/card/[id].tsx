@@ -84,6 +84,8 @@ function xsAverageLastValidScoresV1(items: any[], take: number): number | null {
 type XsRadarRangeV1 = "L5" | "L10" | "L40";
 type XsRadarTrendV1 = "up" | "down" | "stable";
 type XsRadarVolatilityV1 = "stable" | "medium" | "high" | "unknown";
+const XS_ALL_EXTENSIBLE_HISTORY_INITIAL_LIMIT_V1 = 40;
+const XS_ALL_EXTENSIBLE_HISTORY_LIMIT_V1 = 100; // XS_ALL_EXTENSIBLE_HISTORY_V1
 
 /* XS_FIX_MYCARDS_POSITION_DEVICEID_AND_SYNC_V1 */
 /* XS_FIX_POSITION_FROM_MYCARDS_CACHE_V1 */
@@ -2993,6 +2995,7 @@ export default function CardDetailScreen() {
   const [historyChart, setHistoryChart] = useState<any[]>([]); // XS_HISTORY_CHART_LOGOS_LOAD_V1
   const [historyAverages, setHistoryAverages] = useState<XsOfficialHistoryAveragesV1 | null>(null); // XS_FIX_OFFICIAL_L10_ALL_CARDS_FAST_V1
   const [historyFastLoading, setHistoryFastLoading] = useState(false); // XS_CARD_FAST_TABLE_HISTORY_V1
+  const [historyAllLoading, setHistoryAllLoading] = useState(false); // XS_ALL_EXTENSIBLE_HISTORY_V1
   const [realMatchContext, setRealMatchContext] = useState<XsCardMatchContextV1 | null>(null); // XS_CARD_REAL_MATCH_CONTEXT_V1
   const [playerStatus, setPlayerStatus] = useState<XsPlayerStatusV1 | null>(null); // XS_PLAYER_STATUS_DECISION_V1
   const [aiPrediction, setAiPrediction] = useState<XsAiPlayerScorePredictionV1 | null>(null); // XS_AI_PLAYER_SCORE_PREDICTION_V1
@@ -3013,6 +3016,7 @@ export default function CardDetailScreen() {
   const speedFullMsRef = React.useRef<number | null>(null); // XS_CARD_SPEED_SCORE_V1
   const speedSyncMsRef = React.useRef<number | null>(null); // XS_CARD_SPEED_SCORE_V1
   const speedLoggedPhasesRef = React.useRef<Record<string, boolean>>({}); // XS_CARD_SPEED_SCORE_V1
+  const historyAllLoadedBySlugRef = React.useRef<Record<string, boolean>>({}); // XS_ALL_EXTENSIBLE_HISTORY_V1
 
   if (perfAuditSlugRef.current !== playerSlug) {
     perfAuditSlugRef.current = playerSlug;
@@ -3100,10 +3104,10 @@ export default function CardDetailScreen() {
       fastPromise = (async () => {
         const fastStartedAt = Date.now();
         const base = XS_HISTORY_CHART_CLOUDRUN_V2.replace(/\/+$/, "");
-        const histUrl = `${base}/history/player-chart/${encodeURIComponent(slug)}?limit=40`;
+        const histUrl = `${base}/history/player-chart/${encodeURIComponent(slug)}?limit=${XS_ALL_EXTENSIBLE_HISTORY_INITIAL_LIMIT_V1}`;
         console.log("[XS_CARD_FAST_TABLE_HISTORY_V1] fast_fetch_start", {
           playerSlug: slug,
-          limit: 40,
+          limit: XS_ALL_EXTENSIBLE_HISTORY_INITIAL_LIMIT_V1,
         });
         speedApiCallsRef.current += 1;
         const histResp = await fetch(histUrl, { headers: { accept: "application/json" } });
@@ -3408,7 +3412,7 @@ return () => { cancelled = true; };
         });
 
         const chartBase = XS_HISTORY_CHART_CLOUDRUN_V2.replace(/\/+$/, "");
-        const histUrl = `${chartBase}/history/player-chart/${encodeURIComponent(slug)}?limit=40`;
+        const histUrl = `${chartBase}/history/player-chart/${encodeURIComponent(slug)}?limit=${XS_ALL_EXTENSIBLE_HISTORY_INITIAL_LIMIT_V1}`;
         const reloadStartedAt = Date.now();
         speedApiCallsRef.current += 1;
         const histResp = await fetch(histUrl, { headers: { accept: "application/json" } });
@@ -3451,6 +3455,58 @@ return () => { cancelled = true; };
   }, [playerSlug]);
   /* XS_CARD_AUTO_SYNC_HISTORY_V1_END */
 
+  useEffect(() => {
+    if (activeSeries !== "ALL") return;
+    const slug = String(playerSlug || "").trim().toLowerCase();
+    if (!slug) return;
+    if (historyAllLoading) return;
+    if (Array.isArray(historyChart) && historyChart.length >= XS_ALL_EXTENSIBLE_HISTORY_LIMIT_V1) return;
+    if (historyAllLoadedBySlugRef.current[slug]) return;
+
+    let cancelled = false;
+    historyAllLoadedBySlugRef.current[slug] = true;
+    setHistoryAllLoading(true);
+
+    (async () => {
+      try {
+        const base = XS_HISTORY_CHART_CLOUDRUN_V2.replace(/\/+$/, "");
+        const histUrl = `${base}/history/player-chart/${encodeURIComponent(slug)}?limit=${XS_ALL_EXTENSIBLE_HISTORY_LIMIT_V1}`;
+        console.log("[XS_ALL_EXTENSIBLE_HISTORY_V1] my_cards_all_fetch_start", {
+          playerSlug: slug,
+          limit: XS_ALL_EXTENSIBLE_HISTORY_LIMIT_V1,
+        });
+        speedApiCallsRef.current += 1;
+        const histResp = await fetch(histUrl, { headers: { accept: "application/json" } });
+        const histJson = await histResp.json().catch(() => null);
+        xsCardSpeedTrackPayloadV1(histJson);
+        if (!histResp.ok || histJson?.ok === false) {
+          throw new Error(String(histJson?.error || histJson?.details || `history_http_${histResp.status}`));
+        }
+        const items = Array.isArray(histJson?.items) ? histJson.items : [];
+        if (!cancelled && items.length > (Array.isArray(historyChart) ? historyChart.length : 0)) {
+          setHistoryChart(items);
+          setHistoryAverages(xsPickOfficialHistoryAveragesV1(histJson));
+        }
+        console.log("[XS_ALL_EXTENSIBLE_HISTORY_V1] my_cards_all_fetch_success", {
+          playerSlug: slug,
+          count: items.length,
+        });
+      } catch (err: any) {
+        historyAllLoadedBySlugRef.current[slug] = false;
+        console.log("[XS_ALL_EXTENSIBLE_HISTORY_V1] my_cards_all_fetch_error", {
+          playerSlug: slug,
+          error: String(err?.message || err),
+        });
+      } finally {
+        if (!cancelled) setHistoryAllLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSeries, historyAllLoading, historyChart, playerSlug]);
+
 
   const series = useMemo(() => {
     const perfAny = (perf as any) || {};
@@ -3490,7 +3546,7 @@ return () => { cancelled = true; };
   // On garde un fallback texte si l'API ne donne pas encore de logo.
       // XS_CARD_DETAIL_LATEST_MATCH_RIGHT_ALL_CARDS_V1
   // On trie les matchs par date ASC pour afficher le plus récent à droite.
-  const xsWantedCount = activeSeries === "L5" ? 5 : activeSeries === "L10" ? 10 : 40;
+  const xsWantedCount = activeSeries === "L5" ? 5 : activeSeries === "L10" ? 10 : Math.max(40, Array.isArray(historyChart) ? historyChart.length : 0);
   const xsBaseHistory = Array.isArray(historyChart) && historyChart.length ? historyChart.slice(0, xsWantedCount) : [];
   const xsSortedHistory = xsBaseHistory
     .slice()
@@ -3791,9 +3847,9 @@ return (
         <View style={{ marginTop: 12 }}>
           {Array.isArray(xsDisplayScores) && xsDisplayScores.length > 0 ? (
             <View style={{ width: "100%", overflow: "hidden" }}>
-              {historyFastLoading ? (
+              {historyFastLoading || historyAllLoading ? (
                 <Text style={{ color: theme.muted, fontSize: 12, marginBottom: 6 }}>
-                  Mise à jour du tableau…
+                  {historyAllLoading ? "Chargement de l'historique All…" : "Mise à jour du tableau…"}
                 </Text>
               ) : null}
   {/* XS_CHART_HORIZONTAL_SCROLL_V2 */}
@@ -3813,7 +3869,7 @@ return (
   </ScrollView>
   {/* XS_CHART_HORIZONTAL_SCROLL_V2_END */}
 </View>
-          ) : state === "loading" || historyFastLoading ? (
+          ) : state === "loading" || historyFastLoading || historyAllLoading ? (
             <Text style={{ color: theme.muted }}>Chargement du tableau…</Text>
           ) : state === "err" ? (
             <Text style={{ color: "#FF7B7B" }}>Erreur de chargement: {error || "inconnue"}</Text>
