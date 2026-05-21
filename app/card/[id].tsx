@@ -2905,6 +2905,7 @@ const XS_HISTORY_SYNC_CLOUDRUN_V1 = "https://xiascor-backend-tssdy62zqa-ez.a.run
 const XS_CARD_AUTO_SYNC_HISTORY_TTL_MS_V1 = 10 * 60 * 1000;
 const XS_CARD_AUTO_SYNC_HISTORY_LAST_V1 = new Map<string, number>();
 // XS_CARD_FAST_TABLE_HISTORY_V1: share one fast table history request per player while it is in-flight.
+// XS_MY_CARDS_ALL_HISTORY_40_V1: card detail All graph must load up to 40 history rows, not the fast L15 window.
 type XsOfficialHistoryAveragesV1 = { l5?: number | null; l10?: number | null; l15?: number | null; l40?: number | null };
 type XsFastHistoryPayloadV1 = { items: any[]; averages: XsOfficialHistoryAveragesV1 | null };
 const XS_CARD_FAST_TABLE_HISTORY_INFLIGHT_V1 = new Map<string, Promise<XsFastHistoryPayloadV1>>();
@@ -3099,10 +3100,10 @@ export default function CardDetailScreen() {
       fastPromise = (async () => {
         const fastStartedAt = Date.now();
         const base = XS_HISTORY_CHART_CLOUDRUN_V2.replace(/\/+$/, "");
-        const histUrl = `${base}/history/player-chart/${encodeURIComponent(slug)}?limit=15`;
+        const histUrl = `${base}/history/player-chart/${encodeURIComponent(slug)}?limit=40`;
         console.log("[XS_CARD_FAST_TABLE_HISTORY_V1] fast_fetch_start", {
           playerSlug: slug,
-          limit: 15,
+          limit: 40,
         });
         speedApiCallsRef.current += 1;
         const histResp = await fetch(histUrl, { headers: { accept: "application/json" } });
@@ -3407,7 +3408,7 @@ return () => { cancelled = true; };
         });
 
         const chartBase = XS_HISTORY_CHART_CLOUDRUN_V2.replace(/\/+$/, "");
-        const histUrl = `${chartBase}/history/player-chart/${encodeURIComponent(slug)}?limit=15`;
+        const histUrl = `${chartBase}/history/player-chart/${encodeURIComponent(slug)}?limit=40`;
         const reloadStartedAt = Date.now();
         speedApiCallsRef.current += 1;
         const histResp = await fetch(histUrl, { headers: { accept: "application/json" } });
