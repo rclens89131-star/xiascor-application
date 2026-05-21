@@ -12,6 +12,7 @@ import { publicPlayerPerformance, recruterPlayerCards, recruterSaleStatus, type 
 // XS_RECRUTER_FACE_CROP_STRONG_OFFSET_V1: stronger vertical crop offsets for Recruter player faces.
 // XS_RECRUTER_FACE_CROP_EXTRA_HIGH_V1: push Recruter crops higher so faces are visible first.
 // XS_RECRUTER_HEADSHOT_IMAGE_PRIORITY_V1: prefer player avatar/headshot images before full-body card pictures.
+// XS_RECRUTER_PLAYER_IMAGE_CONTAIN_V1: show full Recruter player images without aggressive crop.
 function text(v: unknown, fallback = "") {
   const s = String(v ?? "").trim();
   return s || fallback;
@@ -650,16 +651,15 @@ function RecruterFaceImageV1({
   variant?: "detail" | "card";
   imageKind?: "headshot" | "fullBody";
 }) {
-  const cropFullBody = !!uri && imageKind !== "headshot";
-  const imageHeight = cropFullBody ? (variant === "detail" ? size.height * 1.62 : size.height * 1.5) : size.height;
-  const imageWidth = cropFullBody ? (variant === "detail" ? size.width * 1.2 : size.width * 1.16) : size.width;
-  const offsetY = cropFullBody ? (variant === "detail" ? -Math.round(size.height * 0.46) : -Math.round(size.height * 0.38)) : 0;
+  if (typeof __DEV__ !== "undefined" && __DEV__ && uri) {
+    console.log("[XS_RECRUTER_PLAYER_IMAGE_CONTAIN_V1]", { variant, imageKind, uri });
+  }
   return (
-    <View style={{ width: size.width, height: size.height, borderRadius: radius, overflow: "hidden", backgroundColor: "#050509", alignItems: "center" }}>
+    <View style={{ width: size.width, height: size.height, borderRadius: radius, overflow: "hidden", backgroundColor: "#050509", alignItems: "center", justifyContent: "center" }}>
       <Image
         source={{ uri: uri || XS_RECRUTER_PLAYER_PLACEHOLDER_V1 }}
-        resizeMode="cover"
-        style={{ width: imageWidth, height: imageHeight, transform: [{ translateY: offsetY }] }}
+        resizeMode="contain"
+        style={{ width: size.width, height: size.height }}
       />
       <LinearGradient colors={["transparent", "rgba(5,7,12,0.66)"]} style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: variant === "detail" ? 58 : 34 }} />
     </View>

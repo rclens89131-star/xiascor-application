@@ -22,6 +22,7 @@ import {
 // XS_RECRUTER_FACE_CROP_STRONG_OFFSET_V1: stronger vertical crop offsets for player faces.
 // XS_RECRUTER_FACE_CROP_EXTRA_HIGH_V1: push Recruter crops higher so faces are visible first.
 // XS_RECRUTER_HEADSHOT_IMAGE_PRIORITY_V1: prefer player avatar/headshot images before full-body card pictures.
+// XS_RECRUTER_PLAYER_IMAGE_CONTAIN_V1: show full Recruter player images without aggressive crop.
 const XS_RECRUTER_FRONT_LEAGUE_INDEX_DEFAULT_V1 = "ligue-1-fr";
 const XS_RECRUTER_FRONT_VISIBLE_LEAGUES_V1 = [
   { label: "Ligue 1", slug: "ligue-1-fr" },
@@ -249,19 +250,17 @@ function RecruterFaceImageV1({
   variant?: "avatar" | "card";
   imageKind?: "headshot" | "fullBody";
 }) {
-  const cropFullBody = !!uri && imageKind !== "headshot";
-  const imageHeight = cropFullBody ? (variant === "card" ? size.height * 1.62 : size.height * 1.42) : size.height;
-  const imageWidth = cropFullBody ? (variant === "card" ? size.width * 1.22 : size.width * 1.14) : size.width;
-  const offsetY = cropFullBody ? (variant === "card" ? -Math.round(size.height * 0.48) : -Math.round(size.height * 0.32)) : 0;
+  if (typeof __DEV__ !== "undefined" && __DEV__ && uri) {
+    console.log("[XS_RECRUTER_PLAYER_IMAGE_CONTAIN_V1]", { variant, imageKind, uri });
+  }
   return (
-    <View style={{ width: size.width, height: size.height, borderRadius: radius, overflow: "hidden", backgroundColor: "#050509", alignItems: "center" }}>
+    <View style={{ width: size.width, height: size.height, borderRadius: radius, overflow: "hidden", backgroundColor: "#050509", alignItems: "center", justifyContent: "center" }}>
       <Image
         source={{ uri: uri || PLAYER_PLACEHOLDER }}
-        resizeMode="cover"
+        resizeMode="contain"
         style={{
-          width: imageWidth,
-          height: imageHeight,
-          transform: [{ translateY: offsetY }],
+          width: size.width,
+          height: size.height,
         }}
       />
       {variant === "card" ? (
