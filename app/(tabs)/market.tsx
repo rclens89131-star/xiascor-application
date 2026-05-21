@@ -24,6 +24,7 @@ import {
 // XS_RECRUTER_HEADSHOT_IMAGE_PRIORITY_V1: prefer player avatar/headshot images before full-body card pictures.
 // XS_RECRUTER_PLAYER_IMAGE_CONTAIN_V1: show full Recruter player images without aggressive crop.
 // XS_RECRUTER_FILTERS_EXPAND_FULL_V1: quick filters can show every in-memory league and club.
+// XS_RECRUTER_FILTER_LOGOS_V1: premium logo-style quick filters for leagues and clubs.
 const XS_RECRUTER_FRONT_LEAGUE_INDEX_DEFAULT_V1 = "ligue-1-fr";
 const XS_RECRUTER_FRONT_VISIBLE_LEAGUES_V1 = [
   { label: "Ligue 1", slug: "ligue-1-fr" },
@@ -127,17 +128,47 @@ function saleBadge(player: RecruterPlayer) {
 }
 
 function collectOptions(items: RecruterPlayer[], type: "league" | "club") {
-  const map = new Map<string, { slug: string; name: string; count: number }>();
+  const map = new Map<string, { slug: string; name: string; count: number; logoUrl?: string | null }>();
   for (const item of items) {
     const slug = type === "league" ? item.leagueSlug : item.clubSlug;
     const name = type === "league" ? item.leagueName : item.clubName;
+    const logoUrl = xsRecruterFilterLogoUrlV1(item, type);
     const key = text(slug).toLowerCase();
     if (!key) continue;
     const row = map.get(key) || { slug: key, name: text(name, key), count: 0 };
     row.count += 1;
+    if (!row.logoUrl && logoUrl) row.logoUrl = logoUrl;
     map.set(key, row);
   }
   return Array.from(map.values()).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+}
+
+function xsRecruterFilterLogoUrlV1(item: any, type: "league" | "club") {
+  const fields = type === "league"
+    ? [item?.leagueLogoUrl, item?.leaguePictureUrl, item?.leagueImageUrl, item?.league?.pictureUrl, item?.league?.logoUrl, item?.competition?.pictureUrl]
+    : [item?.clubLogoUrl, item?.clubPictureUrl, item?.clubImageUrl, item?.shieldUrl, item?.activeClub?.pictureUrl, item?.club?.pictureUrl, item?.club?.logoUrl];
+  return text(fields.find((value) => text(value)));
+}
+
+function xsRecruterFilterInitialsV1(name: string, slug: string) {
+  const known: Record<string, string> = {
+    "ligue-1-fr": "L1",
+    "premier-league-gb-eng": "PL",
+    "laliga-es": "LL",
+    "serie-a-it": "SA",
+    "bundesliga-de": "BL",
+    "ligue-2-fr": "L2",
+    "eredivisie-nl": "ED",
+    "primeira-liga-pt": "LP",
+    "championship-gb-eng": "CH",
+    mlspa: "MLS",
+  };
+  if (known[slug]) return known[slug];
+  const source = text(name, slug).replace(/[^A-Za-zÀ-ÿ0-9 ]/g, " ").trim();
+  const words = source.split(/\s+/).filter(Boolean);
+  if (!words.length) return "—";
+  if (words.length === 1) return words[0].slice(0, 3).toUpperCase();
+  return words.slice(0, 2).map((word) => word[0]).join("").toUpperCase();
 }
 
 function xsRecruterMergeLeagueItemsV1(payloads: RecruterLeagueIndexResponse[]) {
@@ -178,6 +209,64 @@ function FilterChip({ label, active, onPress }: { label: string; active?: boolea
       }}
     >
       <Text style={{ color: "white", fontWeight: "900" }} numberOfLines={1}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function RecruterLogoChipV1({
+  name,
+  slug,
+  count,
+  logoUrl,
+  active,
+  onPress,
+}: {
+  name: string;
+  slug: string;
+  count: number;
+  logoUrl?: string | null;
+  active?: boolean;
+  onPress: () => void;
+}) {
+  const initials = xsRecruterFilterInitialsV1(name, slug);
+  return (
+    <TouchableOpacity
+      onPress={() => {
+        if (typeof __DEV__ !== "undefined" && __DEV__) console.log("[XS_RECRUTER_FILTER_LOGOS_V1]", { slug, name, hasLogo: Boolean(logoUrl), active });
+        onPress();
+      }}
+      activeOpacity={0.88}
+      style={{
+        width: 64,
+        alignItems: "center",
+        gap: 5,
+      }}
+    >
+      <View
+        style={{
+          width: 52,
+          height: 52,
+          borderRadius: 16,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: active ? "#33101A" : "#111722",
+          borderWidth: 1,
+          borderColor: active ? "#F43F5E" : "#273142",
+          shadowColor: active ? "#F43F5E" : "#000",
+          shadowOpacity: active ? 0.24 : 0,
+          shadowRadius: 10,
+        }}
+      >
+        {logoUrl ? (
+          <Image source={{ uri: logoUrl }} resizeMode="contain" style={{ width: 34, height: 34 }} />
+        ) : (
+          <Text style={{ color: active ? "#FFFFFF" : "#D8DEE8", fontWeight: "900", fontSize: initials.length > 2 ? 13 : 15 }}>{initials}</Text>
+        )}
+        <View style={{ position: "absolute", right: -4, top: -5, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, backgroundColor: active ? "#F43F5E" : "#1D2634", borderWidth: 1, borderColor: active ? "#FF8091" : "#344052", alignItems: "center", justifyContent: "center" }}>
+          <Text style={{ color: "#FFFFFF", fontSize: 10, fontWeight: "900" }}>{count}</Text>
+        </View>
+      </View>
+      <Text numberOfLines={1} style={{ color: active ? "#FFFFFF" : "#AEB7C4", fontSize: 10, fontWeight: "800", maxWidth: 64 }}>{name}</Text>
     </TouchableOpacity>
   );
 }
@@ -362,7 +451,7 @@ export default function RecruiterTabScreen() {
     return XS_RECRUTER_FRONT_VISIBLE_LEAGUES_V1.map((league) => {
       const slug = xsRecruterFrontLeagueSlugV1(league.slug);
       const row = counts.get(slug);
-      return { slug, name: league.label, count: row?.count || 0 };
+      return { slug, name: league.label, count: row?.count || 0, logoUrl: row?.logoUrl || null };
     });
   }, [items]);
 
@@ -491,7 +580,7 @@ export default function RecruiterTabScreen() {
             <Text style={{ color: "#F8FAFC", width: 62, fontWeight: "900" }}>Ligues</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
               {visibleLeagues.map((league) => (
-                <FilterChip key={league.slug} label={`${league.name} (${league.count})`} active={selectedLeague === league.slug} onPress={() => { setSelectedLeague(selectedLeague === league.slug ? "" : league.slug); setSelectedClub(""); }} />
+                <RecruterLogoChipV1 key={league.slug} name={league.name} slug={league.slug} count={league.count} logoUrl={league.logoUrl} active={selectedLeague === league.slug} onPress={() => { setSelectedLeague(selectedLeague === league.slug ? "" : league.slug); setSelectedClub(""); }} />
               ))}
               {leagues.length > 8 ? (
                 <FilterChip
@@ -509,7 +598,7 @@ export default function RecruiterTabScreen() {
             <Text style={{ color: "#F8FAFC", width: 62, fontWeight: "900" }}>Clubs</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
               {visibleClubs.map((club) => (
-                <FilterChip key={club.slug} label={`${club.name} (${club.count})`} active={selectedClub === club.slug} onPress={() => setSelectedClub(selectedClub === club.slug ? "" : club.slug)} />
+                <RecruterLogoChipV1 key={club.slug} name={club.name} slug={club.slug} count={club.count} logoUrl={club.logoUrl} active={selectedClub === club.slug} onPress={() => setSelectedClub(selectedClub === club.slug ? "" : club.slug)} />
               ))}
               {clubs.length > 8 ? (
                 <FilterChip
