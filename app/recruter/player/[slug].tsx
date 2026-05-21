@@ -11,6 +11,7 @@ import { publicPlayerPerformance, recruterPlayerCards, recruterSaleStatus, type 
 // XS_RECRUTER_PLAYER_FACE_CROP_FIX_V1: crop Recruter player images toward face/upper body.
 // XS_RECRUTER_FACE_CROP_STRONG_OFFSET_V1: stronger vertical crop offsets for Recruter player faces.
 // XS_RECRUTER_FACE_CROP_EXTRA_HIGH_V1: push Recruter crops higher so faces are visible first.
+// XS_RECRUTER_HEADSHOT_IMAGE_PRIORITY_V1: prefer player avatar/headshot images before full-body card pictures.
 function text(v: unknown, fallback = "") {
   const s = String(v ?? "").trim();
   return s || fallback;
@@ -65,6 +66,7 @@ type RecruterHistoryPayloadV1 = {
 
 const XS_RECRUTER_PERF_FALLBACK_BASE_V1 = "https://xiascor-backend-tssdy62zqa-ez.a.run.app";
 const XS_RECRUTER_PLAYER_PLACEHOLDER_V1 = "https://frontend-assets.sorare.com/placeholders/player-v2.png";
+const XS_RECRUTER_HEADSHOT_LOGGED_V1 = new Set<string>();
 
 function num(v: unknown, fallback = 0) {
   const n = Number(v);
@@ -589,20 +591,69 @@ function PremiumMetricBarV1({ label, value }: { label: string; value: number }) 
   );
 }
 
+function getRecruterPlayerImageV1(player: any, card?: any, offer?: any) {
+  const pick = (source: string, value: unknown, kind: "headshot" | "fullBody") => {
+    const uri = text(value);
+    return uri ? { uri, source, kind } : null;
+  };
+  const candidates = [
+    pick("player.avatarUrl", player?.avatarUrl, "headshot"),
+    pick("player.player.avatarUrl", player?.player?.avatarUrl, "headshot"),
+    pick("player.anyPlayer.avatarUrl", player?.anyPlayer?.avatarUrl, "headshot"),
+    pick("player.photoUrl", player?.photoUrl, "headshot"),
+    pick("player.raw.avatarUrl", player?.raw?.avatarUrl, "headshot"),
+    pick("player.raw.player.avatarUrl", player?.raw?.player?.avatarUrl, "headshot"),
+    pick("player.raw.anyPlayer.avatarUrl", player?.raw?.anyPlayer?.avatarUrl, "headshot"),
+    pick("player.player.pictureUrl", player?.player?.pictureUrl, "fullBody"),
+    pick("player.anyPlayer.pictureUrl", player?.anyPlayer?.pictureUrl, "fullBody"),
+    pick("player.pictureUrl", player?.pictureUrl, "fullBody"),
+    pick("card.player.avatarUrl", card?.player?.avatarUrl, "headshot"),
+    pick("card.anyPlayer.avatarUrl", card?.anyPlayer?.avatarUrl, "headshot"),
+    pick("card.player.pictureUrl", card?.player?.pictureUrl, "fullBody"),
+    pick("card.anyPlayer.pictureUrl", card?.anyPlayer?.pictureUrl, "fullBody"),
+    pick("card.pictureUrl", card?.pictureUrl, "fullBody"),
+    pick("card.imageUrl", card?.imageUrl, "fullBody"),
+    pick("offer.player.avatarUrl", offer?.player?.avatarUrl, "headshot"),
+    pick("offer.anyPlayer.avatarUrl", offer?.anyPlayer?.avatarUrl, "headshot"),
+    pick("offer.player.pictureUrl", offer?.player?.pictureUrl, "fullBody"),
+    pick("offer.anyPlayer.pictureUrl", offer?.anyPlayer?.pictureUrl, "fullBody"),
+    pick("offer.pictureUrl", offer?.pictureUrl, "fullBody"),
+    pick("offer.imageUrl", offer?.imageUrl, "fullBody"),
+  ].filter(Boolean) as { uri: string; source: string; kind: "headshot" | "fullBody" }[];
+  const selected = candidates[0] || { uri: null, source: "placeholder", kind: "headshot" as const };
+  if (typeof __DEV__ !== "undefined" && __DEV__) {
+    const slug = text(player?.slug || player?.playerSlug || card?.playerSlug || offer?.playerSlug || player?.player?.slug || player?.anyPlayer?.slug, "unknown");
+    if (!XS_RECRUTER_HEADSHOT_LOGGED_V1.has(slug)) {
+      XS_RECRUTER_HEADSHOT_LOGGED_V1.add(slug);
+      console.log("[XS_RECRUTER_HEADSHOT_IMAGE_PRIORITY_V1]", {
+        slug,
+        name: text(player?.displayName || player?.playerName || card?.playerName || offer?.playerName),
+        selectedSource: selected.source,
+        selectedKind: selected.kind,
+        fields: candidates.map((candidate) => ({ source: candidate.source, kind: candidate.kind, hasValue: true })),
+      });
+    }
+  }
+  return selected;
+}
+
 function RecruterFaceImageV1({
   uri,
   size,
   radius,
   variant = "detail",
+  imageKind = "fullBody",
 }: {
   uri?: string | null;
   size: { width: number; height: number };
   radius: number;
   variant?: "detail" | "card";
+  imageKind?: "headshot" | "fullBody";
 }) {
-  const imageHeight = variant === "detail" ? size.height * 1.62 : size.height * 1.5;
-  const imageWidth = variant === "detail" ? size.width * 1.2 : size.width * 1.16;
-  const offsetY = variant === "detail" ? -Math.round(size.height * 0.46) : -Math.round(size.height * 0.38);
+  const cropFullBody = !!uri && imageKind !== "headshot";
+  const imageHeight = cropFullBody ? (variant === "detail" ? size.height * 1.62 : size.height * 1.5) : size.height;
+  const imageWidth = cropFullBody ? (variant === "detail" ? size.width * 1.2 : size.width * 1.16) : size.width;
+  const offsetY = cropFullBody ? (variant === "detail" ? -Math.round(size.height * 0.46) : -Math.round(size.height * 0.38)) : 0;
   return (
     <View style={{ width: size.width, height: size.height, borderRadius: radius, overflow: "hidden", backgroundColor: "#050509", alignItems: "center" }}>
       <Image
@@ -757,6 +808,7 @@ export default function RecruterPlayerCardsScreen() {
     const status = saleStatus === "none_seen" || items.length === 0
       ? "no_sale"
       : recruterSaleStatus(player || { saleStatus, salesCount: items.length, cardsCount: items.length, hasSale: items.length > 0 });
+    const image = getRecruterPlayerImageV1(player, first, first);
 
     return {
       playerName: text(player?.displayName || player?.playerName || first?.playerName || coachPerf?.playerName || coachHistory?.playerName, playerSlug || "Joueur"),
@@ -766,7 +818,9 @@ export default function RecruterPlayerCardsScreen() {
       positionSourceUsed: positionInfo.sourceUsed,
       positionConflicts: positionInfo.conflicts,
       leagueName: text(player?.leagueName || first?.leagueName, "Ligue inconnue"),
-      pictureUrl: text(player?.pictureUrl || first?.pictureUrl, "https://frontend-assets.sorare.com/placeholders/player-v2.png"),
+      pictureUrl: image.uri,
+      pictureKind: image.kind,
+      pictureSource: image.source,
       minEur,
       status,
     };
@@ -836,7 +890,7 @@ export default function RecruterPlayerCardsScreen() {
               <View style={{ gap: 14, marginBottom: 14 }}>
                 <LinearGradient colors={["#141B27", "#0D121A"]} style={{ borderRadius: 17, borderWidth: 1, borderColor: "#2B3444", padding: 10 }}>
                   <View style={{ flexDirection: "row", gap: 13 }}>
-                    <RecruterFaceImageV1 uri={header.pictureUrl} size={{ width: 132, height: 172 }} radius={13} variant="detail" />
+                    <RecruterFaceImageV1 uri={header.pictureUrl} size={{ width: 132, height: 172 }} radius={13} variant="detail" imageKind={header.pictureKind} />
                     <View style={{ flex: 1, paddingVertical: 8, gap: 7 }}>
                       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                         <Text style={{ color: "#fff", fontSize: 22, fontWeight: "900", flex: 1 }} numberOfLines={2}>{header.playerName}</Text>
@@ -928,9 +982,10 @@ export default function RecruterPlayerCardsScreen() {
             }
             renderItem={({ item }) => {
               const seller = text(item?.seller?.nickname || item?.seller?.slug);
+              const image = getRecruterPlayerImageV1(player, item, item);
               return (
                 <View style={{ flexDirection: "row", gap: 12, padding: 12, marginBottom: 12, borderRadius: 15, backgroundColor: "#101722", borderWidth: 1, borderColor: "#2B3444" }}>
-                  <RecruterFaceImageV1 uri={item.pictureUrl} size={{ width: 76, height: 102 }} radius={10} variant="card" />
+                  <RecruterFaceImageV1 uri={image.uri} size={{ width: 76, height: 102 }} radius={10} variant="card" imageKind={image.kind} />
                   <View style={{ flex: 1, justifyContent: "center", gap: 5 }}>
                     <Text style={{ color: "white", fontWeight: "900" }} numberOfLines={1}>{text(item.playerName, header.playerName)}</Text>
                     <Text style={{ color: "#72e6a2", fontWeight: "900" }}>{priceLabel(item)}</Text>

@@ -21,6 +21,7 @@ import {
 // XS_RECRUTER_PLAYER_FACE_CROP_FIX_V1: crop player pictures toward face/upper body in Recruter cards.
 // XS_RECRUTER_FACE_CROP_STRONG_OFFSET_V1: stronger vertical crop offsets for player faces.
 // XS_RECRUTER_FACE_CROP_EXTRA_HIGH_V1: push Recruter crops higher so faces are visible first.
+// XS_RECRUTER_HEADSHOT_IMAGE_PRIORITY_V1: prefer player avatar/headshot images before full-body card pictures.
 const XS_RECRUTER_FRONT_LEAGUE_INDEX_DEFAULT_V1 = "ligue-1-fr";
 const XS_RECRUTER_FRONT_VISIBLE_LEAGUES_V1 = [
   { label: "Ligue 1", slug: "ligue-1-fr" },
@@ -84,6 +85,7 @@ const XS_RECRUTER_FRONT_LEAGUE_SLUG_ALIASES_V1: Record<string, string> = {
 
 const POSITIONS = ["GK", "DEF", "MID", "FW"];
 const PLAYER_PLACEHOLDER = "https://frontend-assets.sorare.com/placeholders/player-v2.png";
+const XS_RECRUTER_HEADSHOT_LOGGED_V1 = new Set<string>();
 
 function text(v: unknown, fallback = "") {
   const s = String(v ?? "").trim();
@@ -188,20 +190,69 @@ function StatCell({ icon, value, label }: { icon: keyof typeof Ionicons.glyphMap
   );
 }
 
+function getRecruterPlayerImageV1(player: any, card?: any, offer?: any) {
+  const pick = (source: string, value: unknown, kind: "headshot" | "fullBody") => {
+    const uri = text(value);
+    return uri ? { uri, source, kind } : null;
+  };
+  const candidates = [
+    pick("player.avatarUrl", player?.avatarUrl, "headshot"),
+    pick("player.player.avatarUrl", player?.player?.avatarUrl, "headshot"),
+    pick("player.anyPlayer.avatarUrl", player?.anyPlayer?.avatarUrl, "headshot"),
+    pick("player.photoUrl", player?.photoUrl, "headshot"),
+    pick("player.raw.avatarUrl", player?.raw?.avatarUrl, "headshot"),
+    pick("player.raw.player.avatarUrl", player?.raw?.player?.avatarUrl, "headshot"),
+    pick("player.raw.anyPlayer.avatarUrl", player?.raw?.anyPlayer?.avatarUrl, "headshot"),
+    pick("player.player.pictureUrl", player?.player?.pictureUrl, "fullBody"),
+    pick("player.anyPlayer.pictureUrl", player?.anyPlayer?.pictureUrl, "fullBody"),
+    pick("player.pictureUrl", player?.pictureUrl, "fullBody"),
+    pick("card.player.avatarUrl", card?.player?.avatarUrl, "headshot"),
+    pick("card.anyPlayer.avatarUrl", card?.anyPlayer?.avatarUrl, "headshot"),
+    pick("card.player.pictureUrl", card?.player?.pictureUrl, "fullBody"),
+    pick("card.anyPlayer.pictureUrl", card?.anyPlayer?.pictureUrl, "fullBody"),
+    pick("card.pictureUrl", card?.pictureUrl, "fullBody"),
+    pick("card.imageUrl", card?.imageUrl, "fullBody"),
+    pick("offer.player.avatarUrl", offer?.player?.avatarUrl, "headshot"),
+    pick("offer.anyPlayer.avatarUrl", offer?.anyPlayer?.avatarUrl, "headshot"),
+    pick("offer.player.pictureUrl", offer?.player?.pictureUrl, "fullBody"),
+    pick("offer.anyPlayer.pictureUrl", offer?.anyPlayer?.pictureUrl, "fullBody"),
+    pick("offer.pictureUrl", offer?.pictureUrl, "fullBody"),
+    pick("offer.imageUrl", offer?.imageUrl, "fullBody"),
+  ].filter(Boolean) as { uri: string; source: string; kind: "headshot" | "fullBody" }[];
+  const selected = candidates[0] || { uri: null, source: "placeholder", kind: "headshot" as const };
+  if (typeof __DEV__ !== "undefined" && __DEV__) {
+    const slug = text(player?.slug || player?.playerSlug || card?.playerSlug || offer?.playerSlug || player?.player?.slug || player?.anyPlayer?.slug, "unknown");
+    if (!XS_RECRUTER_HEADSHOT_LOGGED_V1.has(slug)) {
+      XS_RECRUTER_HEADSHOT_LOGGED_V1.add(slug);
+      console.log("[XS_RECRUTER_HEADSHOT_IMAGE_PRIORITY_V1]", {
+        slug,
+        name: text(player?.displayName || player?.playerName || card?.playerName || offer?.playerName),
+        selectedSource: selected.source,
+        selectedKind: selected.kind,
+        fields: candidates.map((candidate) => ({ source: candidate.source, kind: candidate.kind, hasValue: true })),
+      });
+    }
+  }
+  return selected;
+}
+
 function RecruterFaceImageV1({
   uri,
   size,
   radius,
   variant = "avatar",
+  imageKind = "fullBody",
 }: {
   uri?: string | null;
   size: { width: number; height: number };
   radius: number;
   variant?: "avatar" | "card";
+  imageKind?: "headshot" | "fullBody";
 }) {
-  const imageHeight = variant === "card" ? size.height * 1.62 : size.height * 1.42;
-  const imageWidth = variant === "card" ? size.width * 1.22 : size.width * 1.14;
-  const offsetY = variant === "card" ? -Math.round(size.height * 0.48) : -Math.round(size.height * 0.32);
+  const cropFullBody = !!uri && imageKind !== "headshot";
+  const imageHeight = cropFullBody ? (variant === "card" ? size.height * 1.62 : size.height * 1.42) : size.height;
+  const imageWidth = cropFullBody ? (variant === "card" ? size.width * 1.22 : size.width * 1.14) : size.width;
+  const offsetY = cropFullBody ? (variant === "card" ? -Math.round(size.height * 0.48) : -Math.round(size.height * 0.32)) : 0;
   return (
     <View style={{ width: size.width, height: size.height, borderRadius: radius, overflow: "hidden", backgroundColor: "#050509", alignItems: "center" }}>
       <Image
@@ -454,6 +505,7 @@ export default function RecruiterTabScreen() {
           {recommended.map((item, index) => {
             const slug = text(item.slug || item.playerSlug, String(index));
             const score = playerScore(item);
+            const image = getRecruterPlayerImageV1(item, item, item);
             return (
               <TouchableOpacity key={`${slug}-${index}`} onPress={() => openPlayer(item)} activeOpacity={0.9} style={{ width: 174, borderRadius: 16, overflow: "hidden", borderWidth: 1, borderColor: "#2B3444", backgroundColor: "#111722" }}>
                 <LinearGradient colors={["#1A1220", "#0D121A"]} style={{ padding: 12, minHeight: 242 }}>
@@ -464,7 +516,7 @@ export default function RecruiterTabScreen() {
                     <Ionicons name="heart-outline" size={23} color="#F8FAFC" />
                   </View>
                   <View style={{ alignItems: "center", marginTop: 8 }}>
-                    <RecruterFaceImageV1 uri={item.pictureUrl} size={{ width: 128, height: 116 }} radius={12} variant="card" />
+                    <RecruterFaceImageV1 uri={image.uri} size={{ width: 128, height: 116 }} radius={12} variant="card" imageKind={image.kind} />
                   </View>
                   <Text style={{ color: "white", fontWeight: "900", fontSize: 17, marginTop: 10 }} numberOfLines={1}>{text(item.displayName || item.playerName, slug)}</Text>
                   <Text style={{ color: "#B8BEC8", marginTop: 3 }} numberOfLines={1}>{text(item.clubName, "Club inconnu")} · {text(item.leagueName, "Ligue inconnue")}</Text>
@@ -522,13 +574,14 @@ export default function RecruiterTabScreen() {
               const displayName = text(item.displayName || item.playerName, slug || "Joueur");
               const badge = saleBadge(item);
               const score = playerScore(item);
+              const image = getRecruterPlayerImageV1(item, item, item);
               return (
                 <TouchableOpacity
                   onPress={() => openPlayer(item)}
                   activeOpacity={0.88}
                   style={{ flexDirection: "row", gap: 12, backgroundColor: "#101722", borderRadius: 15, borderWidth: 1, borderColor: "#2B3444", padding: 10, alignItems: "center" }}
                 >
-                  <RecruterFaceImageV1 uri={item.pictureUrl} size={{ width: 72, height: 72 }} radius={12} variant="avatar" />
+                  <RecruterFaceImageV1 uri={image.uri} size={{ width: 72, height: 72 }} radius={12} variant="avatar" imageKind={image.kind} />
                   <View style={{ flex: 1, gap: 4 }}>
                     <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }} numberOfLines={1}>{displayName}</Text>
                     <Text style={{ color: "#B8BEC8" }} numberOfLines={1}>{text(item.clubName, "Club inconnu")} · {text(item.leagueName, "Ligue inconnue")}</Text>
