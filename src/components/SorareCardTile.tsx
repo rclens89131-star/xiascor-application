@@ -135,7 +135,7 @@ function xsNormalizeL5MiniChartOrderV1(
 function xsGetL5ScoresV1(card: any): Array<number | null> {
   const sources = [
     { value: card?.averagesDebug?.l5Scores, order: "newest-first" as const }, /* XS_OFFICIAL_SORARE_AVERAGES_V1 */
-    { value: card?.l5Bars, order: "newest-first" as const },
+    { value: card?.l5Bars, order: "oldest-first" as const }, /* XS_MYCARDS_L5BARS_ORDER_FINAL_V1 */
     { value: card?.recentScores, order: "newest-first" as const },
     { value: card?.so5Scores, order: "newest-first" as const },
     { value: card?.historyChart, order: "newest-first" as const },
