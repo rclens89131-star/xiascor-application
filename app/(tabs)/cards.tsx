@@ -224,6 +224,18 @@ function xsHistoryScoreValueV1(item: any): number | null {
   const n = typeof raw === "number" ? raw : Number(raw);
   return Number.isFinite(n) ? n : null;
 }
+
+function xsDateMsFromHistoryRowV1(item: any): number | null {
+  const raw =
+    item?.matchDate ??
+    item?.date ??
+    item?.gameDate ??
+    item?.playedAt ??
+    item?.startDate ??
+    item?.createdAt;
+  const t = raw ? new Date(raw).getTime() : NaN;
+  return Number.isFinite(t) ? t : null;
+}
 function cardKey(card: MyCardItemLocal) {
   return String(
     (card as any)?.id ||
@@ -299,42 +311,62 @@ function xsScoreToBarLevel(score: number): 0|1|2|3|4 {
   if(score >= 25) return 1;
   return 0;
 }
-function xsL5BarsFromCard(card: any): number[] {
+function xsL5BarsFromCard(card: any): Array<number | null> {
+  // XS_MYCARDS_L5_TILE_POSTGRES_SHAPE_V1: mini L5 = real scores only, displayed oldest -> newest by SorareCardTile.
   const sources = [
-    card?.recentScores,
-    card?.scores,
-    card?.lastScores,
-    card?.lastFiveScores,
-    card?.l5Scores,
-    card?.stats?.lastFive,
-    card?.gameScores,
-    card?.scoreHistory,
-    card?.games,
-    card?.player?.recentScores,
-    card?.player?.lastFiveScores,
-    card?.player?.l5Scores,
-    card?.anyPlayer?.recentScores,
-    card?.anyPlayer?.lastFiveScores,
-    card?.anyPlayer?.l5Scores,
+    { value: card?.recentScores, newestFirst: true },
+    { value: card?.historyChart, newestFirst: true },
+    { value: card?.history, newestFirst: true },
+    { value: card?.scores, newestFirst: true },
+    { value: card?.lastScores, newestFirst: true },
+    { value: card?.lastFiveScores, newestFirst: false },
+    { value: card?.l5Scores, newestFirst: false },
+    { value: card?.stats?.lastFive, newestFirst: false },
+    { value: card?.gameScores, newestFirst: true },
+    { value: card?.scoreHistory, newestFirst: true },
+    { value: card?.games, newestFirst: true },
+    { value: card?.player?.recentScores, newestFirst: true },
+    { value: card?.player?.lastFiveScores, newestFirst: false },
+    { value: card?.player?.l5Scores, newestFirst: false },
+    { value: card?.anyPlayer?.recentScores, newestFirst: true },
+    { value: card?.anyPlayer?.lastFiveScores, newestFirst: false },
+    { value: card?.anyPlayer?.l5Scores, newestFirst: false },
   ];
 
-  const toNum = (x: any): number => {
+  const toNum = (x: any): number | null => {
     const n = xsHistoryScoreValueV1(x);
-    return Number.isFinite(n) ? xsClamp(n, 0, 100) : NaN;
+    return Number.isFinite(n) ? xsClamp(Number(n), 0, 100) : null;
   };
 
   for (const src of sources) {
-    if (Array.isArray(src) && src.length > 0) {
-      const last5 = src
-        .slice(-5)
-        .map((x: any) => toNum(x))
-        .filter((n: any) => Number.isFinite(n));
+    if (Array.isArray(src.value) && src.value.length > 0) {
+      const rows = src.value
+        .map((row: any, index: number) => ({
+          score: toNum(row),
+          dateMs: xsDateMsFromHistoryRowV1(row),
+          index,
+        }))
+        .filter((row: any) => row.score !== null);
+
+      if (!rows.length) continue;
+
+      const dated = rows.filter((row: any) => row.dateMs !== null);
+      const last5 = dated.length >= 2
+        ? rows
+            .slice()
+            .sort((a: any, b: any) => (b.dateMs ?? 0) - (a.dateMs ?? 0))
+            .slice(0, 5)
+            .sort((a: any, b: any) => (a.dateMs ?? 0) - (b.dateMs ?? 0))
+            .map((row: any) => row.score)
+        : (src.newestFirst
+            ? rows.slice(0, 5).reverse().map((row: any) => row.score)
+            : rows.slice(-5).map((row: any) => row.score));
 
       if (last5.length > 0) return last5;
     }
   }
 
-  // Fallback honnête: si on n'a qu'un dernier score réel, on l'affiche seul.
+  // Fallback honnête: dernier score réel uniquement, jamais une moyenne L5 déguisée en match.
   const one =
     card?.lastGameScore ??
     card?.lastScore ??
@@ -345,7 +377,7 @@ function xsL5BarsFromCard(card: any): number[] {
     null;
 
   const oneNum = toNum(one);
-  if (Number.isFinite(oneNum)) return [oneNum];
+  if (oneNum !== null) return [oneNum];
 
   // Très important: on ne duplique plus artificiellement le L5 moyen.
   return [];

@@ -81,7 +81,7 @@ function xsPickNumFromRowV1(row: any): number | null {
   const raw =
     typeof row === "number" || typeof row === "string"
       ? row
-      : row?.score ?? row?.scoreSorare ?? row?.total ?? row?.value ?? row?.so5Score ?? row?.decisiveScore;
+      : row?.score ?? row?.totalScore ?? row?.scoreSorare ?? row?.total ?? row?.value ?? row?.so5Score ?? row?.playerScore ?? row?.decisiveScore;
   const n = xsNum(raw);
   return n === null ? null : xsClamp(n, 0, 100);
 }
@@ -159,7 +159,8 @@ function xsGetL5ScoresV1(card: any): Array<number | null> {
     if (values.length) return values;
   }
 
-  const one = xsPickNumFromRowV1(card?.l5 ?? card?.lastScore ?? card?.latestScore ?? card?.score);
+  // XS_MYCARDS_L5_TILE_POSTGRES_SHAPE_V1: do not display an aggregate L5 as if it were a match score.
+  const one = xsPickNumFromRowV1(card?.lastScore ?? card?.lastGameScore ?? card?.latestScore ?? card?.score ?? card?.totalScore ?? card?.scoreSorare);
   return one === null ? [] : [one];
 }
 
