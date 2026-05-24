@@ -573,7 +573,7 @@ export type MyCardItem = {
 export async function myCardsGet(deviceId: string){
   const id = String(deviceId || "").trim();
   if(!id) throw new Error("missing deviceId");
-  const url = `${AUTH_BASE_URL}/my-cards?deviceId=${encodeURIComponent(id)}`; // XS_MYCARDS_AUTH_BASE_V2
+  const url = `${AUTH_BASE_URL}/my-cards?deviceId=${encodeURIComponent(id)}&source=auto`; // XS_MYCARDS_FRONT_SOURCE_AUTO_V1
   const r = await fetch(url);
   const j = await r.json().catch(()=>null);
   if(!r.ok) throw new Error((j && (j.error || j.message)) ? String(j.error || j.message) : `HTTP ${r.status}`);
@@ -594,6 +594,7 @@ export async function myCardsList(deviceId: string, first = 50, after?: string) 
   const qs = new URLSearchParams();
   qs.set("deviceId", deviceId);
   qs.set("first", String(first));
+  qs.set("source", "auto"); // XS_MYCARDS_FRONT_SOURCE_AUTO_V1
   if (after) qs.set("after", after);
   const url = `${AUTH_BASE_URL}/my-cards?${qs.toString()}`; // XS_MYCARDS_REMAINING_AUTH_V5
   const r = await fetch(url);
@@ -646,6 +647,7 @@ export async function myCardsGetPage(
 
   const qs = new URLSearchParams();
   qs.set("deviceId", id);
+  qs.set("source", "auto"); // XS_MYCARDS_FRONT_SOURCE_AUTO_V1
 
   const first = opts && opts.first != null ? Number(opts.first) : null;
   const after = opts && opts.after != null ? String(opts.after) : "";
@@ -689,6 +691,7 @@ export async function myCardsPage(deviceId: string, opts?: { first?: number; aft
   const qs = new URLSearchParams();
   qs.set("deviceId", id);
   qs.set("first", String(opts?.first ?? 20));
+  qs.set("source", "auto"); // XS_MYCARDS_FRONT_SOURCE_AUTO_V1
   if (opts?.after) qs.set("after", String(opts.after));
 
   const url = `${AUTH_BASE_URL}/my-cards?${qs.toString()}`; // XS_MYCARDS_REMAINING_AUTH_V5
