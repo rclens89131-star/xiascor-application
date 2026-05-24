@@ -786,6 +786,23 @@ export type PublicPlayerPerformance = {
  * Cloud Run reste la source stable pour history/player-chart.
  */
 const PERF_BASE_URL = "https://xiascor-backend-tssdy62zqa-ez.a.run.app";
+const XS_PUBLIC_PLAYER_PERF_CACHE_MS_V1 = 60 * 1000;
+const xsPublicPlayerPerformanceCacheV1 = new Map<string, { at: number; value: PublicPlayerPerformance }>();
+const xsPublicPlayerPerformanceInflightV1 = new Map<string, Promise<PublicPlayerPerformance>>();
+const xsPublicPlayerPerformanceWarnedV1 = new Set<string>();
+
+function xsPublicPlayerPerfCacheKeyV1(slug: string, limit: number) {
+  return `${slug}::${limit}`;
+}
+
+function xsPublicPlayerPerfWarnOnceV1(slug: string, message: string, detail?: any) {
+  /* XS_PUBLIC_PLAYER_PERF_ANTISPAM_V1: avoid repeated network fallback warnings per player/session. */
+  const key = `${slug || "unknown"}::${message}`;
+  if (xsPublicPlayerPerformanceWarnedV1.has(key)) return;
+  xsPublicPlayerPerformanceWarnedV1.add(key);
+  console.warn("[publicPlayerPerformance]", message, detail);
+}
+
 export async function publicPlayerPerformance(
   slug: string,
   opts?: { deviceId?: string | null; limit?: number } | string
@@ -824,6 +841,15 @@ export async function publicPlayerPerformance(
 
   if (!s) return empty as PublicPlayerPerformance;
 
+  const cacheKey = xsPublicPlayerPerfCacheKeyV1(s, limit);
+  const cached = xsPublicPlayerPerformanceCacheV1.get(cacheKey);
+  if (cached && Date.now() - cached.at < XS_PUBLIC_PLAYER_PERF_CACHE_MS_V1) {
+    return cached.value;
+  }
+
+  const inflight = xsPublicPlayerPerformanceInflightV1.get(cacheKey);
+  if (inflight) return inflight;
+
   const base =
     typeof PERF_BASE_URL === "string" && PERF_BASE_URL
       ? PERF_BASE_URL.replace(/\/+$/, "")
@@ -848,7 +874,8 @@ export async function publicPlayerPerformance(
     return { r, txt, json };
   }
 
-  try {
+  const run = (async (): Promise<PublicPlayerPerformance> => {
+    try {
     const historyUrl =
       base +
       "/history/player-chart/" +
@@ -941,7 +968,7 @@ export async function publicPlayerPerformance(
       const opponentShort = normalized.map((x) => x.opponentShort).slice(0, 5);
       // XS_FIX_FRONT_HISTORY_SCORE_MAPPING_V1 END
 
-      return {
+      const value = {
         ok: true,
         playerSlug: s,
         slug: s,
@@ -971,21 +998,28 @@ export async function publicPlayerPerformance(
         },
         source: "history/player-chart",
       } as PublicPlayerPerformance;
+      xsPublicPlayerPerformanceCacheV1.set(cacheKey, { at: Date.now(), value });
+      return value;
     }
 
-    console.warn(
-      "[publicPlayerPerformance] history failed, safe fallback:",
-      r.status,
-      String(txt || "").slice(0, 160)
-    );
-  } catch (e: any) {
-    console.warn(
-      "[publicPlayerPerformance] history exception, safe fallback:",
-      String(e?.message || e)
-    );
-  }
+    xsPublicPlayerPerfWarnOnceV1(s, "history failed, safe fallback", {
+      status: r.status,
+      body: String(txt || "").slice(0, 160),
+    });
+    } catch (e: any) {
+      xsPublicPlayerPerfWarnOnceV1(s, "history exception, safe fallback", String(e?.message || e));
+    }
 
-  return empty as PublicPlayerPerformance;
+    xsPublicPlayerPerformanceCacheV1.set(cacheKey, { at: Date.now(), value: empty as PublicPlayerPerformance });
+    return empty as PublicPlayerPerformance;
+  })();
+
+  xsPublicPlayerPerformanceInflightV1.set(cacheKey, run);
+  try {
+    return await run;
+  } finally {
+    xsPublicPlayerPerformanceInflightV1.delete(cacheKey);
+  }
 }
 
 
