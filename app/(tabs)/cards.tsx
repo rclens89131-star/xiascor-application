@@ -407,11 +407,16 @@ const season     = (card?.seasonYear != null) ? String(card.seasonYear) : "—";
 const serial     = (card?.serialNumber != null) ? "#" + String(card.serialNumber) : "#—";
 const bonusPct = xsCardBonusPctV1(card);
 const xsL5Mini0 = xsL5BarsFromCard(card as any); /* XS_L5_MINICHART_TILE_RENDER_V1_PASS */
-const playerSlugKey = String((card as any)?.anyPlayer?.slug || (card as any)?.playerSlug || (card as any)?.player?.slug || "").trim();
-const xsL5Mini =
+const playerSlugKey = String((card as any)?.playerSlug || (card as any)?.player?.slug || (card as any)?.anyPlayer?.slug || "").trim();
+const cachedL5 = playerSlugKey && Array.isArray((l5Cache as any)[playerSlugKey]) ? (l5Cache as any)[playerSlugKey] : null; // XS_MYCARDS_L5_CACHE_TILE_INJECTION_V1
+const xsL5MiniFinal =
   (xsL5Mini0 && xsL5Mini0.length)
     ? xsL5Mini0
-    : (playerSlugKey && Array.isArray((l5Cache as any)[playerSlugKey]) ? (l5Cache as any)[playerSlugKey] : []);
+    : (cachedL5 || []);
+const cardWithL5Bars = useMemo(
+  () => ({ ...(card as any), l5Bars: xsL5MiniFinal }),
+  [card, xsL5MiniFinal]
+);
 
   return (
         <Pressable
@@ -468,7 +473,7 @@ const xsL5Mini =
       style={{ alignSelf: "stretch" }}
     >
 <SorareCardTile
-      card={card}
+      card={cardWithL5Bars}
       width={xsTileWidth2col(width)}
       imageUrl={xsSafeStr(card?.pictureUrl)}
       playerName={playerName}
@@ -481,7 +486,7 @@ const xsL5Mini =
       bonusPct={bonusPct}
       trendBars={xsTrendBarsFromL15((typeof (card as any)?.l5 === "number") ? (card as any).l5 : xsGetL15ValueV1(card as any))} /* XS_CARDS_FIX_TRENDBARS_SCOPE_V1 */
       l5={(typeof (card as any)?.l5 === "number") ? (card as any).l5 : null} // XS_FIX_L5_FALLBACK_V1 // XS_MYCARDS_PASS_L5_LEVEL_V1
-      l5Bars={xsL5Mini} /* XS_L5_MINICHART_TILE_RENDER_V1 */
+      l5Bars={xsL5MiniFinal} /* XS_L5_MINICHART_TILE_RENDER_V1 XS_MYCARDS_L5_CACHE_TILE_INJECTION_V1 */
       level={(typeof (card as any)?.level === "number") ? (card as any).level : ((card as any)?.cardLevel ?? 0)} // XS_MYCARDS_PASS_L5_LEVEL_V1
     />
   
@@ -777,6 +782,7 @@ const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
         ) : (
           <FlatList
             data={items}
+            extraData={xsL5Cache} /* XS_MYCARDS_L5_CACHE_TILE_INJECTION_V1 */
             keyExtractor={(item) => cardKey(item)}
             contentContainerStyle={{ paddingHorizontal: XS_MYCARDS_PAD, paddingBottom: 120 }}
             columnWrapperStyle={{ justifyContent: "center", gap: XS_MYCARDS_GAP }}
