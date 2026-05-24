@@ -21,11 +21,25 @@ function asNum(v: any): number | null {
   return null;
 }
 
+function xsHistoryScoreFromItemV1(item: any): number | null {
+  // XS_FIX_FRONT_HISTORY_POSTGRES_SHAPE_V1: PostgreSQL history exposes scoreSorare; keep old fields too.
+  const raw =
+    item?.score ??
+    item?.totalScore ??
+    item?.scoreSorare ??
+    item?.so5Score ??
+    item?.playerScore ??
+    item?.total ??
+    item?.value ??
+    item;
+  return asNum(raw);
+}
+
 function avgOf(arr: any[]): number | null {
   /* XS_DNT_ZERO_NOT_COUNTED_V1 */
   if (!Array.isArray(arr)) return null;
   const nums = arr
-    .map((x: any) => Number(x?.scoreSorare ?? x?.score ?? x))
+    .map((x: any) => xsHistoryScoreFromItemV1(x))
     .filter((n: number) => Number.isFinite(n) && n > 0);
   if (!nums.length) return null;
   return Math.round(nums.reduce((a: number, b: number) => a + b, 0) / nums.length);
@@ -69,12 +83,13 @@ function xsAverageLastValidScoresV1(items: any[], take: number): number | null {
   const scores = Array.isArray(items)
     ? items
         .filter((x) => {
-          const score = Number(x?.scoreSorare);
+          const score = xsHistoryScoreFromItemV1(x);
           const minutes = Number(x?.minutes);
-          return Number.isFinite(score) && Number.isFinite(minutes) && minutes > 0;
+          return typeof score === "number" && Number.isFinite(score) && Number.isFinite(minutes) && minutes > 0;
         })
         .slice(0, take)
-        .map((x) => Number(x.scoreSorare))
+        .map((x) => xsHistoryScoreFromItemV1(x))
+        .filter((n): n is number => typeof n === "number" && Number.isFinite(n))
     : [];
 
   if (!scores.length) return null;
@@ -1110,7 +1125,7 @@ function xsBuildMatchContextV1(card: any, perf: any, historyChart: any[]): XsCar
     .sort((a: any, b: any) => new Date(b?.matchDate || b?.date || 0).getTime() - new Date(a?.matchDate || a?.date || 0).getTime())
     .slice(0, 5);
   const recentScores = recent
-    .map((row: any) => xsRadarNumV1(row?.scoreSorare ?? row?.score ?? row?.totalScore))
+    .map((row: any) => xsRadarNumV1(xsHistoryScoreFromItemV1(row)))
     .filter((n: any): n is number => typeof n === "number" && Number.isFinite(n));
   const recentAvg = xsRadarAvgV1(recentScores);
   const std = xsRadarStdDevV1(recentScores);
@@ -2562,7 +2577,7 @@ function xsBuildFifaRadarValuesFromHistoryV1(
     })
     .slice(0, rangeLimit)
     .map((row: any) => ({
-      score: xsRadarNumV1(row?.scoreSorare ?? row?.score ?? row?.totalScore),
+      score: xsRadarNumV1(xsHistoryScoreFromItemV1(row)),
       minutes: xsRadarNumV1(row?.minutes),
       decisiveScore: xsRadarNumV1(row?.decisiveScore),
       allAroundScore: xsRadarNumV1(row?.allAroundScore),
@@ -3561,7 +3576,7 @@ return () => { cancelled = true; };
     : (Array.isArray(series.opp) ? series.opp.slice(0, scores.length || 5).reverse() : []);
 
   const xsDisplayScores = xsSortedHistory.length
-    ? xsSortedHistory.map((x: any) => Number(x?.scoreSorare ?? x?.score ?? 0))
+    ? xsSortedHistory.map((x: any) => xsHistoryScoreFromItemV1(x) ?? 0)
     : (Array.isArray(scores) ? scores.slice(0, xsWantedCount).reverse() : []);
 
   function xsPickOpponentLogoUrl(x: any): string | null {
@@ -3741,8 +3756,8 @@ const avg5 =
         undefined;
       const matchContext = xsFifaRadar.matchContext;
       const historyScores = (Array.isArray(historyChart) ? historyChart : []).slice(0, 40).map((row: any) => ({
-        scoreSorare: asNum(row?.scoreSorare ?? row?.score),
-        score: asNum(row?.scoreSorare ?? row?.score),
+        scoreSorare: xsHistoryScoreFromItemV1(row),
+        score: xsHistoryScoreFromItemV1(row),
         minutes: asNum(row?.minutes ?? row?.mins),
         matchDate: row?.matchDate ?? row?.date ?? null,
         opponent: row?.opponent ?? row?.opponentName ?? null,

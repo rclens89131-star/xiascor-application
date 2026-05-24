@@ -114,11 +114,12 @@ async function xsApplyMyCardsLocalCacheSafeV1(deviceId: string, response: any): 
   const id = String(deviceId || "").trim();
   const res = response || {};
 
-  const backendCards = Array.isArray(res?.cards) ? res.cards : [];
+  const backendCards = Array.isArray(res?.cards) ? res.cards.map(xsNormalizeMyCardsPostgresShapeV1) : [];
 
   if (backendCards.length > 0) {
-    await xsWriteMyCardsLocalCacheSafeV1(id, res);
-    return res;
+    const normalizedRes = { ...res, cards: backendCards };
+    await xsWriteMyCardsLocalCacheSafeV1(id, normalizedRes);
+    return normalizedRes;
   }
 
   const local = await xsReadMyCardsLocalCacheSafeV1(id);
@@ -160,10 +161,69 @@ type MyCardItemLocal = {
   seasonBonus?: string | number | null;
   grade?: string | number | null;
   anyTeam?: { name?: string | null } | null;
-  anyPlayer?: { displayName?: string | null } | null;
+  anyPlayer?: { displayName?: string | null; slug?: string | null; recentScores?: any[] | null; lastFiveScores?: any[] | null; l5Scores?: any[] | null } | null;
   player?: { displayName?: string | null; activeClub?: { name?: string | null } | null } | null;
 };
 /* XS_MY_CARDS_UI_TYPING_V1_END */
+function xsFirstTextV1(...values: any[]): string {
+  for (const value of values) {
+    const s = xsTxt(value);
+    if (s) return s;
+  }
+  return "";
+}
+
+function xsNormalizeMyCardsPostgresShapeV1(card: any): MyCardItemLocal {
+  // XS_FIX_FRONT_HISTORY_POSTGRES_SHAPE_V1: keep old UI fields while /my-cards can return DB-flat fields.
+  if (!card || typeof card !== "object") return card;
+  const playerName = xsFirstTextV1(card?.anyPlayer?.displayName, card?.player?.displayName, card?.playerName, card?.displayName);
+  const playerSlug = xsFirstTextV1(card?.anyPlayer?.slug, card?.player?.slug, card?.playerSlug, card?.sorareSlug);
+  const clubName = xsFirstTextV1(card?.anyTeam?.name, card?.player?.activeClub?.name, card?.clubName, card?.teamName);
+  const pictureUrl = xsFirstTextV1(card?.pictureUrl, card?.imageUrl, card?.cardImageUrl, card?.cardPictureUrl);
+
+  return {
+    ...card,
+    pictureUrl: pictureUrl || card?.pictureUrl || null,
+    rarity: card?.rarity ?? card?.rarityTyped ?? null,
+    rarityTyped: card?.rarityTyped ?? card?.rarity ?? null,
+    seasonYear: card?.seasonYear ?? card?.season ?? card?.season_year ?? null,
+    power: card?.power ?? card?.cardPower ?? null,
+    cardPower: card?.cardPower ?? card?.power ?? null,
+    l5: card?.l5 ?? card?.lastL5 ?? card?.last_l5 ?? null,
+    l15: card?.l15 ?? card?.lastL15 ?? card?.last_l15 ?? null,
+    l40: card?.l40 ?? card?.lastL40 ?? card?.last_l40 ?? null,
+    anyPlayer: {
+      ...(card?.anyPlayer || {}),
+      displayName: card?.anyPlayer?.displayName ?? (playerName || null),
+      slug: card?.anyPlayer?.slug ?? (playerSlug || null),
+      recentScores: card?.anyPlayer?.recentScores ?? card?.recentScores ?? null,
+      l5Scores: card?.anyPlayer?.l5Scores ?? card?.l5Scores ?? null,
+    },
+    player: {
+      ...(card?.player || {}),
+      displayName: card?.player?.displayName ?? (playerName || null),
+      slug: card?.player?.slug ?? (playerSlug || null),
+      activeClub: card?.player?.activeClub ?? (clubName ? { name: clubName } : null),
+    },
+    anyTeam: card?.anyTeam ?? (clubName ? { name: clubName } : null),
+  } as any;
+}
+
+function xsHistoryScoreValueV1(item: any): number | null {
+  const raw =
+    item?.score ??
+    item?.totalScore ??
+    item?.scoreSorare ??
+    item?.total ??
+    item?.value ??
+    item?.so5Score ??
+    item?.playerScore ??
+    item?.allAroundScore ??
+    item?.decisiveScore ??
+    item;
+  const n = typeof raw === "number" ? raw : Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
 function cardKey(card: MyCardItemLocal) {
   return String(
     (card as any)?.id ||
@@ -209,8 +269,7 @@ const arr =
 
   if (Array.isArray(arr) && arr.length > 0) {
 const last = arr[arr.length - 1];
-const v = last?.score ?? last?.total ?? last?.value ?? last;
-const n = typeof v === "number" ? v : (typeof v === "string" ? Number(v) : NaN);
+const n = xsHistoryScoreValueV1(last);
     return Number.isFinite(n) ? n : null;
   }
 
@@ -260,12 +319,7 @@ function xsL5BarsFromCard(card: any): number[] {
   ];
 
   const toNum = (x: any): number => {
-    const v =
-      (typeof x === "number") ? x :
-      (typeof x === "string") ? Number(x) :
-      (x?.score ?? x?.total ?? x?.value ?? x?.allAroundScore ?? x?.decisiveScore ?? NaN);
-
-    const n = (typeof v === "number") ? v : Number(v);
+    const n = xsHistoryScoreValueV1(x);
     return Number.isFinite(n) ? xsClamp(n, 0, 100) : NaN;
   };
 

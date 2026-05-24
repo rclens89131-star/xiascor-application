@@ -761,9 +761,10 @@ export type PublicPlayerPerformance = {
   position?: string | null;
   activeClub?: { name?: string | null; slug?: string | null } | null;
   l5?: number | null;
+  l10?: number | null;
   l15?: number | null;
   l40?: number | null;
-  averages?: { l5?: number | null; l15?: number | null; l40?: number | null } | null; // XS_OFFICIAL_SORARE_AVERAGES_V1
+  averages?: { l5?: number | null; l10?: number | null; l15?: number | null; l40?: number | null } | null; // XS_OFFICIAL_SORARE_AVERAGES_V1
   averagesDebug?: any;
   lastScore?: number | null;
   recentScores?: number[];
@@ -801,6 +802,7 @@ export async function publicPlayerPerformance(
     playerSlug: s,
     slug: s,
     l5: null,
+    l10: null,
     l15: null,
     l40: null,
     averageScore: null,
@@ -868,9 +870,9 @@ export async function publicPlayerPerformance(
       // XS_FIX_FRONT_HISTORY_SCORE_MAPPING_V1 BEGIN
       const toFiniteScore = (item: any): number | null => {
         const candidates = [
-          item?.scoreSorare,
           item?.score,
           item?.totalScore,
+          item?.scoreSorare,
           item?.so5Score,
           item?.playerScore,
           item?.points,
@@ -922,6 +924,7 @@ export async function publicPlayerPerformance(
 
       const recent40 = normalized.map((x) => x.score).slice(0, 40);
       const recent15 = recent40.slice(0, 15);
+      const recent10 = recent40.slice(0, 10);
       const recent5 = recent40.slice(0, 5);
 
       const avg = (arr: number[]) =>
@@ -930,6 +933,7 @@ export async function publicPlayerPerformance(
           : null;
       const backendAverages = json?.averages && typeof json.averages === "object" ? json.averages : null; // XS_OFFICIAL_SORARE_AVERAGES_V1
       const backendL5 = Number.isFinite(Number(backendAverages?.l5)) ? Number(backendAverages.l5) : null;
+      const backendL10 = Number.isFinite(Number(backendAverages?.l10)) ? Number(backendAverages.l10) : null;
       const backendL15 = Number.isFinite(Number(backendAverages?.l15)) ? Number(backendAverages.l15) : null;
       const backendL40 = Number.isFinite(Number(backendAverages?.l40)) ? Number(backendAverages.l40) : null;
 
@@ -945,6 +949,7 @@ export async function publicPlayerPerformance(
         position: json.position || null,
         activeClub: json.activeClub || json.club || null,
         l5: backendL5 ?? avg(recent5),
+        l10: backendL10 ?? avg(recent10),
         l15: backendL15 ?? avg(recent15),
         l40: backendL40 ?? avg(recent40),
         averages: backendAverages,
