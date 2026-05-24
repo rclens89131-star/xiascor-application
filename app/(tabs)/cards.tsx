@@ -400,8 +400,8 @@ function XSL5MiniBars(props: { values: number[]; opponents?: any[] }) {
 /* XS_L5_MINICHART_TILE_RENDER_V1_END */
 function CardTile({ card, width, l5Cache = {} }: { card: MyCardItemLocal; width: number; l5Cache?: Record<string, number[]> }) { /* XS_L5CACHE_OPTIONAL_V2 */
   const router = useRouter(); /* XS_CARD_TILE_NAV_V1 */
-const playerName = xsSafeStr(card?.anyPlayer?.displayName || card?.player?.displayName || "Unknown");
-const clubName   = xsSafeStr(card?.anyTeam?.name || card?.player?.activeClub?.name || "—");
+const playerName = xsSafeStr((card as any)?.playerName || (card as any)?.displayName || card?.anyPlayer?.displayName || card?.player?.displayName || "Unknown");
+const clubName   = xsSafeStr((card as any)?.clubName || (card as any)?.teamName || card?.anyTeam?.name || card?.player?.activeClub?.name || "—");
 const rarity     = xsSafeStr((card?.rarityTyped || card?.rarity || "limited")).toLowerCase();
 const season     = (card?.seasonYear != null) ? String(card.seasonYear) : "—";
 const serial     = (card?.serialNumber != null) ? "#" + String(card.serialNumber) : "#—";

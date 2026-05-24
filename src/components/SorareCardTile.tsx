@@ -6,6 +6,7 @@
 /* XS_MES_CARTES_TILE_CLEAN_V2 */
 /* XS_MES_CARTES_LVL_POSITION_V3 */
 /* XS_FIX_L5_MINI_CHART_ORDER_V1 */
+/* XS_MYCARDS_PREMIUM_TILE_REFERENCE_V1 */
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import React from "react";
@@ -308,13 +309,13 @@ function xsDifficultyBarsV1(value: number | null) {
 export function SorareCardTile(props: any) {
   const c = { ...(props.card || {}), ...props };
   const width = xsNum(props.width) ?? 170;
-  const imageHeight = Math.round(width * 1.16);
+  const imageHeight = Math.round(width * 1.28);
   const l5Scores = xsGetL5ScoresV1(c);
   const l5Avg = xsNum(c?.averages?.l5 ?? c?.avg5 ?? c?.l5Avg ?? c?.l5) ?? xsAvgV1(l5Scores); /* XS_OFFICIAL_SORARE_AVERAGES_V1 */
   const scoreTone = xsScoreColorV1(l5Avg);
   const pictureUrl = xsGetCardImageV1(c);  const bonusPct = xsCardBonusPctV1(c);
-  const scoreCircleSize = Math.max(48, Math.round(width * 0.29));
-  const scoreBoxSize = Math.max(18, Math.round(width * 0.112));
+  const scoreCircleSize = Math.max(52, Math.round(width * 0.31));
+  const scoreBoxSize = Math.max(19, Math.round(width * 0.118));
 
   const content = (
     <View
@@ -393,48 +394,43 @@ export function SorareCardTile(props: any) {
           <Feather name="star" size={18} color="#FFD028" fill="#FFD028" />
         </View>
 
-        <View
-          style={{
-            position: "absolute",
-            left: 10,
-            bottom: 76,
-            paddingHorizontal: 8,
-            paddingVertical: 4,
-            borderRadius: 7,
-            backgroundColor: "rgba(0,0,0,0.58)",
-            borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.14)",
-          }}
-        >
-          <Text style={{ color: "#FFFFFF", fontSize: 12, fontWeight: "900" }}>{xsGetPositionV1(c)}</Text>
-        </View>
-
-        <View style={{ position: "absolute", left: 10, right: scoreCircleSize + 14, bottom: 12 }}>
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6,
-              maxWidth: "100%",
-            }}
-          >
+        <View style={{ position: "absolute", left: 10, right: scoreCircleSize + 12, bottom: 14 }}>
             <Text
               style={{
                 color: "#FFFFFF",
-                fontSize: 21,
-                lineHeight: 24,
+                fontSize: Math.max(20, Math.round(width * 0.118)),
+                lineHeight: Math.max(22, Math.round(width * 0.128)),
                 fontWeight: "900",
                 letterSpacing: 0,
-                flexShrink: 1,
-                maxWidth: Math.max(72, width - scoreCircleSize - 74),
+                textShadowColor: "rgba(0,0,0,0.45)",
+                textShadowRadius: 5,
               }}
-              numberOfLines={1}
+              numberOfLines={2}
               ellipsizeMode="tail"
               adjustsFontSizeToFit
-              minimumFontScale={0.72}
+              minimumFontScale={0.76}
             >
               {xsGetPlayerNameV1(c).toUpperCase()}
             </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 7, marginTop: 5, minWidth: 0 }}>
+            <Text style={{ color: "#FFD21A", fontSize: 15, fontWeight: "900", flexShrink: 0 }} numberOfLines={1}>
+              {xsGetPositionV1(c)}
+            </Text>
+            <Text style={{ color: "#AEB4BF", fontSize: 14, fontWeight: "900", flexShrink: 1 }} numberOfLines={1}>
+              {xsGetClubNameV1(c)}
+            </Text>
+          </View>
+        </View>
+
+        <View
+          style={{
+            position: "absolute",
+            right: scoreCircleSize + 14,
+            bottom: 76,
+            alignItems: "flex-end",
+          }}
+          pointerEvents="none"
+        >
             <View
               style={{
                 // XS_BONUS_BADGE_NEXT_TO_NAME_FINAL_SAFE_V1
@@ -451,17 +447,13 @@ export function SorareCardTile(props: any) {
                 {xsFormatBonusPctV1(bonusPct)}
               </Text>
             </View>
-          </View>
-          <Text style={{ color: "#D1D5DB", fontSize: 12, marginTop: 2 }} numberOfLines={1}>
-            {xsGetClubNameV1(c)}
-          </Text>
         </View>
 
         <View
           style={{
             position: "absolute",
             right: 8,
-            bottom: 12,
+            bottom: 28,
             alignItems: "center",
             justifyContent: "center",
           }}
@@ -485,17 +477,15 @@ export function SorareCardTile(props: any) {
               {l5Avg === null ? "—" : l5Avg}
             </Text>
           </View>
-          <Text style={{ color: "#FFFFFF", fontWeight: "900", fontSize: 10, marginTop: 2 }}>L5</Text>
         </View>
       </View>
 
-      <View style={{ borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.13)", paddingHorizontal: 10, paddingVertical: 9 }}>
-        <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ color: "#C7CBD1", fontSize: 10, fontWeight: "900" }} numberOfLines={1}>
+      <View style={{ borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.16)", paddingHorizontal: 10, paddingVertical: 9 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+            <Text style={{ color: "#E5E7EB", fontSize: 13, fontWeight: "900", width: 22 }} numberOfLines={1}>
               L5
             </Text>
-            <View style={{ flexDirection: "row", gap: 4, marginTop: 6 }}>
+            <View style={{ flexDirection: "row", gap: 4, flex: 1, justifyContent: "space-between" }}>
               {Array.from({ length: 5 }, (_, i) => {
                 const score = l5Scores[i];
                 const tone = xsScoreColorV1(score);
@@ -518,7 +508,6 @@ export function SorareCardTile(props: any) {
                 );
               })}
             </View>
-          </View>
         </View>
       </View>
     </View>
