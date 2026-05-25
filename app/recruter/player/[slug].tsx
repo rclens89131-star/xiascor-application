@@ -19,6 +19,7 @@ import { publicPlayerPerformance, recruterPlayerCards, recruterSaleStatus, type 
 // XS_RECRUTER_STATS_GRAPH_LOGOS_RANGE_V1: Stats graph supports L5/L10/L40 ranges and opponent logos.
 // XS_RECRUTER_STATS_ALL_LABEL_V1: display the 40-match stats range as All without changing history logic.
 // XS_ALL_EXTENSIBLE_HISTORY_V1: load a larger history window only when All is selected.
+// XS_RECRUTER_SALE_CARD_IMAGE_V1: sale rows prefer real Sorare card artwork before player portraits.
 function text(v: unknown, fallback = "") {
   const s = String(v ?? "").trim();
   return s || fallback;
@@ -736,6 +737,50 @@ function getRecruterPlayerImageV1(player: any, card?: any, offer?: any) {
   return selected;
 }
 
+function getRecruterSaleCardImageV1(item: any, fallbackPlayer?: any) {
+  const pick = (source: string, value: unknown) => {
+    const uri = text(value);
+    return uri ? { uri, source, kind: "fullBody" as const } : null;
+  };
+  const raw = item?.raw || item?.offerData || {};
+  const saleCandidates = [
+    pick("item.cardPictureUrl", item?.cardPictureUrl),
+    pick("item.cardImageUrl", item?.cardImageUrl),
+    pick("item.imageUrl", item?.imageUrl),
+    pick("item.pictureUrl", item?.pictureUrl),
+    pick("item.card.pictureUrl", item?.card?.pictureUrl),
+    pick("item.token.pictureUrl", item?.token?.pictureUrl),
+    pick("item.assetUrl", item?.assetUrl),
+    pick("raw.pictureUrl", raw?.pictureUrl),
+    pick("raw.card.pictureUrl", raw?.card?.pictureUrl),
+    pick("raw.token.pictureUrl", raw?.token?.pictureUrl),
+    pick("raw.assetUrl", raw?.assetUrl),
+    pick("raw.senderSide.anyCards[0].pictureUrl", raw?.senderSide?.anyCards?.[0]?.pictureUrl),
+    pick("raw.senderSide.anyCards[0].card.pictureUrl", raw?.senderSide?.anyCards?.[0]?.card?.pictureUrl),
+    pick("raw.senderSide.anyCards[0].token.pictureUrl", raw?.senderSide?.anyCards?.[0]?.token?.pictureUrl),
+  ].filter(Boolean) as { uri: string; source: string; kind: "fullBody" }[];
+  const selected = saleCandidates[0];
+  if (selected) {
+    if (typeof __DEV__ !== "undefined" && __DEV__) {
+      console.log("[XS_RECRUTER_SALE_CARD_IMAGE_V1]", {
+        cardSlug: text(item?.cardSlug || item?.cardId || item?.id),
+        selectedSource: selected.source,
+        hasCardImage: true,
+      });
+    }
+    return selected;
+  }
+  const fallback = getRecruterPlayerImageV1(fallbackPlayer, item, item);
+  if (typeof __DEV__ !== "undefined" && __DEV__) {
+    console.log("[XS_RECRUTER_SALE_CARD_IMAGE_V1]", {
+      cardSlug: text(item?.cardSlug || item?.cardId || item?.id),
+      selectedSource: fallback.source,
+      hasCardImage: false,
+    });
+  }
+  return fallback;
+}
+
 function RecruterFaceImageV1({
   uri,
   size,
@@ -1233,7 +1278,7 @@ export default function RecruterPlayerCardsScreen() {
             }
             renderItem={({ item }) => {
               const seller = text(item?.seller?.nickname || item?.seller?.slug);
-              const image = getRecruterPlayerImageV1(lightPlayer || player, item, item);
+              const image = getRecruterSaleCardImageV1(item, lightPlayer || player);
               return (
                 <View style={{ flexDirection: "row", gap: 12, padding: 12, marginBottom: 12, borderRadius: 15, backgroundColor: "#101722", borderWidth: 1, borderColor: "#2B3444" }}>
                   <RecruterFaceImageV1 uri={image.uri} size={{ width: 76, height: 102 }} radius={10} variant="card" imageKind={image.kind} />
