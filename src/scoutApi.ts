@@ -373,7 +373,19 @@ export async function recruterPlayerCards(slug: string, params?: { first?: numbe
   if (!s) throw new Error("missing player slug");
   const qs = new URLSearchParams();
   if (params?.first != null) qs.set("first", String(params.first));
-  const res = await apiFetch<RecruterPlayerCardsResponse>(`/recruter/player/${encodeURIComponent(s)}/cards${xsRecruterTailV1(qs)}`, { signal: params?.signal });
+  let res: RecruterPlayerCardsResponse;
+  try {
+    // XS_RECRUTER_FRONT_CARDS_DB_ON_DEMAND_V1: prefer PostgreSQL on-demand offers; legacy route remains fallback-only.
+    res = await apiFetch<RecruterPlayerCardsResponse>(`/recruter/player/${encodeURIComponent(s)}/cards-db${xsRecruterTailV1(qs)}`, { signal: params?.signal });
+  } catch (err) {
+    if (typeof __DEV__ !== "undefined" && __DEV__) {
+      console.log("[XS_RECRUTER_FRONT_CARDS_DB_ON_DEMAND_V1] fallback legacy cards route", {
+        slug: s,
+        error: String((err as any)?.message || err),
+      });
+    }
+    res = await apiFetch<RecruterPlayerCardsResponse>(`/recruter/player/${encodeURIComponent(s)}/cards${xsRecruterTailV1(qs)}`, { signal: params?.signal });
+  }
   const items = Array.isArray(res?.items) ? res.items : [];
   const firstOffer = items[0] || null;
   const rawPlayer = res?.player ?? {
