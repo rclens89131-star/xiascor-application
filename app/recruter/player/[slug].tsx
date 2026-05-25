@@ -829,7 +829,20 @@ export default function RecruterPlayerCardsScreen() {
       if (cardsRes.status === "rejected") throw cardsRes.reason;
       const res = cardsRes.value;
       const light = lightRes.status === "fulfilled" ? lightRes.value?.player || null : null;
-      setItems(Array.isArray(res.items) ? res.items : []);
+      const saleItems = Array.isArray(res?.items)
+        ? res.items
+        : (Array.isArray((res as any)?.cards) ? (res as any).cards : (Array.isArray((res as any)?.offers) ? (res as any).offers : []));
+      if (typeof __DEV__ !== "undefined" && __DEV__) {
+        console.log("[XS_RECRUTER_PLAYER_SALES_RENDER_FIX_V1]", {
+          slug: playerSlug,
+          keys: Object.keys(res || {}),
+          itemsLen: Array.isArray(res?.items) ? res.items.length : null,
+          cardsLen: Array.isArray((res as any)?.cards) ? (res as any).cards.length : null,
+          offersLen: Array.isArray((res as any)?.offers) ? (res as any).offers.length : null,
+          saleItemsLen: saleItems.length,
+        });
+      }
+      setItems(saleItems);
       setLightPlayer(light);
       setPlayer({ ...((res.player as RecruterPlayer | null) || {}), ...(light || {}) } as RecruterPlayer);
       setSaleStatus(res.saleStatus || null);

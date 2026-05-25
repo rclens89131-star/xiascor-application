@@ -201,6 +201,7 @@ export type RecruterPlayerCardsResponse = {
   saleStatus?: string | null;
   count?: number;
   items: RecruterOffer[];
+  cards?: RecruterOffer[];
   player?: (Partial<RecruterPlayer> & {
     activeClub?: { name?: string | null; slug?: string | null } | null;
   }) | null;
@@ -386,7 +387,9 @@ export async function recruterPlayerCards(slug: string, params?: { first?: numbe
     }
     res = await apiFetch<RecruterPlayerCardsResponse>(`/recruter/player/${encodeURIComponent(s)}/cards${xsRecruterTailV1(qs)}`, { signal: params?.signal });
   }
-  const items = Array.isArray(res?.items) ? res.items : [];
+  const items = Array.isArray(res?.items)
+    ? res.items
+    : (Array.isArray(res?.cards) ? res.cards : (Array.isArray(res?.offers) ? res.offers : []));
   const firstOffer = items[0] || null;
   const rawPlayer = res?.player ?? {
     slug: res?.playerSlug || s,
@@ -413,9 +416,9 @@ export async function recruterPlayerCards(slug: string, params?: { first?: numbe
     ...item,
     slug: item.cardSlug || item.playerSlug || item.cardId,
     eur: typeof item?.price?.eur === "number" ? item.price.eur : null,
-    priceText: item?.price?.text || null,
+    priceText: item?.price?.text || item?.priceText || "Prix indisponible",
   }));
-  return { ...res, playerSlug: res?.playerSlug || s, saleStatus: res?.saleStatus || player.saleStatus, count: items.length, items, player, offers };
+  return { ...res, playerSlug: res?.playerSlug || s, saleStatus: res?.saleStatus || player.saleStatus, count: items.length, items, cards: items, player, offers };
 }
 
 export async function recruterCard(cardId: string, params?: { signal?: AbortSignal }): Promise<RecruterCardResponse> {
