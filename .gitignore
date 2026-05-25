@@ -79,3 +79,12 @@ _trash_sorare_backend_*/
 
 expo_out.log
 expo_err.log
+
+# XS_SAFE_CLEAN_PROJECT_V1
+*.bak.*
+_tmp_*.cjs
+_manual_exports/
+_logs/tmp/
+*.tmp
+*.old
+
