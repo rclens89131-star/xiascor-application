@@ -1055,7 +1055,7 @@ export default function RecruterPlayerCardsScreen() {
     ? Math.round(coachRadar.l5)
     : null; // XS_FRONT_PERFORMANCE_PARITY_PROBE_V1
   if (typeof __DEV__ !== "undefined" && __DEV__) {
-    console.log("[XS_FRONT_PERFORMANCE_PARITY_PROBE_V1]", {
+    console.log("[XS_ALL_CARDS_PERFORMANCE_PARITY_V1]", {
       screen: "recruter-detail",
       slug: playerSlug,
       displayedScore: recruterOfficialScore,
@@ -1063,6 +1063,8 @@ export default function RecruterPlayerCardsScreen() {
       displayedL10: (coachRadar as any).l10,
       displayedL15: coachRadar.l15,
       displayedL40: coachRadar.l40,
+      sourceUsed: recruterOfficialScore == null ? "empty" : "official_history_l5",
+      fallbackUsed: recruterOfficialScore == null,
       coachCompositeOverall: coachRadar.overall,
       sourceFields: {
         scoreShown: "coachRadar.l5",

@@ -828,7 +828,10 @@ function PlayerCard({
       {slot ? <Text style={styles.slotLabel}>{slot}</Text> : null}
       <PremiumPressable onPress={onPress} style={[styles.playerCard, { width, height }]}>
         <LinearGradient colors={["#1a1a1a", player.colors[1], "#080808"]} style={styles.playerImageArea}>
-          <Text style={[styles.cardScore, compact && { fontSize: 14 }]}>{player.score}</Text>
+          <View style={styles.cardScoreWrap}>
+            <Text style={[styles.cardScore, compact && { fontSize: 14 }]}>{player.score}</Text>
+            <Text style={[styles.cardScoreLabel, compact && { fontSize: 7 }]}>Prévu</Text>
+          </View>
           <StatBadge small={compact} />
           <CardPortrait player={player} compact={compact} />
           {player.pictureUrl ? (
@@ -1936,16 +1939,30 @@ const styles = {
     overflow: "hidden" as const,
   },
   cardScore: {
-    position: "absolute" as const,
-    top: 7,
-    left: 7,
     color: TEXT,
     fontSize: 17,
     fontWeight: "900" as const,
-    zIndex: 4,
     textShadowColor: "rgba(0,0,0,0.8)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
+  },
+  cardScoreWrap: {
+    position: "absolute" as const,
+    top: 7,
+    left: 7,
+    zIndex: 4,
+    alignItems: "flex-start" as const,
+    paddingHorizontal: 5,
+    paddingVertical: 3,
+    borderRadius: 7,
+    backgroundColor: "rgba(0,0,0,0.38)",
+  },
+  cardScoreLabel: {
+    marginTop: -2,
+    color: "rgba(255,255,255,0.78)",
+    fontSize: 8,
+    fontWeight: "800" as const,
+    textTransform: "uppercase" as const,
   },
   statBadge: {
     position: "absolute" as const,

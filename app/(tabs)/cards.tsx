@@ -428,11 +428,16 @@ const cardWithL5Bars = useMemo(
   [card, xsL5MiniFinal, officialL5]
 );
 if (typeof __DEV__ !== "undefined" && __DEV__ && playerSlugKey) {
-  console.log("[XS_FRONT_PERFORMANCE_PARITY_PROBE_V1]", {
+  console.log("[XS_ALL_CARDS_PERFORMANCE_PARITY_V1]", {
     screen: "my-cards-tile",
     slug: playerSlugKey,
     displayedScore: officialL5 ?? (typeof (card as any)?.l5 === "number" ? (card as any).l5 : null),
     displayedL5: officialL5 ?? null,
+    displayedL10: cachedPerf?.averages?.l10 ?? cachedPerf?.l10 ?? null,
+    displayedL15: cachedPerf?.averages?.l15 ?? cachedPerf?.l15 ?? null,
+    displayedL40: cachedPerf?.averages?.l40 ?? cachedPerf?.l40 ?? null,
+    sourceUsed: officialL5 == null ? "card_fallback_l5" : "official_perf_averages_l5",
+    fallbackUsed: officialL5 == null,
     sourceFields: {
       officialL5,
       cardL5: (card as any)?.l5,
