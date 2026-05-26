@@ -21,6 +21,7 @@ import { publicPlayerPerformance, recruterPlayerCards, recruterSaleStatus, type 
 // XS_ALL_EXTENSIBLE_HISTORY_V1: load a larger history window only when All is selected.
 // XS_RECRUTER_SALE_CARD_IMAGE_V1: sale rows prefer real Sorare card artwork before player portraits.
 // XS_RECRUTER_SMART_SALE_CARDS_V1: sale rows expose real bonus/power/XP when available and only show smart badges from real data.
+// XS_RECRUTER_SMART_COMPARE_V1: sale rows show at most two intra-player comparison badges from backend compareFlags.
 function text(v: unknown, fallback = "") {
   const s = String(v ?? "").trim();
   return s || fallback;
@@ -78,6 +79,22 @@ function smartFlagLabelV1(flag: string) {
     case "best_value": return "📈 Bon ratio";
     default: return text(flag).replace(/_/g, " ");
   }
+}
+
+function saleCompareBadgesV1(card: RecruterOffer) {
+  const flags = card?.compareFlags || {};
+  const labels: string[] = [];
+  if (flags.bestDeal) labels.push("🔥 Meilleure affaire");
+  if (flags.bestBonus) labels.push("⚡ Meilleur bonus");
+  if (flags.bestPower) labels.push("💎 Power max");
+  if (flags.bestValueRatio) labels.push("📈 Meilleur ratio");
+  const fallbackFlags = Array.isArray(card?.smartFlags) ? card.smartFlags : [];
+  for (const flag of fallbackFlags) {
+    const label = smartFlagLabelV1(String(flag));
+    if (label && !labels.includes(label)) labels.push(label);
+    if (labels.length >= 2) break;
+  }
+  return labels.slice(0, 2);
 }
 
 type RecruterCoachContextV1 = {
@@ -1347,7 +1364,7 @@ export default function RecruterPlayerCardsScreen() {
               const xp = saleNumberV1(item?.xp);
               const grade = saleNumberV1(item?.grade);
               const smartScore = saleNumberV1(item?.smartScore);
-              const smartFlags = Array.isArray(item?.smartFlags) ? item.smartFlags.filter(Boolean).slice(0, 3) : [];
+              const compareBadges = saleCompareBadgesV1(item);
               return (
                 <View style={{ flexDirection: "row", gap: 12, padding: 12, marginBottom: 12, borderRadius: 15, backgroundColor: "#101722", borderWidth: 1, borderColor: "#2B3444" }}>
                   <RecruterFaceImageV1 uri={image.uri} size={{ width: 76, height: 102 }} radius={10} variant="card" imageKind={image.kind} />
@@ -1364,11 +1381,11 @@ export default function RecruterPlayerCardsScreen() {
                       {grade != null ? <Text style={{ color: "#dbeafe", fontWeight: "900", fontSize: 12, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: "rgba(56,189,248,0.10)", borderWidth: 1, borderColor: "rgba(56,189,248,0.22)" }}>Niv. {grade}</Text> : null}
                       {smartScore != null ? <Text style={{ color: "#f8fafc", fontWeight: "900", fontSize: 12, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: "rgba(225,29,72,0.22)", borderWidth: 1, borderColor: "rgba(225,29,72,0.35)" }}>Smart {smartScore}</Text> : null}
                     </View>
-                    {smartFlags.length ? (
+                    {compareBadges.length ? (
                       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-                        {smartFlags.map((flag) => (
-                          <Text key={flag} style={{ color: "#f8fafc", fontWeight: "900", fontSize: 11, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: "rgba(225,29,72,0.18)", borderWidth: 1, borderColor: "rgba(225,29,72,0.32)" }}>
-                            {smartFlagLabelV1(flag)}
+                        {compareBadges.map((label) => (
+                          <Text key={label} style={{ color: "#f8fafc", fontWeight: "900", fontSize: 11, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: "rgba(225,29,72,0.18)", borderWidth: 1, borderColor: "rgba(225,29,72,0.32)" }}>
+                            {label}
                           </Text>
                         ))}
                       </View>

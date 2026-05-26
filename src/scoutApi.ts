@@ -68,6 +68,15 @@ export type RecruterOffer = {
   smartFlags?: string[] | null;
   smartScore?: number | null;
   priceValueRatio?: number | null;
+  l10PriceRatio?: number | null;
+  compareFlags?: {
+    bestDeal?: boolean | null;
+    bestBonus?: boolean | null;
+    bestPower?: boolean | null;
+    bestValueRatio?: boolean | null;
+  } | null;
+  l10?: number | null;
+  averages?: { l10?: number | null; [key: string]: any } | null;
   raw?: any;
 };
 
