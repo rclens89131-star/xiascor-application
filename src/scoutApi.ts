@@ -55,6 +55,19 @@ export type RecruterOffer = {
     wei?: string | null;
   } | null;
   seller?: any;
+  power?: number | null;
+  powerBonusPct?: number | null;
+  grade?: number | null;
+  xp?: number | null;
+  bonus?: number | null;
+  seasonBonus?: number | null;
+  totalBonus?: number | null;
+  serialBonus?: number | null;
+  collectionBonus?: number | null;
+  bonusStatus?: string | null;
+  smartFlags?: string[] | null;
+  smartScore?: number | null;
+  priceValueRatio?: number | null;
   raw?: any;
 };
 

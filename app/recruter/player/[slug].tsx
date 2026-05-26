@@ -20,6 +20,7 @@ import { publicPlayerPerformance, recruterPlayerCards, recruterSaleStatus, type 
 // XS_RECRUTER_STATS_ALL_LABEL_V1: display the 40-match stats range as All without changing history logic.
 // XS_ALL_EXTENSIBLE_HISTORY_V1: load a larger history window only when All is selected.
 // XS_RECRUTER_SALE_CARD_IMAGE_V1: sale rows prefer real Sorare card artwork before player portraits.
+// XS_RECRUTER_SMART_SALE_CARDS_V1: sale rows expose real bonus/power/XP when available and only show smart badges from real data.
 function text(v: unknown, fallback = "") {
   const s = String(v ?? "").trim();
   return s || fallback;
@@ -39,6 +40,44 @@ function rarityLabel(card: RecruterOffer) {
 
 function seasonLabel(card: RecruterOffer) {
   return card?.season != null ? String(card.season) : "—";
+}
+
+function saleNumberV1(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const n = Number(String(value).replace("%", "").replace(",", ".").trim());
+  return Number.isFinite(n) ? n : null;
+}
+
+function saleBonusLabelV1(card: RecruterOffer) {
+  const total = saleNumberV1(card?.totalBonus);
+  const bonus = saleNumberV1(card?.bonus);
+  const seasonBonus = saleNumberV1(card?.seasonBonus);
+  const serialBonus = saleNumberV1(card?.serialBonus);
+  const collectionBonus = saleNumberV1(card?.collectionBonus);
+  const value = total ?? bonus ?? seasonBonus ?? serialBonus ?? collectionBonus;
+  if (value == null) return "Bonus indisponible";
+  return `+${value.toFixed(value % 1 === 0 ? 0 : 1)}% bonus`;
+}
+
+function salePowerLabelV1(power: number | null, powerBonusPct?: number | null) {
+  if (power == null) return null;
+  const pct = saleNumberV1(powerBonusPct);
+  if (pct != null) return `Power +${pct.toFixed(pct % 1 === 0 ? 0 : 1)}%`;
+  if (power > 0 && power < 2) {
+    const derived = (power - 1) * 100;
+    return `Power +${derived.toFixed(derived % 1 === 0 ? 0 : 1)}%`;
+  }
+  return `Power ${power}`;
+}
+
+function smartFlagLabelV1(flag: string) {
+  switch (flag) {
+    case "best_deal": return "🔥 Bonne affaire";
+    case "best_bonus": return "⚡ Meilleur bonus";
+    case "high_power": return "💎 Power élevé";
+    case "best_value": return "📈 Bon ratio";
+    default: return text(flag).replace(/_/g, " ");
+  }
 }
 
 type RecruterCoachContextV1 = {
@@ -1303,6 +1342,12 @@ export default function RecruterPlayerCardsScreen() {
             renderItem={({ item }) => {
               const seller = text(item?.seller?.nickname || item?.seller?.slug);
               const image = getRecruterSaleCardImageV1(item, lightPlayer || player);
+              const power = saleNumberV1(item?.power);
+              const powerLabel = salePowerLabelV1(power, item?.powerBonusPct);
+              const xp = saleNumberV1(item?.xp);
+              const grade = saleNumberV1(item?.grade);
+              const smartScore = saleNumberV1(item?.smartScore);
+              const smartFlags = Array.isArray(item?.smartFlags) ? item.smartFlags.filter(Boolean).slice(0, 3) : [];
               return (
                 <View style={{ flexDirection: "row", gap: 12, padding: 12, marginBottom: 12, borderRadius: 15, backgroundColor: "#101722", borderWidth: 1, borderColor: "#2B3444" }}>
                   <RecruterFaceImageV1 uri={image.uri} size={{ width: 76, height: 102 }} radius={10} variant="card" imageKind={image.kind} />
@@ -1310,6 +1355,24 @@ export default function RecruterPlayerCardsScreen() {
                     <Text style={{ color: "white", fontWeight: "900" }} numberOfLines={1}>{text(item.playerName, header.playerName)}</Text>
                     <Text style={{ color: "#72e6a2", fontWeight: "900" }}>{priceLabel(item)}</Text>
                     <Text style={{ color: "#c9d1d9" }} numberOfLines={1}>{rarityLabel(item)} · Saison {seasonLabel(item)}</Text>
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 1 }}>
+                      <Text style={{ color: saleBonusLabelV1(item) === "Bonus indisponible" ? "#f0b35a" : "#72e6a2", fontWeight: "900", fontSize: 12, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: "rgba(114,230,162,0.10)", borderWidth: 1, borderColor: "rgba(114,230,162,0.22)" }}>
+                        {saleBonusLabelV1(item)}
+                      </Text>
+                      {powerLabel ? <Text style={{ color: "#dbeafe", fontWeight: "900", fontSize: 12, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: "rgba(56,189,248,0.10)", borderWidth: 1, borderColor: "rgba(56,189,248,0.22)" }}>{powerLabel}</Text> : null}
+                      {xp != null ? <Text style={{ color: "#dbeafe", fontWeight: "900", fontSize: 12, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: "rgba(56,189,248,0.10)", borderWidth: 1, borderColor: "rgba(56,189,248,0.22)" }}>XP {xp}</Text> : null}
+                      {grade != null ? <Text style={{ color: "#dbeafe", fontWeight: "900", fontSize: 12, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: "rgba(56,189,248,0.10)", borderWidth: 1, borderColor: "rgba(56,189,248,0.22)" }}>Niv. {grade}</Text> : null}
+                      {smartScore != null ? <Text style={{ color: "#f8fafc", fontWeight: "900", fontSize: 12, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: "rgba(225,29,72,0.22)", borderWidth: 1, borderColor: "rgba(225,29,72,0.35)" }}>Smart {smartScore}</Text> : null}
+                    </View>
+                    {smartFlags.length ? (
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                        {smartFlags.map((flag) => (
+                          <Text key={flag} style={{ color: "#f8fafc", fontWeight: "900", fontSize: 11, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: "rgba(225,29,72,0.18)", borderWidth: 1, borderColor: "rgba(225,29,72,0.32)" }}>
+                            {smartFlagLabelV1(flag)}
+                          </Text>
+                        ))}
+                      </View>
+                    ) : null}
                     <Text style={{ color: "#9ba1a6" }} numberOfLines={1}>{text(item.clubName, header.clubName)} · {text(item.position, header.position)}</Text>
                     <Text style={{ color: "#8b949e" }} numberOfLines={1}>{seller ? `Vendeur ${seller}` : text(item.leagueName, header.leagueName)}</Text>
                   </View>
