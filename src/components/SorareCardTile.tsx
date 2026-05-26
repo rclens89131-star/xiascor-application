@@ -311,8 +311,8 @@ export function SorareCardTile(props: any) {
   const width = xsNum(props.width) ?? 170;
   const imageHeight = Math.round(width * 1.28);
   const l5Scores = xsGetL5ScoresV1(c);
-  const l5Avg = xsNum(c?.averages?.l5 ?? c?.avg5 ?? c?.l5Avg ?? c?.l5) ?? xsAvgV1(l5Scores); /* XS_OFFICIAL_SORARE_AVERAGES_V1 */
-  const scoreTone = xsScoreColorV1(l5Avg);
+  const primaryScore = xsNum(c?.averages?.l10 ?? c?.l10 ?? c?.L10 ?? c?.avg10 ?? c?.averages?.L10) ?? xsNum(c?.averages?.l5 ?? c?.avg5 ?? c?.l5Avg ?? c?.l5) ?? xsAvgV1(l5Scores); /* XS_PRIMARY_SCORE_L10_V1 */
+  const scoreTone = xsScoreColorV1(primaryScore);
   const pictureUrl = xsGetCardImageV1(c);  const bonusPct = xsCardBonusPctV1(c);
   const scoreCircleSize = Math.max(52, Math.round(width * 0.31));
   const scoreBoxSize = Math.max(19, Math.round(width * 0.118));
@@ -474,7 +474,7 @@ export function SorareCardTile(props: any) {
             }}
           >
             <Text style={{ color: "#FFFFFF", fontWeight: "900", fontSize: Math.round(scoreCircleSize * 0.39), lineHeight: Math.round(scoreCircleSize * 0.44) }}>
-              {l5Avg === null ? "—" : l5Avg}
+              {primaryScore === null ? "—" : primaryScore}
             </Text>
           </View>
         </View>

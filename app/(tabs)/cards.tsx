@@ -414,6 +414,10 @@ const officialL5 =
   (typeof cachedPerf?.averages?.l5 === "number" && Number.isFinite(cachedPerf.averages.l5))
     ? cachedPerf.averages.l5
     : ((typeof cachedPerf?.l5 === "number" && Number.isFinite(cachedPerf.l5)) ? cachedPerf.l5 : null);
+const officialL10 =
+  (typeof cachedPerf?.averages?.l10 === "number" && Number.isFinite(cachedPerf.averages.l10))
+    ? cachedPerf.averages.l10
+    : ((typeof cachedPerf?.l10 === "number" && Number.isFinite(cachedPerf.l10)) ? cachedPerf.l10 : null); // XS_PRIMARY_SCORE_L10_V1
 const xsL5MiniFinal =
   (xsL5Mini0 && xsL5Mini0.length)
     ? xsL5Mini0
@@ -422,26 +426,30 @@ const cardWithL5Bars = useMemo(
   () => ({
     ...(card as any),
     l5Bars: xsL5MiniFinal,
-    averages: officialL5 == null ? (card as any)?.averages : { ...((card as any)?.averages || {}), l5: officialL5 },
+    averages: officialL5 == null && officialL10 == null ? (card as any)?.averages : { ...((card as any)?.averages || {}), ...(officialL5 == null ? {} : { l5: officialL5 }), ...(officialL10 == null ? {} : { l10: officialL10 }) },
     l5: officialL5 == null ? (card as any)?.l5 : officialL5,
+    l10: officialL10 == null ? ((card as any)?.l10 ?? (card as any)?.L10) : officialL10,
   }),
-  [card, xsL5MiniFinal, officialL5]
+  [card, xsL5MiniFinal, officialL5, officialL10]
 );
 if (typeof __DEV__ !== "undefined" && __DEV__ && playerSlugKey) {
-  console.log("[XS_ALL_CARDS_PERFORMANCE_PARITY_V1]", {
+  console.log("[XS_PRIMARY_SCORE_L10_V1]", {
     screen: "my-cards-tile",
     slug: playerSlugKey,
-    displayedScore: officialL5 ?? (typeof (card as any)?.l5 === "number" ? (card as any).l5 : null),
+    displayedPrimaryScore: officialL10 ?? officialL5 ?? (typeof (card as any)?.l5 === "number" ? (card as any).l5 : null),
     displayedL5: officialL5 ?? null,
-    displayedL10: cachedPerf?.averages?.l10 ?? cachedPerf?.l10 ?? null,
+    displayedL10: officialL10 ?? null,
     displayedL15: cachedPerf?.averages?.l15 ?? cachedPerf?.l15 ?? null,
     displayedL40: cachedPerf?.averages?.l40 ?? cachedPerf?.l40 ?? null,
-    sourceUsed: officialL5 == null ? "card_fallback_l5" : "official_perf_averages_l5",
-    fallbackUsed: officialL5 == null,
+    sourceUsed: officialL10 == null ? "fallback_l5_or_card" : "official_perf_averages_l10",
+    fallbackUsed: officialL10 == null,
     sourceFields: {
       officialL5,
+      officialL10,
       cardL5: (card as any)?.l5,
+      cardL10: (card as any)?.l10 ?? (card as any)?.L10,
       cardAveragesL5: (card as any)?.averages?.l5,
+      cardAveragesL10: (card as any)?.averages?.l10,
       hasCachedPerf: Boolean(cachedPerf),
       l5BarsCount: xsL5MiniFinal.length,
     },
@@ -516,7 +524,7 @@ if (typeof __DEV__ !== "undefined" && __DEV__ && playerSlugKey) {
       deltaPct={bonusPct}
       bonusPct={bonusPct}
       trendBars={xsTrendBarsFromL15((typeof (card as any)?.l5 === "number") ? (card as any).l5 : xsGetL15ValueV1(card as any))} /* XS_CARDS_FIX_TRENDBARS_SCOPE_V1 */
-      l5={officialL5 ?? ((typeof (card as any)?.l5 === "number") ? (card as any).l5 : null)} // XS_FIX_L5_FALLBACK_V1 // XS_MYCARDS_PASS_L5_LEVEL_V1 // XS_FRONT_PERFORMANCE_PARITY_PROBE_V1
+      l5={officialL10 ?? officialL5 ?? ((typeof (card as any)?.l5 === "number") ? (card as any).l5 : null)} // XS_PRIMARY_SCORE_L10_V1: prop feeds the primary circle; mini bars remain L5.
       l5Bars={xsL5MiniFinal} /* XS_L5_MINICHART_TILE_RENDER_V1 XS_MYCARDS_L5_CACHE_TILE_INJECTION_V1 */
       level={(typeof (card as any)?.level === "number") ? (card as any).level : ((card as any)?.cardLevel ?? 0)} // XS_MYCARDS_PASS_L5_LEVEL_V1
     />

@@ -3697,16 +3697,16 @@ const avg5 =
     asNum((card as any)?.l40) ??
     avgOf(series.l40);
   if (typeof __DEV__ !== "undefined" && __DEV__) {
-    console.log("[XS_ALL_CARDS_PERFORMANCE_PARITY_V1]", {
+    console.log("[XS_PRIMARY_SCORE_L10_V1]", {
       screen: "card-detail",
       slug: playerSlug,
-      displayedScore: avg5,
+      displayedPrimaryScore: avg10 ?? avg5,
       displayedL5: avg5,
       displayedL10: avg10,
       displayedL15: asNum(historyAverages?.l15) ?? asNum((perf as any)?.averages?.l15) ?? asNum((perf as any)?.l15) ?? asNum((card as any)?.averages?.l15) ?? asNum((card as any)?.l15) ?? null,
       displayedL40: avg40,
-      sourceUsed: historyAverages ? "history_averages" : ((perf as any)?.averages ? "official_perf_averages" : "fallback_card_or_series"),
-      fallbackUsed: !historyAverages && !(perf as any)?.averages,
+      sourceUsed: avg10 == null ? "fallback_l5" : (historyAverages ? "history_averages_l10" : ((perf as any)?.averages ? "official_perf_averages_l10" : "fallback_card_or_series_l10")),
+      fallbackUsed: avg10 == null,
       sourceFields: {
         historyAverages,
         perfAverages: (perf as any)?.averages || null,

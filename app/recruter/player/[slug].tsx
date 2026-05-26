@@ -1051,23 +1051,25 @@ export default function RecruterPlayerCardsScreen() {
     }),
     [coachHistory, coachMatchContext, coachPerf, coachPlayerStatus, header.position]
   );
-  const recruterOfficialScore = typeof coachRadar.l5 === "number" && Number.isFinite(coachRadar.l5)
-    ? Math.round(coachRadar.l5)
+  const recruterOfficialScore = typeof (coachRadar as any).l10 === "number" && Number.isFinite((coachRadar as any).l10)
+    ? Math.round((coachRadar as any).l10)
+    : typeof coachRadar.l5 === "number" && Number.isFinite(coachRadar.l5)
+      ? Math.round(coachRadar.l5)
     : null; // XS_FRONT_PERFORMANCE_PARITY_PROBE_V1
   if (typeof __DEV__ !== "undefined" && __DEV__) {
-    console.log("[XS_ALL_CARDS_PERFORMANCE_PARITY_V1]", {
+    console.log("[XS_PRIMARY_SCORE_L10_V1]", {
       screen: "recruter-detail",
       slug: playerSlug,
-      displayedScore: recruterOfficialScore,
+      displayedPrimaryScore: recruterOfficialScore,
       displayedL5: coachRadar.l5,
       displayedL10: (coachRadar as any).l10,
       displayedL15: coachRadar.l15,
       displayedL40: coachRadar.l40,
-      sourceUsed: recruterOfficialScore == null ? "empty" : "official_history_l5",
-      fallbackUsed: recruterOfficialScore == null,
+      sourceUsed: (coachRadar as any).l10 == null ? "fallback_l5_or_empty" : "official_history_l10",
+      fallbackUsed: (coachRadar as any).l10 == null,
       coachCompositeOverall: coachRadar.overall,
       sourceFields: {
-        scoreShown: "coachRadar.l5",
+        scoreShown: "coachRadar.l10",
         coachCompositeKeptForDecision: true,
       },
       backendAverages: coachHistory?.averages || (coachPerf as any)?.averages || null,
@@ -1157,7 +1159,7 @@ export default function RecruterPlayerCardsScreen() {
                       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                         <View>
                           <Text style={{ color: scoreToneV1(recruterOfficialScore), fontSize: 34, fontWeight: "900" }}>{recruterOfficialScore == null ? "—" : recruterOfficialScore}</Text>
-                          <Text style={{ color: "#A4ABB6", fontSize: 12 }}>L5 officiel</Text>
+                          <Text style={{ color: "#A4ABB6", fontSize: 12 }}>L10 officiel</Text>
                         </View>
                         <View style={{ alignItems: "flex-end" }}>
                           <Text style={{ color: "#F8FAFC", fontWeight: "900" }}>Potentiel</Text>
