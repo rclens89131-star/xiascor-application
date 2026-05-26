@@ -29,6 +29,7 @@ import {
 // XS_RECRUTER_LOGO_NEUTRAL_BADGE_V1: premium logo-style quick filters for leagues and clubs.
 // XS_RECRUTER_LOGOS_BACKEND_V1: quick filters use backend cached league and club logos.
 // XS_RECRUTER_LIST_HEADSHOT_FROM_LIGHT_V1: visible list cards prefer lightweight player headshots.
+// XS_RECRUTER_LIST_L10_BADGE_V1: Recruter list score badges display official L10 when provided by the list payload.
 const XS_RECRUTER_FRONT_LEAGUE_INDEX_DEFAULT_V1 = "ligue-1-fr";
 const XS_RECRUTER_FRONT_VISIBLE_LEAGUES_V1 = [
   { label: "Ligue 1", slug: "ligue-1-fr" },
@@ -93,6 +94,7 @@ const XS_RECRUTER_FRONT_LEAGUE_SLUG_ALIASES_V1: Record<string, string> = {
 const POSITIONS = ["GK", "DEF", "MID", "FW"];
 const PLAYER_PLACEHOLDER = "https://frontend-assets.sorare.com/placeholders/player-v2.png";
 const XS_RECRUTER_HEADSHOT_LOGGED_V1 = new Set<string>();
+const XS_RECRUTER_LIST_L10_LOGGED_V1 = new Set<string>();
 
 type RecruterLogosPayloadV1 = {
   ok?: boolean;
@@ -119,6 +121,48 @@ function xsRecruterFrontLeagueSlugV1(value: unknown) {
 }
 
 function playerScore(item: RecruterPlayer) {
+  return playerL10BadgeV1(item).value;
+}
+
+function playerL10BadgeV1(item: RecruterPlayer) {
+  const row: any = item || {};
+  const candidates: Array<[string, unknown]> = [
+    ["averages.l10", row.averages?.l10],
+    ["l10", row.l10],
+    ["L10", row.L10],
+    ["averageL10", row.averageL10],
+    ["avg10", row.avg10],
+    ["lastL10", row.lastL10],
+    ["last_l10", row.last_l10],
+    ["stats.l10", row.stats?.l10],
+    ["performance.l10", row.performance?.l10],
+    ["perf.averages.l10", row.perf?.averages?.l10],
+    ["perf.l10", row.perf?.l10],
+  ];
+  const found = candidates.find(([, candidate]) => {
+    const value = Number(candidate);
+    return Number.isFinite(value) && value > 0;
+  });
+  const value = found ? Math.round(Number(found[1])) : null;
+  return { value, sourceUsed: found?.[0] || "missing_l10" };
+}
+
+function logRecruterL10BadgeV1(item: RecruterPlayer, sourceUsed: string, l10: number | null) {
+  if (typeof __DEV__ === "undefined" || !__DEV__) return;
+  const row: any = item || {};
+  const playerSlug = text(row.slug || row.playerSlug);
+  if (!playerSlug || XS_RECRUTER_LIST_L10_LOGGED_V1.has(playerSlug)) return;
+  XS_RECRUTER_LIST_L10_LOGGED_V1.add(playerSlug);
+  console.log("[XS_RECRUTER_LIST_L10_BADGE_V1]", {
+    playerSlug,
+    displayName: row.displayName || row.playerName || null,
+    l10,
+    sourceUsed,
+    availableKeys: Object.keys(row),
+  });
+}
+
+function legacyPlayerSortScoreV1(item: RecruterPlayer) {
   const row: any = item;
   const value = Number(row.lastL5 ?? row.last_l5 ?? row.l5 ?? row.average ?? row.score);
   return Number.isFinite(value) && value > 0 ? Math.round(value) : null;
@@ -523,7 +567,7 @@ export default function RecruiterTabScreen() {
 
   const recommended = useMemo(() => {
     return [...filtered]
-      .sort((a, b) => (playerScore(b) ?? -1) - (playerScore(a) ?? -1))
+      .sort((a, b) => (playerScore(b) ?? legacyPlayerSortScoreV1(b) ?? -1) - (playerScore(a) ?? legacyPlayerSortScoreV1(a) ?? -1))
       .slice(0, 8);
   }, [filtered]);
 
@@ -707,7 +751,9 @@ export default function RecruiterTabScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
           {recommended.map((item, index) => {
             const slug = text(item.slug || item.playerSlug, String(index));
-            const score = playerScore(item);
+            const l10Badge = playerL10BadgeV1(item);
+            const score = l10Badge.value;
+            logRecruterL10BadgeV1(item, l10Badge.sourceUsed, score);
             const imagePlayer = headshotBySlug[slug.toLowerCase()] ? { ...item, avatarPictureUrl: headshotBySlug[slug.toLowerCase()] } : item;
             const image = getRecruterPlayerImageV1(imagePlayer, item, item);
             return (
@@ -727,7 +773,7 @@ export default function RecruiterTabScreen() {
                   <Text style={{ color: "#A4ABB6", marginTop: 5 }}>{item.age != null ? `${item.age} ans` : "Âge —"}</Text>
                   <View style={{ alignSelf: "center", marginTop: 10, borderRadius: 10, borderWidth: 1, borderColor: `${scoreColor(score)}80`, backgroundColor: `${scoreColor(score)}22`, paddingHorizontal: 12, paddingVertical: 5 }}>
                     <Text style={{ color: scoreColor(score), fontSize: 21, fontWeight: "900" }}>{score == null ? "—" : score}</Text>
-                    <Text style={{ color: "#C6CDD7", fontSize: 11, textAlign: "center" }}>Score</Text>
+                    <Text style={{ color: "#C6CDD7", fontSize: 11, textAlign: "center" }}>L10</Text>
                   </View>
                 </LinearGradient>
               </TouchableOpacity>
@@ -777,7 +823,9 @@ export default function RecruiterTabScreen() {
               const slug = text(item.slug || item.playerSlug);
               const displayName = text(item.displayName || item.playerName, slug || "Joueur");
               const badge = saleBadge(item);
-              const score = playerScore(item);
+              const l10Badge = playerL10BadgeV1(item);
+              const score = l10Badge.value;
+              logRecruterL10BadgeV1(item, l10Badge.sourceUsed, score);
               const imagePlayer = headshotBySlug[slug.toLowerCase()] ? { ...item, avatarPictureUrl: headshotBySlug[slug.toLowerCase()] } : item;
               const image = getRecruterPlayerImageV1(imagePlayer, item, item);
               return (
@@ -799,6 +847,7 @@ export default function RecruiterTabScreen() {
                     <Ionicons name="heart-outline" size={23} color="#F8FAFC" />
                     <View style={{ minWidth: 48, borderRadius: 11, borderWidth: 1, borderColor: `${scoreColor(score)}99`, backgroundColor: `${scoreColor(score)}1F`, paddingVertical: 6, alignItems: "center" }}>
                       <Text style={{ color: scoreColor(score), fontWeight: "900", fontSize: 19 }}>{score == null ? "—" : score}</Text>
+                      <Text style={{ color: "#C6CDD7", fontSize: 10, fontWeight: "800" }}>L10</Text>
                     </View>
                   </View>
                 </TouchableOpacity>
