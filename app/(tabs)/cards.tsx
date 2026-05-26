@@ -398,7 +398,7 @@ function XSL5MiniBars(props: { values: number[]; opponents?: any[] }) {
   );
 }
 /* XS_L5_MINICHART_TILE_RENDER_V1_END */
-function CardTile({ card, width, l5Cache = {} }: { card: MyCardItemLocal; width: number; l5Cache?: Record<string, number[]> }) { /* XS_L5CACHE_OPTIONAL_V2 */
+function CardTile({ card, width, l5Cache = {}, perfCache = {} }: { card: MyCardItemLocal; width: number; l5Cache?: Record<string, number[]>; perfCache?: Record<string, any> }) { /* XS_L5CACHE_OPTIONAL_V2 */
   const router = useRouter(); /* XS_CARD_TILE_NAV_V1 */
 const playerName = xsSafeStr((card as any)?.playerName || (card as any)?.displayName || card?.anyPlayer?.displayName || card?.player?.displayName || "Unknown");
 const clubName   = xsSafeStr((card as any)?.clubName || (card as any)?.teamName || card?.anyTeam?.name || card?.player?.activeClub?.name || "—");
@@ -409,14 +409,40 @@ const bonusPct = xsCardBonusPctV1(card);
 const xsL5Mini0 = xsL5BarsFromCard(card as any); /* XS_L5_MINICHART_TILE_RENDER_V1_PASS */
 const playerSlugKey = String((card as any)?.playerSlug || (card as any)?.player?.slug || (card as any)?.anyPlayer?.slug || "").trim();
 const cachedL5 = playerSlugKey && Array.isArray((l5Cache as any)[playerSlugKey]) ? (l5Cache as any)[playerSlugKey] : null; // XS_MYCARDS_L5_CACHE_TILE_INJECTION_V1
+const cachedPerf = playerSlugKey ? (perfCache as any)[playerSlugKey] : null; // XS_FRONT_PERFORMANCE_PARITY_PROBE_V1
+const officialL5 =
+  (typeof cachedPerf?.averages?.l5 === "number" && Number.isFinite(cachedPerf.averages.l5))
+    ? cachedPerf.averages.l5
+    : ((typeof cachedPerf?.l5 === "number" && Number.isFinite(cachedPerf.l5)) ? cachedPerf.l5 : null);
 const xsL5MiniFinal =
   (xsL5Mini0 && xsL5Mini0.length)
     ? xsL5Mini0
     : (cachedL5 || []);
 const cardWithL5Bars = useMemo(
-  () => ({ ...(card as any), l5Bars: xsL5MiniFinal }),
-  [card, xsL5MiniFinal]
+  () => ({
+    ...(card as any),
+    l5Bars: xsL5MiniFinal,
+    averages: officialL5 == null ? (card as any)?.averages : { ...((card as any)?.averages || {}), l5: officialL5 },
+    l5: officialL5 == null ? (card as any)?.l5 : officialL5,
+  }),
+  [card, xsL5MiniFinal, officialL5]
 );
+if (typeof __DEV__ !== "undefined" && __DEV__ && playerSlugKey) {
+  console.log("[XS_FRONT_PERFORMANCE_PARITY_PROBE_V1]", {
+    screen: "my-cards-tile",
+    slug: playerSlugKey,
+    displayedScore: officialL5 ?? (typeof (card as any)?.l5 === "number" ? (card as any).l5 : null),
+    displayedL5: officialL5 ?? null,
+    sourceFields: {
+      officialL5,
+      cardL5: (card as any)?.l5,
+      cardAveragesL5: (card as any)?.averages?.l5,
+      hasCachedPerf: Boolean(cachedPerf),
+      l5BarsCount: xsL5MiniFinal.length,
+    },
+    backendAverages: cachedPerf?.averages || null,
+  });
+}
 
   return (
         <Pressable
@@ -485,7 +511,7 @@ const cardWithL5Bars = useMemo(
       deltaPct={bonusPct}
       bonusPct={bonusPct}
       trendBars={xsTrendBarsFromL15((typeof (card as any)?.l5 === "number") ? (card as any).l5 : xsGetL15ValueV1(card as any))} /* XS_CARDS_FIX_TRENDBARS_SCOPE_V1 */
-      l5={(typeof (card as any)?.l5 === "number") ? (card as any).l5 : null} // XS_FIX_L5_FALLBACK_V1 // XS_MYCARDS_PASS_L5_LEVEL_V1
+      l5={officialL5 ?? ((typeof (card as any)?.l5 === "number") ? (card as any).l5 : null)} // XS_FIX_L5_FALLBACK_V1 // XS_MYCARDS_PASS_L5_LEVEL_V1 // XS_FRONT_PERFORMANCE_PARITY_PROBE_V1
       l5Bars={xsL5MiniFinal} /* XS_L5_MINICHART_TILE_RENDER_V1 XS_MYCARDS_L5_CACHE_TILE_INJECTION_V1 */
       level={(typeof (card as any)?.level === "number") ? (card as any).level : ((card as any)?.cardLevel ?? 0)} // XS_MYCARDS_PASS_L5_LEVEL_V1
     />
@@ -512,6 +538,7 @@ const [deviceId, setDeviceId] = useState("");
 const [items, setItems] = useState<MyCardItemLocal[]>([]);
 /* XS_L5_PREFETCH_CACHE_V1_BEGIN */
   const [xsL5Cache, setXsL5Cache] = useState<Record<string, number[]>>({});
+  const [xsPerfCache, setXsPerfCache] = useState<Record<string, any>>({}); // XS_FRONT_PERFORMANCE_PARITY_PROBE_V1
   const xsL5LoadingRef = useRef<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -544,6 +571,7 @@ const [items, setItems] = useState<MyCardItemLocal[]>([]);
           if (scores.length > 0) {
             setXsL5Cache((prev) => ({ ...(prev || {}), [slug]: scores }));
           }
+          setXsPerfCache((prev) => ({ ...(prev || {}), [slug]: resp || {} })); // XS_FRONT_PERFORMANCE_PARITY_PROBE_V1
         } catch (e) {
           // silencieux: ne jamais casser Mes cartes si une requête rate
         } finally {
@@ -782,7 +810,7 @@ const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
         ) : (
           <FlatList
             data={items}
-            extraData={xsL5Cache} /* XS_MYCARDS_L5_CACHE_TILE_INJECTION_V1 */
+            extraData={{ xsL5Cache, xsPerfCache }} /* XS_MYCARDS_L5_CACHE_TILE_INJECTION_V1 XS_FRONT_PERFORMANCE_PARITY_PROBE_V1 */
             keyExtractor={(item) => cardKey(item)}
             contentContainerStyle={{ paddingHorizontal: XS_MYCARDS_PAD, paddingBottom: 120 }}
             columnWrapperStyle={{ justifyContent: "center", gap: XS_MYCARDS_GAP }}
@@ -797,7 +825,7 @@ const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
                     marginBottom: XS_MYCARDS_GAP,
                   }}
                 >
-                  <CardTile card={item} width={width} l5Cache={xsL5Cache} />
+                  <CardTile card={item} width={width} l5Cache={xsL5Cache} perfCache={xsPerfCache} />
                 </View>
               );
             }}

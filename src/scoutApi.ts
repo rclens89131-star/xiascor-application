@@ -783,6 +783,7 @@ export type PublicPlayerPerformance = {
   averagesDebug?: any;
   lastScore?: number | null;
   recentScores?: number[];
+  recentScores10?: number[];
   recentScores15?: number[];
   recentScores40?: number[];
   opponentLogoUrls?: (string | null)[];
@@ -998,6 +999,7 @@ export async function publicPlayerPerformance(
         averagesDebug: json?.averagesDebug || null,
         lastScore: recent5.length ? recent5[0] : null,
         recentScores: recent5,
+        recentScores10: recent10, // XS_FRONT_PERFORMANCE_PARITY_PROBE_V1: expose the same history window used by card detail.
         recentScores15: recent15,
         recentScores40: recent40,
         opponentLogoUrls,

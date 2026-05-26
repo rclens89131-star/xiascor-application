@@ -3696,6 +3696,24 @@ const avg5 =
     asNum((card as any)?.averages?.l40) ??
     asNum((card as any)?.l40) ??
     avgOf(series.l40);
+  if (typeof __DEV__ !== "undefined" && __DEV__) {
+    console.log("[XS_FRONT_PERFORMANCE_PARITY_PROBE_V1]", {
+      screen: "card-detail",
+      slug: playerSlug,
+      displayedScore: avg5,
+      displayedL5: avg5,
+      displayedL10: avg10,
+      displayedL15: asNum(historyAverages?.l15) ?? asNum((perf as any)?.averages?.l15) ?? asNum((perf as any)?.l15) ?? asNum((card as any)?.averages?.l15) ?? asNum((card as any)?.l15) ?? null,
+      displayedL40: avg40,
+      sourceFields: {
+        historyAverages,
+        perfAverages: (perf as any)?.averages || null,
+        cardAverages: (card as any)?.averages || null,
+        cardL5: (card as any)?.l5,
+      },
+      backendAverages: historyAverages || (perf as any)?.averages || null,
+    });
+  }
   const xsFifaRadar = useMemo(
     () =>
       xsBuildFifaRadarValuesFromHistoryV1(

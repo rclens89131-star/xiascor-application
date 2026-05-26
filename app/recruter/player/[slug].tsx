@@ -1051,6 +1051,26 @@ export default function RecruterPlayerCardsScreen() {
     }),
     [coachHistory, coachMatchContext, coachPerf, coachPlayerStatus, header.position]
   );
+  const recruterOfficialScore = typeof coachRadar.l5 === "number" && Number.isFinite(coachRadar.l5)
+    ? Math.round(coachRadar.l5)
+    : null; // XS_FRONT_PERFORMANCE_PARITY_PROBE_V1
+  if (typeof __DEV__ !== "undefined" && __DEV__) {
+    console.log("[XS_FRONT_PERFORMANCE_PARITY_PROBE_V1]", {
+      screen: "recruter-detail",
+      slug: playerSlug,
+      displayedScore: recruterOfficialScore,
+      displayedL5: coachRadar.l5,
+      displayedL10: (coachRadar as any).l10,
+      displayedL15: coachRadar.l15,
+      displayedL40: coachRadar.l40,
+      coachCompositeOverall: coachRadar.overall,
+      sourceFields: {
+        scoreShown: "coachRadar.l5",
+        coachCompositeKeptForDecision: true,
+      },
+      backendAverages: coachHistory?.averages || (coachPerf as any)?.averages || null,
+    });
+  }
 
   const statsGraph = useMemo(() => {
     const rows = Array.isArray(coachHistory?.items) ? coachHistory.items : [];
@@ -1134,8 +1154,8 @@ export default function RecruterPlayerCardsScreen() {
                       <View style={{ height: 1, backgroundColor: "#273142", marginVertical: 5 }} />
                       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                         <View>
-                          <Text style={{ color: scoreToneV1(coachRadar.overall), fontSize: 34, fontWeight: "900" }}>{coachRadar.hasPerformanceData ? Math.round(coachRadar.overall) : "—"}</Text>
-                          <Text style={{ color: "#A4ABB6", fontSize: 12 }}>Score global</Text>
+                          <Text style={{ color: scoreToneV1(recruterOfficialScore), fontSize: 34, fontWeight: "900" }}>{recruterOfficialScore == null ? "—" : recruterOfficialScore}</Text>
+                          <Text style={{ color: "#A4ABB6", fontSize: 12 }}>L5 officiel</Text>
                         </View>
                         <View style={{ alignItems: "flex-end" }}>
                           <Text style={{ color: "#F8FAFC", fontWeight: "900" }}>Potentiel</Text>
