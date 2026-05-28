@@ -22,6 +22,7 @@ import { publicPlayerPerformance, recruterPlayerCards, recruterSaleStatus, type 
 // XS_RECRUTER_SALE_CARD_IMAGE_V1: sale rows prefer real Sorare card artwork before player portraits.
 // XS_RECRUTER_SMART_SALE_CARDS_V1: sale rows expose real bonus/power/XP when available and only show smart badges from real data.
 // XS_RECRUTER_SMART_COMPARE_V1: sale rows show at most two intra-player comparison badges from backend compareFlags.
+// XS_RECRUTER_DETAIL_MEMORY_CACHE_SAFE_V1: short session cache for already fetched Recruter detail payloads.
 function text(v: unknown, fallback = "") {
   const s = String(v ?? "").trim();
   return s || fallback;
@@ -145,6 +146,15 @@ type RecruterPlayerLightV1 = {
 type RecruterStatsRangeV1 = 5 | 10 | 40;
 const XS_RECRUTER_HISTORY_INITIAL_LIMIT_V1 = 40;
 const XS_RECRUTER_HISTORY_ALL_LIMIT_V1 = 100;
+const XS_RECRUTER_DETAIL_MEMORY_CACHE_TTL_MS_V1 = 3 * 60 * 1000;
+type RecruterDetailMemoryCacheEntryV1 = {
+  at: number;
+  items: RecruterOffer[];
+  player: RecruterPlayer | null;
+  lightPlayer: RecruterPlayerLightV1["player"] | null;
+  saleStatus: string | null;
+};
+const xsRecruterDetailMemoryCacheV1 = new Map<string, RecruterDetailMemoryCacheEntryV1>();
 
 const XS_RECRUTER_PERF_FALLBACK_BASE_V1 = "https://xiascor-backend-tssdy62zqa-ez.a.run.app";
 const XS_RECRUTER_PLAYER_PLACEHOLDER_V1 = "https://frontend-assets.sorare.com/placeholders/player-v2.png";
@@ -919,6 +929,18 @@ export default function RecruterPlayerCardsScreen() {
       return;
     }
 
+    const cached = xsRecruterDetailMemoryCacheV1.get(playerSlug);
+    if (cached && Date.now() - cached.at < XS_RECRUTER_DETAIL_MEMORY_CACHE_TTL_MS_V1) {
+      setError(null);
+      setPositionFallbacks({});
+      setItems(cached.items);
+      setLightPlayer(cached.lightPlayer);
+      setPlayer(cached.player);
+      setSaleStatus(cached.saleStatus);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
@@ -945,8 +967,17 @@ export default function RecruterPlayerCardsScreen() {
       }
       setItems(saleItems);
       setLightPlayer(light);
-      setPlayer({ ...((res.player as RecruterPlayer | null) || {}), ...(light || {}) } as RecruterPlayer);
-      setSaleStatus(res.saleStatus || null);
+      const nextPlayer = { ...((res.player as RecruterPlayer | null) || {}), ...(light || {}) } as RecruterPlayer;
+      const nextSaleStatus = res.saleStatus || null;
+      setPlayer(nextPlayer);
+      setSaleStatus(nextSaleStatus);
+      xsRecruterDetailMemoryCacheV1.set(playerSlug, {
+        at: Date.now(),
+        items: saleItems,
+        player: nextPlayer,
+        lightPlayer: light,
+        saleStatus: nextSaleStatus,
+      });
     } catch (e: any) {
       setError(e?.message || "Erreur chargement cartes");
     } finally {
