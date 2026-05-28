@@ -202,26 +202,6 @@ export function useGallery({ identifier, first = 25 }: Options) {
           })
           .filter((card: any) => String(card?.rarity?.slug || "unknown") !== "common");
         // XS_HIDE_COMMON_CARDS_V1D (END)
-        // Allowlist (Limited/Rare/Super Rare/Unique)
-        // Debug rareté (dans logs Metro)
-        try {
-          const counts = rawCards.reduce((acc: any, c: any) => {
-            const r = getRarity(c) || "unknown";
-            acc[r] = (acc[r] || 0) + 1;
-            return acc;
-          }, {});
-          console.log("[useGallery] rarityCounts:", counts);
-          const s = rawCards[0];
-          console.log("[useGallery] sample.rarity fields:", {
-            rarityTyped: s?.rarityTyped,
-            rarityTier: s?.rarityTier,
-            rarity: s?.rarity,
-            rarityName: s?.rarity?.name,
-            raritySlug: s?.rarity?.slug,
-            rarityDisplayName: s?.rarity?.displayName,
-          });
-        } catch {}
-
         // Fallback: si allowlist => 0 mais on a des cartes,
         // alors on cache seulement les commons (sinon écran vide)
         if (filtered.length === 0 && rawCards.length > 0) {

@@ -9,9 +9,6 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   const url = `${BASE_URL}${path.startsWith("/") ? "" : "/"}${path}`;
   const method = (options.method || "GET").toString().toUpperCase();
 
-  // ✅ Debug visible dans Metro
-  console.log("[apiFetch]", method, url);
-
   const res = await fetch(url, {
     ...options,
     headers: {
