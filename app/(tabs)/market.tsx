@@ -284,6 +284,7 @@ function RecruterLogoChipV1({
   onPress: () => void;
 }) {
   const initials = xsRecruterFilterInitialsV1(name, slug);
+  const logoSource = useMemo(() => logoUrl ? { uri: logoUrl } : null, [logoUrl]);
   return (
     <TouchableOpacity
       onPress={() => {
@@ -312,9 +313,9 @@ function RecruterLogoChipV1({
           shadowRadius: 10,
         }}
       >
-        {logoUrl ? (
+        {logoSource ? (
           <View style={{ width: 44, height: 44, borderRadius: 999, backgroundColor: "#CBD5E1", alignItems: "center", justifyContent: "center", padding: 5, borderWidth: 1, borderColor: "rgba(15,23,42,0.35)", shadowColor: "#000000", shadowOpacity: 0.22, shadowRadius: 8 }}>
-            <Image source={{ uri: logoUrl }} resizeMode="contain" style={{ width: 34, height: 34 }} />
+            <Image source={logoSource} resizeMode="contain" style={{ width: 34, height: 34 }} />
           </View>
         ) : (
           <Text style={{ color: active ? "#FFFFFF" : "#D8DEE8", fontWeight: "900", fontSize: initials.length > 2 ? 13 : 15 }}>{initials}</Text>
@@ -429,13 +430,14 @@ function RecruterFaceImageV1({
   variant?: "avatar" | "card";
   imageKind?: "headshot" | "fullBody";
 }) {
+  const imageSource = useMemo(() => ({ uri: uri || PLAYER_PLACEHOLDER }), [uri]);
   if (typeof __DEV__ !== "undefined" && __DEV__ && uri) {
     console.log("[XS_RECRUTER_PLAYER_IMAGE_CONTAIN_V1]", { variant, imageKind, uri });
   }
   return (
     <View style={{ width: size.width, height: size.height, borderRadius: radius, overflow: "hidden", backgroundColor: "#050509", alignItems: "center", justifyContent: "center" }}>
       <Image
-        source={{ uri: uri || PLAYER_PLACEHOLDER }}
+        source={imageSource}
         resizeMode="contain"
         style={{
           width: size.width,
