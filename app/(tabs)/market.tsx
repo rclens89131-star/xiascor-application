@@ -31,7 +31,10 @@ import {
 // XS_RECRUTER_LIST_HEADSHOT_FROM_LIGHT_V1: visible list cards prefer lightweight player headshots.
 // XS_RECRUTER_LIST_L10_BADGE_V1: Recruter list score badges display official L10 when provided by the list payload.
 // XS_RECRUTER_LIST_PERF_SAFE_V1: defer expensive list filtering while typing and tune FlatList rendering window.
+// XS_RECRUTER_IMAGE_PREFETCH_SAFE_V1: warm only nearby Recruter images already present in memory.
 const XS_RECRUTER_FRONT_LEAGUE_INDEX_DEFAULT_V1 = "ligue-1-fr";
+const XS_RECRUTER_IMAGE_PREFETCH_LIMIT_V1 = 12;
+const xsRecruterPrefetchedImageUrlsV1 = new Set<string>();
 const XS_RECRUTER_FRONT_VISIBLE_LEAGUES_V1 = [
   { label: "Ligue 1", slug: "ligue-1-fr" },
   { label: "Premier League", slug: "premier-league" },
@@ -578,6 +581,35 @@ export default function RecruiterTabScreen() {
   const latest = useMemo(() => filtered.slice(0, 12), [filtered]);
   const visibleLeagues = useMemo(() => showAllLeagues ? leagues : leagues.slice(0, 8), [leagues, showAllLeagues]);
   const visibleClubs = useMemo(() => showAllClubs ? clubs : clubs.slice(0, 8), [clubs, showAllClubs]);
+  const prefetchImageUrls = useMemo(() => {
+    const seen = new Set<string>();
+    const urls: string[] = [];
+    const addUrl = (value: any) => {
+      const uri = text(value);
+      if (!uri || !/^https?:\/\//i.test(uri) || seen.has(uri)) return;
+      seen.add(uri);
+      urls.push(uri);
+    };
+
+    [...recommended.slice(0, 6), ...latest.slice(0, 6)].forEach((item, index) => {
+      if (urls.length >= XS_RECRUTER_IMAGE_PREFETCH_LIMIT_V1) return;
+      const slug = text(item.slug || item.playerSlug, String(index)).toLowerCase();
+      const imagePlayer = headshotBySlug[slug] ? { ...item, avatarPictureUrl: headshotBySlug[slug] } : item;
+      addUrl(getRecruterPlayerImageV1(imagePlayer, item, item).uri);
+    });
+    visibleLeagues.slice(0, 4).forEach((league) => addUrl(league.logoUrl));
+    visibleClubs.slice(0, 6).forEach((club) => addUrl(club.logoUrl));
+
+    return urls.slice(0, XS_RECRUTER_IMAGE_PREFETCH_LIMIT_V1);
+  }, [headshotBySlug, latest, recommended, visibleClubs, visibleLeagues]);
+
+  useEffect(() => {
+    prefetchImageUrls.forEach((uri) => {
+      if (xsRecruterPrefetchedImageUrlsV1.has(uri)) return;
+      xsRecruterPrefetchedImageUrlsV1.add(uri);
+      Image.prefetch(uri).catch(() => undefined);
+    });
+  }, [prefetchImageUrls]);
 
   useEffect(() => {
     const seen = new Set<string>();
