@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Image, RefreshControl, SafeAreaView, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -30,6 +30,7 @@ import {
 // XS_RECRUTER_LOGOS_BACKEND_V1: quick filters use backend cached league and club logos.
 // XS_RECRUTER_LIST_HEADSHOT_FROM_LIGHT_V1: visible list cards prefer lightweight player headshots.
 // XS_RECRUTER_LIST_L10_BADGE_V1: Recruter list score badges display official L10 when provided by the list payload.
+// XS_RECRUTER_LIST_PERF_SAFE_V1: defer expensive list filtering while typing and tune FlatList rendering window.
 const XS_RECRUTER_FRONT_LEAGUE_INDEX_DEFAULT_V1 = "ligue-1-fr";
 const XS_RECRUTER_FRONT_VISIBLE_LEAGUES_V1 = [
   { label: "Ligue 1", slug: "ligue-1-fr" },
@@ -466,6 +467,7 @@ export default function RecruiterTabScreen() {
   const [leagueIndex, setLeagueIndex] = useState<RecruterLeagueIndexResponse | null>(null);
   const [logos, setLogos] = useState<RecruterLogosPayloadV1 | null>(null);
   const [headshotBySlug, setHeadshotBySlug] = useState<Record<string, string | null>>({});
+  const deferredQuery = useDeferredValue(query);
 
   const load = useCallback(async (isRefresh = false) => {
     try {
@@ -543,7 +545,7 @@ export default function RecruiterTabScreen() {
   }, [items, logos, selectedLeague]);
 
   const filtered = useMemo(() => {
-    const q = norm(query);
+    const q = norm(deferredQuery);
     return items.filter((item) => {
       if (selectedLeague && norm(item.leagueSlug) !== selectedLeague) return false;
       if (selectedClub && norm(item.clubSlug) !== selectedClub) return false;
@@ -552,7 +554,7 @@ export default function RecruiterTabScreen() {
       return [item.displayName, item.playerName, item.playerSlug, item.clubName, item.clubSlug, item.leagueName, item.leagueSlug, item.position]
         .some((value) => norm(value).includes(q));
     });
-  }, [items, query, selectedClub, selectedLeague, selectedPosition]);
+  }, [deferredQuery, items, selectedClub, selectedLeague, selectedPosition]);
 
   const summary = useMemo(() => {
     const forSale = filtered.filter((item) => recruterSaleStatus(item) === "for_sale").length;
@@ -815,6 +817,11 @@ export default function RecruiterTabScreen() {
           <FlatList
             data={latest}
             keyExtractor={(item, index) => String(item.slug || item.playerSlug || index)}
+            initialNumToRender={8}
+            maxToRenderPerBatch={8}
+            updateCellsBatchingPeriod={60}
+            windowSize={7}
+            removeClippedSubviews
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor="#ff5d73" />}
             ListHeaderComponent={listHeader}
             contentContainerStyle={{ padding: 18, paddingBottom: 34, gap: 10 }}
