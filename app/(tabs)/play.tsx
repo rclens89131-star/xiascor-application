@@ -210,6 +210,7 @@ const strategies: {
 ];
 
 // XS_PLAY_GAMEWEEKS_RULES_V1: local, extensible Sorare Game Week competition rules used only by the Play tab.
+// XS_PLAY_ELIGIBILITY_FILTERS_V1: robust local card eligibility extraction and exclusion reasons.
 const PLAY_RARITIES_V1: PlayRarityV1[] = ["Limited", "Rare", "Super Rare", "Unique"];
 const PLAY_ALL_POSITIONS_V1: SlotKey[] = ["GK", "DEF", "MID", "FWD", "FLEX"];
 const PLAY_GAMEWEEK_COMPETITIONS_V1: PlayGameWeekCompetitionV1[] = [
@@ -630,8 +631,18 @@ function xsPlayRuleKeyV1(value: unknown) {
     .replace(/^-+|-+$/g, "");
 }
 
-function xsPlayCardRarityV1(card: SorareCard): PlayRarityV1 | null {
-  const raw = xsPlayRuleKeyV1(card.rarity ?? card.cardRarity ?? card.rarityTyped ?? card.slug ?? card.id);
+function getCardRarity(card: SorareCard): PlayRarityV1 | null {
+  const raw = xsPlayRuleKeyV1(
+    card.rarity ??
+      card.cardRarity ??
+      card.rarityTyped ??
+      card.rarityName ??
+      card.card?.rarity ??
+      card.token?.rarity ??
+      card.raw?.rarity ??
+      card.slug ??
+      card.id
+  );
   if (raw.includes("super-rare") || raw.includes("superrare")) return "Super Rare";
   if (raw.includes("unique")) return "Unique";
   if (raw.includes("limited")) return "Limited";
@@ -639,9 +650,12 @@ function xsPlayCardRarityV1(card: SorareCard): PlayRarityV1 | null {
   return null;
 }
 
-function xsPlayCardLeagueKeysV1(card: SorareCard) {
+function getCardLeagueSlug(card: SorareCard): string | null {
   const values = [
     card.leagueSlug,
+    card.league?.slug,
+    card.activeLeague?.slug,
+    card.competitionSlug,
     card.leagueName,
     card.competition,
     card.competitionName,
@@ -652,38 +666,82 @@ function xsPlayCardLeagueKeysV1(card: SorareCard) {
     card.team?.leagueName,
     card.club?.leagueSlug,
     card.club?.leagueName,
+    card.anyPlayer?.activeClub?.domesticLeague?.slug,
+    card.player?.activeClub?.domesticLeague?.slug,
   ];
-  return values.map(xsPlayRuleKeyV1).filter(Boolean);
+  return values.map(xsPlayRuleKeyV1).find(Boolean) || null;
 }
 
-function xsPlayCardAgeV1(card: SorareCard): number | null {
-  const direct = Number(card.age ?? card.playerAge ?? card.anyPlayer?.age ?? card.player?.age);
+function xsPlayCardLeagueKeysV1(card: SorareCard) {
+  return [
+    getCardLeagueSlug(card),
+    card.leagueSlug,
+    card.leagueName,
+    card.competition,
+    card.competitionName,
+    card.tournamentName,
+    card.team?.leagueName,
+    card.club?.leagueName,
+  ].map(xsPlayRuleKeyV1).filter(Boolean);
+}
+
+function getCardPosition(card: SorareCard): Exclude<SlotKey, "FLEX"> {
+  return normalizePosition(
+    card.positionRaw ??
+      card.position ??
+      card.player?.position ??
+      card.anyPlayer?.position ??
+      card.raw?.position ??
+      card.raw?.player?.position
+  );
+}
+
+function getCardPlayerAge(card: SorareCard): number | null {
+  const direct = Number(card.age ?? card.playerAge ?? card.anyPlayer?.age ?? card.player?.age ?? card.raw?.age ?? card.raw?.player?.age);
   if (Number.isFinite(direct) && direct > 0) return direct;
-  const birth = String(card.birthDate ?? card.dateOfBirth ?? card.anyPlayer?.birthDate ?? card.player?.birthDate ?? "");
+  const birth = String(
+    card.birthDate ??
+      card.dateOfBirth ??
+      card.anyPlayer?.birthDate ??
+      card.anyPlayer?.dateOfBirth ??
+      card.player?.birthDate ??
+      card.player?.dateOfBirth ??
+      card.raw?.birthDate ??
+      card.raw?.player?.birthDate ??
+      ""
+  );
   const year = Number(birth.slice(0, 4));
   if (!Number.isFinite(year) || year <= 1900) return null;
   return new Date().getFullYear() - year;
 }
 
-function xsPlayIsCardEligibleV1(card: SorareCard, competition: PlayGameWeekCompetitionV1, rarity: PlayRarityV1) {
-  const cardRarity = xsPlayCardRarityV1(card);
-  if (!cardRarity || cardRarity !== rarity || !competition.rarityAllowed.includes(cardRarity)) return false;
+function getCardIneligibilityReasons(card: SorareCard, competition: PlayGameWeekCompetitionV1, rarity: PlayRarityV1) {
+  const reasons: string[] = [];
+  const cardRarity = getCardRarity(card);
+  if (!cardRarity) reasons.push("donnée manquante");
+  else if (cardRarity !== rarity || !competition.rarityAllowed.includes(cardRarity)) reasons.push("mauvaise rareté");
 
-  const position = normalizePosition(card.positionRaw ?? card.position);
-  if (!competition.eligiblePositions.includes(position) && !competition.eligiblePositions.includes("FLEX")) return false;
+  const position = getCardPosition(card);
+  if (!competition.eligiblePositions.includes(position) && !competition.eligiblePositions.includes("FLEX")) reasons.push("poste non autorisé");
 
   if (competition.type === "age") {
-    const age = xsPlayCardAgeV1(card);
-    if (age == null || age > 23) return false;
+    const age = getCardPlayerAge(card);
+    if (age == null) reasons.push("âge U23 non confirmé");
+    else if (age > 23) reasons.push("âge U23 non confirmé");
   }
 
   if (competition.eligibleLeagues.length) {
     const leagueKeys = xsPlayCardLeagueKeysV1(card);
     const allowed = competition.eligibleLeagues.map(xsPlayRuleKeyV1);
-    if (!leagueKeys.some((key) => allowed.includes(key))) return false;
+    if (!leagueKeys.length) reasons.push("donnée manquante");
+    else if (!leagueKeys.some((key) => allowed.includes(key))) reasons.push("mauvaise ligue");
   }
 
-  return true;
+  return [...new Set(reasons)];
+}
+
+function isCardEligibleForCompetition(card: SorareCard, competition: PlayGameWeekCompetitionV1, rarity: PlayRarityV1) {
+  return getCardIneligibilityReasons(card, competition, rarity).length === 0;
 }
 
 function xsPlaySlotsForCompetitionV1(competition: PlayGameWeekCompetitionV1): SlotKey[] {
@@ -737,7 +795,7 @@ function buildGalleryCandidates(gallery: SorareCard[], allowMockFallback = true)
 
   const mapped = gallery.slice(0, 80).map((card, index) => {
     const key = String(card.slug ?? card.id ?? `gallery-${index}`);
-    const pos = normalizePosition(card.positionRaw ?? card.position);
+    const pos = getCardPosition(card);
     const l5 = metric(key, 56, 88, 5);
     const l15 = metric(key, 55, 84, 15);
     const l40 = metric(key, 52, 80, 40);
@@ -1477,9 +1535,33 @@ export default function PlayScreen() {
     () => PLAY_GAMEWEEK_COMPETITIONS_V1.find((item) => item.id === competitionId) ?? PLAY_GAMEWEEK_COMPETITIONS_V1[0],
     [competitionId]
   );
+  const eligibilitySummary = useMemo(() => {
+    const reasons: Record<string, number> = {};
+    const eligible: SorareCard[] = [];
+    gallery.forEach((card) => {
+      const cardReasons = getCardIneligibilityReasons(card, selectedCompetition, selectedRarity);
+      if (!cardReasons.length) {
+        eligible.push(card);
+        return;
+      }
+      const mainReason = cardReasons[0] || "donnée manquante";
+      reasons[mainReason] = (reasons[mainReason] || 0) + 1;
+    });
+    const reasonList = Object.entries(reasons)
+      .sort((a, b) => b[1] - a[1])
+      .map(([reason, count]) => ({ reason, count }));
+    return {
+      eligible,
+      eligibleCount: eligible.length,
+      excludedCount: Math.max(0, gallery.length - eligible.length),
+      total: gallery.length,
+      reasons: reasonList,
+      mainReason: reasonList[0]?.reason || null,
+    };
+  }, [gallery, selectedCompetition, selectedRarity]);
   const eligibleGallery = useMemo(
-    () => gallery.filter((card) => xsPlayIsCardEligibleV1(card, selectedCompetition, selectedRarity)),
-    [gallery, selectedCompetition, selectedRarity]
+    () => eligibilitySummary.eligible,
+    [eligibilitySummary]
   );
   const candidates = useMemo(() => buildGalleryCandidates(eligibleGallery, gallery.length === 0), [eligibleGallery, gallery.length]);
   const generated = useMemo(() => generateLineup(candidates, strategy, mode, selectedCompetition), [candidates, mode, selectedCompetition, strategy]);
@@ -1521,8 +1603,8 @@ export default function PlayScreen() {
     setGameweekPredictionLoading(true);
     setGameweekPredictionError("");
     try {
-      if (hasInvalidLineup) {
-        throw new Error("Composition incomplète : ajoute des cartes éligibles pour cette compétition.");
+      if (hasInvalidLineup || eligibleGallery.length < selectedCompetition.defaultCards) {
+        throw new Error("Composition incomplète ou non éligible pour cette Game Week.");
       }
       const deviceId =
         (await AsyncStorage.getItem("xs_device_id").catch(() => null)) ||
@@ -1556,8 +1638,8 @@ export default function PlayScreen() {
 
   async function useLineup() {
     try {
-      if (hasInvalidLineup) {
-        setToast("Composition incomplète");
+      if (hasInvalidLineup || eligibleGallery.length < selectedCompetition.defaultCards) {
+        setToast("Composition incomplète ou non éligible");
         return;
       }
       setSaving(true);
@@ -1648,6 +1730,29 @@ export default function PlayScreen() {
                 <Text style={styles.rulesMeta}>
                   Format {selectedCompetition.defaultCards}/{selectedCompetition.maxCards} cartes · {selectedCompetition.futureRulesPlaceholder}
                 </Text>
+                <View style={styles.eligibilityBox}>
+                  <View style={styles.eligibilityHeader}>
+                    <Text style={styles.eligibilityTitle}>Éligibilité</Text>
+                    <Text style={styles.eligibilityRatio}>
+                      {eligibilitySummary.eligibleCount}/{eligibilitySummary.total || 0}
+                    </Text>
+                  </View>
+                  <Text style={styles.eligibilityText}>
+                    {eligibilitySummary.eligibleCount} cartes éligibles · {eligibilitySummary.excludedCount} exclues
+                  </Text>
+                  {eligibilitySummary.eligibleCount === 0 && eligibilitySummary.total > 0 ? (
+                    <Text style={styles.eligibilityWarning}>Aucune carte éligible pour cette compétition et cette rareté.</Text>
+                  ) : null}
+                  {eligibilitySummary.reasons.length ? (
+                    <View style={styles.eligibilityReasonsRow}>
+                      {eligibilitySummary.reasons.slice(0, 3).map((item) => (
+                        <Text key={item.reason} style={styles.eligibilityReasonChip}>
+                          {item.reason} · {item.count}
+                        </Text>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
               </View>
 
               <LinearGradient colors={["rgba(96,8,18,0.58)", "rgba(12,12,18,0.98)"]} style={styles.summaryCard}>
@@ -2026,6 +2131,57 @@ const styles = {
     fontSize: 11,
     lineHeight: 15,
     fontWeight: "700" as const,
+  },
+  eligibilityBox: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.09)",
+    backgroundColor: "rgba(0,0,0,0.22)",
+    padding: 11,
+    gap: 6,
+  },
+  eligibilityHeader: {
+    flexDirection: "row" as const,
+    justifyContent: "space-between" as const,
+    alignItems: "center" as const,
+    gap: 10,
+  },
+  eligibilityTitle: {
+    color: TEXT,
+    fontSize: 14,
+    fontWeight: "900" as const,
+  },
+  eligibilityRatio: {
+    color: GREEN,
+    fontSize: 14,
+    fontWeight: "900" as const,
+  },
+  eligibilityText: {
+    color: MUTED,
+    fontSize: 12,
+    fontWeight: "800" as const,
+  },
+  eligibilityWarning: {
+    color: "#FFB4BF",
+    fontSize: 12,
+    fontWeight: "900" as const,
+  },
+  eligibilityReasonsRow: {
+    flexDirection: "row" as const,
+    flexWrap: "wrap" as const,
+    gap: 6,
+  },
+  eligibilityReasonChip: {
+    color: "rgba(255,255,255,0.76)",
+    backgroundColor: "rgba(255,255,255,0.055)",
+    borderColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderRadius: 999,
+    overflow: "hidden" as const,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    fontSize: 11,
+    fontWeight: "800" as const,
   },
   strategyRow: {
     flexDirection: "row" as const,
