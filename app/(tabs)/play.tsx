@@ -74,19 +74,23 @@ async function createLineup(payload: any): Promise<any> {
   return { ok: true, local: true, payload };
 }
 
-const BG = "#050505";
-const BG_TOP = "#080808";
-const BG_BOTTOM = "#020202";
-const PANEL = "#070707";
-const PANEL_SOFT = "#0f0f0f";
-const STROKE = "rgba(255,255,255,0.14)";
+const BG = "#07070A";
+const BG_TOP = "#180407";
+const BG_BOTTOM = "#020203";
+const PANEL = "#0B0B10";
+const PANEL_SOFT = "#111118";
+const STROKE = "rgba(255,255,255,0.12)";
 const STROKE_SOFT = "rgba(255,255,255,0.08)";
 const TEXT = "#ffffff";
 const MUTED = "rgba(255,255,255,0.62)";
 const MUTED_SOFT = "rgba(255,255,255,0.42)";
-const YELLOW = "#ffc400";
-const YELLOW_DEEP = "#f4a900";
+const YELLOW = "#FF3148";
+const YELLOW_DEEP = "#A70F20";
 const GREEN = "#19f07a";
+const RED = "#FF3148";
+const RED_DARK = "#7A0714";
+const BLUE = "#26A8FF";
+const PURPLE = "#A855F7";
 
 
 /* XS_PLAY_APPLY_CARD_BONUS_V1 BEGIN */
@@ -128,6 +132,23 @@ function xsPlayAiTextV1(value: any, fallback = "—"): string {
 type ModeKey = "classic" | "cap240" | "cap220";
 type StrategyKey = "safe" | "balanced" | "differential";
 type SlotKey = "GK" | "DEF" | "MID" | "FWD" | "FLEX";
+type PlayRarityV1 = "Limited" | "Rare" | "Super Rare" | "Unique";
+type PlayCompetitionCategoryV1 = "global" | "age" | "league" | "regional" | "arena";
+type PlayGameWeekCompetitionV1 = {
+  id: string;
+  label: string;
+  type: PlayCompetitionCategoryV1;
+  category: PlayCompetitionCategoryV1;
+  rarityAllowed: PlayRarityV1[];
+  eligibleLeagues: string[];
+  eligiblePositions: SlotKey[];
+  minCards: number;
+  maxCards: number;
+  defaultCards: number;
+  rulesDescription: string;
+  isActive: boolean;
+  futureRulesPlaceholder: string;
+};
 
 type CoachStats = {
   l5: number;
@@ -186,6 +207,110 @@ const strategies: {
   { key: "safe", label: "Sécurisé", percent: 78, icon: "shield-checkmark-outline", title: "Compo sécurisée" },
   { key: "balanced", label: "Équilibré", percent: 82, icon: "scale-outline", title: "Compo équilibrée" },
   { key: "differential", label: "Différentiel", percent: 74, icon: "star-outline", title: "Compo différentielle" },
+];
+
+// XS_PLAY_GAMEWEEKS_RULES_V1: local, extensible Sorare Game Week competition rules used only by the Play tab.
+const PLAY_RARITIES_V1: PlayRarityV1[] = ["Limited", "Rare", "Super Rare", "Unique"];
+const PLAY_ALL_POSITIONS_V1: SlotKey[] = ["GK", "DEF", "MID", "FWD", "FLEX"];
+const PLAY_GAMEWEEK_COMPETITIONS_V1: PlayGameWeekCompetitionV1[] = [
+  {
+    id: "all-star",
+    label: "All-Star",
+    type: "global",
+    category: "global",
+    rarityAllowed: PLAY_RARITIES_V1,
+    eligibleLeagues: [],
+    eligiblePositions: PLAY_ALL_POSITIONS_V1,
+    minCards: 5,
+    maxCards: 7,
+    defaultCards: 5,
+    rulesDescription: "Toutes ligues disponibles dans tes cartes, selon rareté sélectionnée.",
+    isActive: true,
+    futureRulesPlaceholder: "Brancher règles dynamiques Sorare et contraintes spéciales All-Star.",
+  },
+  {
+    id: "champion",
+    label: "Champion",
+    type: "regional",
+    category: "regional",
+    rarityAllowed: PLAY_RARITIES_V1,
+    eligibleLeagues: ["premier-league", "premier-league-gb-eng", "laliga", "laliga-es", "bundesliga", "bundesliga-de", "serie-a", "serie-a-it", "ligue-1", "ligue-1-fr"],
+    eligiblePositions: PLAY_ALL_POSITIONS_V1,
+    minCards: 5,
+    maxCards: 7,
+    defaultCards: 5,
+    rulesDescription: "Ligues champion majeures uniquement, selon rareté sélectionnée.",
+    isActive: true,
+    futureRulesPlaceholder: "Synchroniser la liste officielle Champion Sorare par Game Week.",
+  },
+  {
+    id: "challenger",
+    label: "Challenger",
+    type: "regional",
+    category: "regional",
+    rarityAllowed: PLAY_RARITIES_V1,
+    eligibleLeagues: ["eredivisie", "eredivisie-nl", "jupiler-pro-league", "belgium-pro-league", "liga-portugal", "liga-portugal-pt", "championship", "championship-gb-eng", "super-lig"],
+    eligiblePositions: PLAY_ALL_POSITIONS_V1,
+    minCards: 5,
+    maxCards: 7,
+    defaultCards: 5,
+    rulesDescription: "Ligues Challenger configurées localement, extensibles.",
+    isActive: true,
+    futureRulesPlaceholder: "Remplacer par les règles Challenger exactes et évolutives.",
+  },
+  {
+    id: "contender",
+    label: "Contender",
+    type: "regional",
+    category: "regional",
+    rarityAllowed: PLAY_RARITIES_V1,
+    eligibleLeagues: ["mls", "mls-us", "j-league", "k-league", "brasileirao", "argentina-primera", "liga-mx", "scottish-premiership", "swiss-super-league", "austrian-bundesliga"],
+    eligiblePositions: PLAY_ALL_POSITIONS_V1,
+    minCards: 5,
+    maxCards: 7,
+    defaultCards: 5,
+    rulesDescription: "Ligues Contender configurées localement, extensibles.",
+    isActive: true,
+    futureRulesPlaceholder: "Brancher les règles officielles Contender par calendrier.",
+  },
+  {
+    id: "u23",
+    label: "U23",
+    type: "age",
+    category: "age",
+    rarityAllowed: PLAY_RARITIES_V1,
+    eligibleLeagues: [],
+    eligiblePositions: PLAY_ALL_POSITIONS_V1,
+    minCards: 5,
+    maxCards: 7,
+    defaultCards: 5,
+    rulesDescription: "Joueurs de 23 ans ou moins quand l'âge est disponible.",
+    isActive: true,
+    futureRulesPlaceholder: "Ajouter date de naissance officielle et exceptions Game Week.",
+  },
+  {
+    id: "arena",
+    label: "Arena",
+    type: "arena",
+    category: "arena",
+    rarityAllowed: PLAY_RARITIES_V1,
+    eligibleLeagues: [],
+    eligiblePositions: PLAY_ALL_POSITIONS_V1,
+    minCards: 5,
+    maxCards: 7,
+    defaultCards: 5,
+    rulesDescription: "Format Arena local prêt à recevoir les contraintes dynamiques.",
+    isActive: true,
+    futureRulesPlaceholder: "Brancher contraintes Arena officielles.",
+  },
+  { id: "mls", label: "MLS", type: "league", category: "league", rarityAllowed: PLAY_RARITIES_V1, eligibleLeagues: ["mls", "mls-us"], eligiblePositions: PLAY_ALL_POSITIONS_V1, minCards: 5, maxCards: 7, defaultCards: 5, rulesDescription: "Cartes MLS uniquement.", isActive: true, futureRulesPlaceholder: "Ajouter règles MLS dynamiques." },
+  { id: "ligue-1", label: "Ligue 1", type: "league", category: "league", rarityAllowed: PLAY_RARITIES_V1, eligibleLeagues: ["ligue-1", "ligue-1-fr"], eligiblePositions: PLAY_ALL_POSITIONS_V1, minCards: 5, maxCards: 7, defaultCards: 5, rulesDescription: "Cartes Ligue 1 uniquement.", isActive: true, futureRulesPlaceholder: "Ajouter règles Ligue 1 dynamiques." },
+  { id: "premier-league", label: "Premier League", type: "league", category: "league", rarityAllowed: PLAY_RARITIES_V1, eligibleLeagues: ["premier-league", "premier-league-gb-eng"], eligiblePositions: PLAY_ALL_POSITIONS_V1, minCards: 5, maxCards: 7, defaultCards: 5, rulesDescription: "Cartes Premier League uniquement.", isActive: true, futureRulesPlaceholder: "Ajouter règles Premier League dynamiques." },
+  { id: "bundesliga", label: "Bundesliga", type: "league", category: "league", rarityAllowed: PLAY_RARITIES_V1, eligibleLeagues: ["bundesliga", "bundesliga-de"], eligiblePositions: PLAY_ALL_POSITIONS_V1, minCards: 5, maxCards: 7, defaultCards: 5, rulesDescription: "Cartes Bundesliga uniquement.", isActive: true, futureRulesPlaceholder: "Ajouter règles Bundesliga dynamiques." },
+  { id: "laliga", label: "LaLiga", type: "league", category: "league", rarityAllowed: PLAY_RARITIES_V1, eligibleLeagues: ["laliga", "laliga-es"], eligiblePositions: PLAY_ALL_POSITIONS_V1, minCards: 5, maxCards: 7, defaultCards: 5, rulesDescription: "Cartes LaLiga uniquement.", isActive: true, futureRulesPlaceholder: "Ajouter règles LaLiga dynamiques." },
+  { id: "serie-a", label: "Serie A", type: "league", category: "league", rarityAllowed: PLAY_RARITIES_V1, eligibleLeagues: ["serie-a", "serie-a-it"], eligiblePositions: PLAY_ALL_POSITIONS_V1, minCards: 5, maxCards: 7, defaultCards: 5, rulesDescription: "Cartes Serie A uniquement.", isActive: true, futureRulesPlaceholder: "Ajouter règles Serie A dynamiques." },
+  { id: "eredivisie", label: "Eredivisie", type: "league", category: "league", rarityAllowed: PLAY_RARITIES_V1, eligibleLeagues: ["eredivisie", "eredivisie-nl"], eligiblePositions: PLAY_ALL_POSITIONS_V1, minCards: 5, maxCards: 7, defaultCards: 5, rulesDescription: "Cartes Eredivisie uniquement.", isActive: true, futureRulesPlaceholder: "Ajouter règles Eredivisie dynamiques." },
+  { id: "jupiler-pro-league", label: "Jupiler Pro League", type: "league", category: "league", rarityAllowed: PLAY_RARITIES_V1, eligibleLeagues: ["jupiler-pro-league", "belgium-pro-league"], eligiblePositions: PLAY_ALL_POSITIONS_V1, minCards: 5, maxCards: 7, defaultCards: 5, rulesDescription: "Cartes Jupiler Pro League uniquement.", isActive: true, futureRulesPlaceholder: "Ajouter règles Jupiler Pro League dynamiques." },
 ];
 
 const slotLayout: Record<SlotKey, { x: number; y: number }> = {
@@ -485,13 +610,104 @@ function metric(input: string, min: number, max: number, salt: number) {
   return min + (hashValue(input, salt) % (span + 1));
 }
 
-function normalizePosition(value: unknown): CoachPlayer["position"] {
+function normalizePosition(value: unknown): Exclude<SlotKey, "FLEX"> {
   const raw = String(value ?? "").toLowerCase();
   if (raw.includes("gk") || raw.includes("goal")) return "GK";
   if (raw.includes("def")) return "DEF";
   if (raw.includes("mid")) return "MID";
   if (raw.includes("fwd") || raw.includes("forward") || raw.includes("att")) return "FWD";
   return "FWD";
+}
+
+function xsPlayRuleKeyV1(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function xsPlayCardRarityV1(card: SorareCard): PlayRarityV1 | null {
+  const raw = xsPlayRuleKeyV1(card.rarity ?? card.cardRarity ?? card.rarityTyped ?? card.slug ?? card.id);
+  if (raw.includes("super-rare") || raw.includes("superrare")) return "Super Rare";
+  if (raw.includes("unique")) return "Unique";
+  if (raw.includes("limited")) return "Limited";
+  if (raw.includes("rare")) return "Rare";
+  return null;
+}
+
+function xsPlayCardLeagueKeysV1(card: SorareCard) {
+  const values = [
+    card.leagueSlug,
+    card.leagueName,
+    card.competition,
+    card.competitionName,
+    card.tournamentName,
+    card.raw?.leagueSlug,
+    card.raw?.leagueName,
+    card.team?.leagueSlug,
+    card.team?.leagueName,
+    card.club?.leagueSlug,
+    card.club?.leagueName,
+  ];
+  return values.map(xsPlayRuleKeyV1).filter(Boolean);
+}
+
+function xsPlayCardAgeV1(card: SorareCard): number | null {
+  const direct = Number(card.age ?? card.playerAge ?? card.anyPlayer?.age ?? card.player?.age);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const birth = String(card.birthDate ?? card.dateOfBirth ?? card.anyPlayer?.birthDate ?? card.player?.birthDate ?? "");
+  const year = Number(birth.slice(0, 4));
+  if (!Number.isFinite(year) || year <= 1900) return null;
+  return new Date().getFullYear() - year;
+}
+
+function xsPlayIsCardEligibleV1(card: SorareCard, competition: PlayGameWeekCompetitionV1, rarity: PlayRarityV1) {
+  const cardRarity = xsPlayCardRarityV1(card);
+  if (!cardRarity || cardRarity !== rarity || !competition.rarityAllowed.includes(cardRarity)) return false;
+
+  const position = normalizePosition(card.positionRaw ?? card.position);
+  if (!competition.eligiblePositions.includes(position) && !competition.eligiblePositions.includes("FLEX")) return false;
+
+  if (competition.type === "age") {
+    const age = xsPlayCardAgeV1(card);
+    if (age == null || age > 23) return false;
+  }
+
+  if (competition.eligibleLeagues.length) {
+    const leagueKeys = xsPlayCardLeagueKeysV1(card);
+    const allowed = competition.eligibleLeagues.map(xsPlayRuleKeyV1);
+    if (!leagueKeys.some((key) => allowed.includes(key))) return false;
+  }
+
+  return true;
+}
+
+function xsPlaySlotsForCompetitionV1(competition: PlayGameWeekCompetitionV1): SlotKey[] {
+  const base: SlotKey[] = ["GK", "DEF", "MID", "FWD", "FLEX"];
+  return base.slice(0, Math.max(competition.minCards, Math.min(competition.defaultCards, competition.maxCards, base.length)));
+}
+
+function xsPlayEmptySlotPlayerV1(slot: SlotKey): CoachPlayer {
+  return {
+    id: `empty-${slot}`,
+    slug: `empty-${slot}`,
+    name: "Ajouter",
+    position: slot === "FLEX" ? "FWD" : slot,
+    match: "Slot libre",
+    club: "Carte éligible",
+    pictureUrl: "",
+    score: 0,
+    aiScore: 0,
+    confidence: 0,
+    colors: ["#151515", "#2A1015"],
+    stats: { l5: 0, l15: 0, l40: 0, probableStart: 0, injuryRisk: 0, suspensionRisk: 0, difficulty: 0, minutes: 0, ceiling: 0, upside: 0, ownership: 0 },
+    reasons: ["Aucune carte éligible disponible pour ce slot."],
+    rawCard: { isEmptySlot: true },
+  };
 }
 
 function readableName(card: SorareCard) {
@@ -506,8 +722,8 @@ function readableName(card: SorareCard) {
     .join(" ");
 }
 
-function buildGalleryCandidates(gallery: SorareCard[]): CoachPlayer[] {
-  if (!Array.isArray(gallery) || gallery.length < 5) return mockPlayers;
+function buildGalleryCandidates(gallery: SorareCard[], allowMockFallback = true): CoachPlayer[] {
+  if (!Array.isArray(gallery) || gallery.length < 5) return allowMockFallback ? mockPlayers : [];
 
   const colors: [string, string][] = [
     ["#77b8f2", "#1f78be"],
@@ -570,7 +786,7 @@ function buildGalleryCandidates(gallery: SorareCard[]): CoachPlayer[] {
   });
 
   const hasCore = ["GK", "DEF", "MID", "FWD"].every((position) => mapped.some((player) => player.position === position));
-  return hasCore ? mapped : mockPlayers;
+  return hasCore ? mapped : (allowMockFallback ? mockPlayers : mapped);
 }
 
 function scoreForStrategy(player: CoachPlayer, strategy: StrategyKey, mode: ModeKey) {
@@ -623,12 +839,12 @@ function pickForSlot(candidates: CoachPlayer[], used: Set<string>, slot: SlotKey
     })
     .sort((a, b) => scoreForStrategy(b, strategy, mode) - scoreForStrategy(a, strategy, mode));
 
-  return compatible[0] ?? candidates.find((player) => !used.has(player.id)) ?? candidates[0];
+  return compatible[0] ?? xsPlayEmptySlotPlayerV1(slot);
 }
 
-function generateLineup(candidates: CoachPlayer[], strategy: StrategyKey, mode: ModeKey): GeneratedLineup {
+function generateLineup(candidates: CoachPlayer[], strategy: StrategyKey, mode: ModeKey, competition: PlayGameWeekCompetitionV1 = PLAY_GAMEWEEK_COMPETITIONS_V1[0]): GeneratedLineup {
   const used = new Set<string>();
-  const slots = (["GK", "DEF", "MID", "FWD", "FLEX"] as SlotKey[]).map((slot) => {
+  const slots = xsPlaySlotsForCompetitionV1(competition).map((slot) => {
     const player = pickForSlot(candidates, used, slot, strategy, mode);
     used.add(player.id);
     return { slot, player };
@@ -784,7 +1000,7 @@ function StrategyCard({
 function StatBadge({ small = false }: { small?: boolean }) {
   return (
     <View style={[styles.statBadge, small && styles.statBadgeSmall]}>
-      <Ionicons name="stats-chart" size={small ? 10 : 12} color={YELLOW} />
+      <Ionicons name="stats-chart" size={small ? 10 : 12} color="#FFD11A" />
     </View>
   );
 }
@@ -885,7 +1101,7 @@ function Pitch({
   return (
     <View style={[styles.pitchWrap, { width: pitchWidth, height: pitchHeight }]}>
       <LinearGradient
-        colors={["rgba(12,61,31,0.88)", "rgba(3,36,19,0.94)", "rgba(1,21,12,0.98)"]}
+        colors={["rgba(44,4,10,0.88)", "rgba(12,13,18,0.96)", "rgba(5,5,8,0.99)"]}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
         style={styles.pitch}
@@ -1211,6 +1427,8 @@ export default function PlayScreen() {
   const gallery = usePersistedGallery();
   const [mode, setMode] = useState<ModeKey>("classic");
   const [strategy, setStrategy] = useState<StrategyKey>("balanced");
+  const [competitionId, setCompetitionId] = useState(PLAY_GAMEWEEK_COMPETITIONS_V1[0].id);
+  const [selectedRarity, setSelectedRarity] = useState<PlayRarityV1>("Limited");
   const [loadingAi, setLoadingAi] = useState(true);
   const [selected, setSelected] = useState<{ slot: SlotKey; player: CoachPlayer } | null>(null);
   const [variantsOpen, setVariantsOpen] = useState(false);
@@ -1247,7 +1465,7 @@ export default function PlayScreen() {
     setOverrides({});
     const timer = setTimeout(() => setLoadingAi(false), 720);
     return () => clearTimeout(timer);
-  }, [mode, strategy]);
+  }, [competitionId, mode, selectedRarity, strategy]);
 
   useEffect(() => {
     if (!toast) return;
@@ -1255,8 +1473,16 @@ export default function PlayScreen() {
     return () => clearTimeout(timer);
   }, [toast]);
 
-  const candidates = useMemo(() => buildGalleryCandidates(gallery), [gallery]);
-  const generated = useMemo(() => generateLineup(candidates, strategy, mode), [candidates, mode, strategy]);
+  const selectedCompetition = useMemo(
+    () => PLAY_GAMEWEEK_COMPETITIONS_V1.find((item) => item.id === competitionId) ?? PLAY_GAMEWEEK_COMPETITIONS_V1[0],
+    [competitionId]
+  );
+  const eligibleGallery = useMemo(
+    () => gallery.filter((card) => xsPlayIsCardEligibleV1(card, selectedCompetition, selectedRarity)),
+    [gallery, selectedCompetition, selectedRarity]
+  );
+  const candidates = useMemo(() => buildGalleryCandidates(eligibleGallery, gallery.length === 0), [eligibleGallery, gallery.length]);
+  const generated = useMemo(() => generateLineup(candidates, strategy, mode, selectedCompetition), [candidates, mode, selectedCompetition, strategy]);
   const displayLineup = useMemo<GeneratedLineup>(() => {
     const slots = generated.slots.map((item) => ({ ...item, player: overrides[item.slot] ?? item.player }));
     const projected = Math.round(slots.reduce((sum, item) => sum + item.player.score, 0) * 0.75);
@@ -1277,10 +1503,14 @@ export default function PlayScreen() {
         .slice(0, 8),
     [candidates, selectedIds]
   );
-  const variants = useMemo(() => strategies.map((item) => generateLineup(candidates, item.key, mode)), [candidates, mode]);
+  const variants = useMemo(() => strategies.map((item) => generateLineup(candidates, item.key, mode, selectedCompetition)), [candidates, mode, selectedCompetition]);
   const glowOpacity = glow.interpolate({ inputRange: [0, 1], outputRange: [0.22, 0.72] });
   const pageWidth = Math.min(width, 1024);
-  const gameweekKey = useMemo(() => `GW358|${mode}|${strategy}|${displayLineup.slots.map((item) => item.player.id).join("|")}`, [displayLineup.slots, mode, strategy]);
+  const hasInvalidLineup = useMemo(() => displayLineup.slots.some((item) => item.player.rawCard?.isEmptySlot), [displayLineup.slots]);
+  const gameweekKey = useMemo(
+    () => `GW358|${competitionId}|${selectedRarity}|${mode}|${strategy}|${displayLineup.slots.map((item) => item.player.id).join("|")}`,
+    [competitionId, displayLineup.slots, mode, selectedRarity, strategy]
+  );
 
   useEffect(() => {
     setGameweekPrediction(null);
@@ -1291,6 +1521,9 @@ export default function PlayScreen() {
     setGameweekPredictionLoading(true);
     setGameweekPredictionError("");
     try {
+      if (hasInvalidLineup) {
+        throw new Error("Composition incomplète : ajoute des cartes éligibles pour cette compétition.");
+      }
       const deviceId =
         (await AsyncStorage.getItem("xs_device_id").catch(() => null)) ||
         (await AsyncStorage.getItem("XS_JWT_DEVICE_ID_V1").catch(() => null)) ||
@@ -1302,7 +1535,9 @@ export default function PlayScreen() {
         body: JSON.stringify({
           deviceId,
           gameweekKey,
-          competition: mode,
+          competition: selectedCompetition.id,
+          rarity: selectedRarity,
+          mode,
           createdAt: new Date().toISOString(),
           lineupCards: xsPlayAiLineupCardsV1(displayLineup),
         }),
@@ -1321,10 +1556,16 @@ export default function PlayScreen() {
 
   async function useLineup() {
     try {
+      if (hasInvalidLineup) {
+        setToast("Composition incomplète");
+        return;
+      }
       setSaving(true);
       await createLineup({
         name: displayLineup.title,
         mode: modeToApiMode(mode),
+        competition: selectedCompetition.id,
+        rarity: selectedRarity,
         cardSlugs: displayLineup.slots.map((item) => item.player.slug),
         gw: "358",
       });
@@ -1352,10 +1593,11 @@ export default function PlayScreen() {
             <View style={[styles.page, { maxWidth: pageWidth }]}>
               <View style={styles.headerRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.stepNumber}>07</Text>
-                  <Text style={styles.heroTitle}>Choisissez votre style</Text>
+                  <Text style={styles.heroTitle}>Jouer</Text>
+                  <Text style={styles.heroSubtitle}>Prépare ta Game Week</Text>
                 </View>
                 <View style={styles.gwBadge}>
+                  <Ionicons name="calendar-outline" size={18} color={RED} />
                   <Text style={styles.gwText}>GW 358</Text>
                 </View>
               </View>
@@ -1366,41 +1608,93 @@ export default function PlayScreen() {
                 ))}
               </View>
 
-              <View style={styles.strategyRow}>
-                {strategies.map((item) => (
-                  <StrategyCard
-                    key={item.key}
-                    item={item}
-                    active={strategy === item.key}
-                    glowOpacity={glowOpacity}
-                    onPress={() => setStrategy(item.key)}
-                  />
-                ))}
+              <View style={styles.gameWeekRulesCard}>
+                <View style={styles.rulesHeaderRow}>
+                  <View>
+                    <Text style={styles.rulesTitle}>Game Week</Text>
+                    <Text style={styles.rulesSubtitle}>{selectedCompetition.rulesDescription}</Text>
+                  </View>
+                  <View style={styles.rulesCountBadge}>
+                    <Text style={styles.rulesCountText}>{eligibleGallery.length}</Text>
+                    <Text style={styles.rulesCountLabel}>cartes</Text>
+                  </View>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rulesChipRow}>
+                  {PLAY_GAMEWEEK_COMPETITIONS_V1.filter((item) => item.isActive).map((item) => (
+                    <PremiumPressable
+                      key={item.id}
+                      onPress={() => setCompetitionId(item.id)}
+                      style={[styles.rulesChip, competitionId === item.id && styles.rulesChipActive]}
+                    >
+                      <Text style={[styles.rulesChipText, competitionId === item.id && styles.rulesChipTextActive]}>{item.label}</Text>
+                    </PremiumPressable>
+                  ))}
+                </ScrollView>
+                <View style={styles.rarityRow}>
+                  {PLAY_RARITIES_V1.map((rarity) => {
+                    const disabled = !selectedCompetition.rarityAllowed.includes(rarity);
+                    return (
+                      <PremiumPressable
+                        key={rarity}
+                        disabled={disabled}
+                        onPress={() => setSelectedRarity(rarity)}
+                        style={[styles.rarityChip, selectedRarity === rarity && styles.rarityChipActive, disabled && styles.rarityChipDisabled]}
+                      >
+                        <Text style={[styles.rarityChipText, selectedRarity === rarity && styles.rarityChipTextActive]}>{rarity}</Text>
+                      </PremiumPressable>
+                    );
+                  })}
+                </View>
+                <Text style={styles.rulesMeta}>
+                  Format {selectedCompetition.defaultCards}/{selectedCompetition.maxCards} cartes · {selectedCompetition.futureRulesPlaceholder}
+                </Text>
               </View>
 
-              <View style={styles.mainCard}>
-                <View style={styles.compoHeader}>
-                  <View>
-                    <Text style={styles.compoTitle}>{displayLineup.title}</Text>
-                    <Text style={styles.compoSubtitle}>Score projeté</Text>
-                    <Text style={styles.projectedScore}>{displayLineup.projected} pts</Text>
+              <LinearGradient colors={["rgba(96,8,18,0.58)", "rgba(12,12,18,0.98)"]} style={styles.summaryCard}>
+                <View style={styles.summaryGlow} />
+                <View style={styles.summaryTopRow}>
+                  <View style={styles.summaryTitleRow}>
+                    <View style={styles.summaryIcon}>
+                      <Ionicons name="shield-checkmark-outline" size={24} color={RED} />
+                    </View>
+                    <Text style={styles.summaryTitle}>{displayLineup.title}</Text>
                   </View>
-                  <View style={{ alignItems: "flex-end" }}>
-                    <Text style={styles.confidenceLabel}>Confiance</Text>
+                  <View style={styles.confidenceRing}>
                     <Text style={styles.confidenceValue}>{displayLineup.confidence}%</Text>
                   </View>
                 </View>
+                <Text style={styles.compoSubtitle}>Score projeté</Text>
+                <Text style={styles.projectedScore}>{displayLineup.projected} pts</Text>
+                <View style={styles.summaryDivider} />
+                <View style={styles.strategyPillsRow}>
+                  {strategies.map((item) => (
+                    <PremiumPressable key={item.key} onPress={() => setStrategy(item.key)} style={[styles.strategyPill, strategy === item.key && styles.strategyPillActive]}>
+                      <Text style={styles.strategyPillLabel}>{item.label}</Text>
+                      <Text style={[styles.strategyPillValue, item.key === "balanced" ? { color: BLUE } : item.key === "differential" ? { color: PURPLE } : null]}>
+                        +{item.percent}%
+                      </Text>
+                    </PremiumPressable>
+                  ))}
+                </View>
+              </LinearGradient>
 
-                <View style={styles.aiGwBox}>
+              <LinearGradient colors={["rgba(180,10,28,0.34)", "rgba(36,4,9,0.92)"]} style={styles.aiGwBox}>
                   <View style={styles.aiGwHeader}>
+                    <View style={styles.aiGwIcon}>
+                      <Ionicons name="sparkles-outline" size={28} color={RED} />
+                    </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={styles.aiGwTitle}>Prédiction IA Game Week</Text>
                       <Text numberOfLines={1} style={styles.aiGwSubtitle}>
-                        Analyse globale de la composition
+                        Analyse et optimise ta composition
                       </Text>
                     </View>
                     <PremiumPressable onPress={runGameweekPrediction} disabled={gameweekPredictionLoading} style={styles.aiGwButton}>
-                      <Text style={styles.aiGwButtonText}>{gameweekPredictionLoading ? "Analyse..." : "Prédire"}</Text>
+                      {gameweekPredictionLoading ? (
+                        <ActivityIndicator color={TEXT} size="small" />
+                      ) : (
+                        <Ionicons name="chevron-forward" size={25} color={TEXT} />
+                      )}
                     </PremiumPressable>
                   </View>
                   {gameweekPredictionError ? (
@@ -1444,23 +1738,31 @@ export default function PlayScreen() {
                       ))}
                     </View>
                   ) : null}
-                </View>
+              </LinearGradient>
 
+              <View style={styles.mainCard}>
+                <View style={styles.sectionHeaderRow}>
+                  <Text style={styles.sectionTitle}>Ta composition</Text>
+                  <PremiumPressable onPress={() => setVariantsOpen(true)} style={styles.changeLineupButton}>
+                    <Ionicons name="sync" size={15} color={RED} />
+                    <Text style={styles.changeLineupText}>Changer de compo</Text>
+                  </PremiumPressable>
+                </View>
                 <Pitch
                   slots={displayLineup.slots}
                   width={pageWidth - 36}
                   loading={loadingAi}
                   onPlayerPress={(slot, player) => setSelected({ slot, player })}
                 />
-
-                <Suggestions
-                  players={suggestions.length ? suggestions : mockPlayers.slice(5)}
-                  onPress={(player) => {
-                    const slot = displayLineup.slots.find((item) => item.player.position === player.position)?.slot ?? "FLEX";
-                    setSelected({ slot, player });
-                  }}
-                />
               </View>
+
+              <Suggestions
+                players={suggestions.length ? suggestions : mockPlayers.slice(5)}
+                onPress={(player) => {
+                  const slot = displayLineup.slots.find((item) => item.player.position === player.position)?.slot ?? "FLEX";
+                  setSelected({ slot, player });
+                }}
+              />
 
               <AnalysisChips
                 onPress={(chip) => {
@@ -1476,7 +1778,14 @@ export default function PlayScreen() {
               </PremiumPressable>
 
               <PremiumPressable onPress={() => setVariantsOpen(true)} style={styles.secondaryButton}>
-                <Text style={styles.secondaryButtonText}>Voir les autres compositions</Text>
+                <View style={styles.secondaryButtonIcon}>
+                  <Ionicons name="shield-checkmark-outline" size={24} color={RED} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.secondaryButtonText}>Mes compositions</Text>
+                  <Text style={styles.secondaryButtonSubtext}>Gère et sauvegarde tes compositions</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={24} color={TEXT} />
               </PremiumPressable>
             </View>
           </ScrollView>
@@ -1524,9 +1833,9 @@ const styles = {
   },
   page: {
     width: "100%" as const,
-    paddingHorizontal: 16,
-    paddingTop: 18,
-    gap: 18,
+    paddingHorizontal: 18,
+    paddingTop: 22,
+    gap: 20,
   },
   headerRow: {
     flexDirection: "row" as const,
@@ -1542,41 +1851,49 @@ const styles = {
     opacity: 0.96,
   },
   heroTitle: {
-    marginTop: 22,
     color: TEXT,
-    fontSize: 34,
-    lineHeight: 40,
-    fontWeight: "800" as const,
+    fontSize: 42,
+    lineHeight: 48,
+    fontWeight: "900" as const,
     letterSpacing: 0,
   },
+  heroSubtitle: {
+    marginTop: 5,
+    color: MUTED,
+    fontSize: 19,
+    fontWeight: "600" as const,
+  },
   gwBadge: {
-    height: 42,
+    height: 58,
     paddingHorizontal: 18,
-    borderRadius: 999,
-    backgroundColor: "#171717",
+    borderRadius: 15,
+    backgroundColor: "rgba(82,8,17,0.35)",
     alignItems: "center" as const,
     justifyContent: "center" as const,
+    flexDirection: "row" as const,
+    gap: 9,
     marginTop: 12,
     shadowColor: "#000",
     shadowOpacity: 0.45,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 8 },
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.04)",
+    borderColor: "rgba(255,49,72,0.38)",
   },
   gwText: {
     color: TEXT,
-    fontWeight: "800" as const,
-    fontSize: 17,
+    fontWeight: "900" as const,
+    fontSize: 16,
   },
   modeRow: {
     flexDirection: "row" as const,
-    gap: 10,
+    gap: 8,
+    marginTop: -4,
   },
   modeButton: {
     flex: 1,
-    height: 56,
-    borderRadius: 14,
+    height: 42,
+    borderRadius: 12,
     overflow: "hidden" as const,
   },
   modeButtonActive: {
@@ -1600,8 +1917,115 @@ const styles = {
     justifyContent: "center" as const,
   },
   modeText: {
-    fontSize: 18,
+    fontSize: 14,
     fontWeight: "800" as const,
+  },
+  gameWeekRulesCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255,49,72,0.22)",
+    backgroundColor: "rgba(10,10,15,0.92)",
+    padding: 14,
+    gap: 12,
+  },
+  rulesHeaderRow: {
+    flexDirection: "row" as const,
+    alignItems: "flex-start" as const,
+    justifyContent: "space-between" as const,
+    gap: 12,
+  },
+  rulesTitle: {
+    color: TEXT,
+    fontSize: 18,
+    fontWeight: "900" as const,
+  },
+  rulesSubtitle: {
+    marginTop: 3,
+    color: MUTED,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: "700" as const,
+    maxWidth: 680,
+  },
+  rulesCountBadge: {
+    minWidth: 58,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,49,72,0.35)",
+    backgroundColor: "rgba(255,49,72,0.10)",
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+    alignItems: "center" as const,
+  },
+  rulesCountText: {
+    color: RED,
+    fontSize: 18,
+    fontWeight: "900" as const,
+  },
+  rulesCountLabel: {
+    color: MUTED,
+    fontSize: 10,
+    fontWeight: "800" as const,
+  },
+  rulesChipRow: {
+    gap: 8,
+    paddingRight: 8,
+  },
+  rulesChip: {
+    height: 36,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "rgba(255,255,255,0.035)",
+    paddingHorizontal: 13,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+  },
+  rulesChipActive: {
+    borderColor: RED,
+    backgroundColor: "rgba(255,49,72,0.20)",
+  },
+  rulesChipText: {
+    color: "rgba(255,255,255,0.72)",
+    fontSize: 12,
+    fontWeight: "900" as const,
+  },
+  rulesChipTextActive: {
+    color: TEXT,
+  },
+  rarityRow: {
+    flexDirection: "row" as const,
+    flexWrap: "wrap" as const,
+    gap: 8,
+  },
+  rarityChip: {
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "rgba(255,255,255,0.035)",
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+  },
+  rarityChipActive: {
+    borderColor: RED,
+    backgroundColor: "rgba(255,49,72,0.20)",
+  },
+  rarityChipDisabled: {
+    opacity: 0.38,
+  },
+  rarityChipText: {
+    color: "rgba(255,255,255,0.72)",
+    fontSize: 11,
+    fontWeight: "900" as const,
+  },
+  rarityChipTextActive: {
+    color: TEXT,
+  },
+  rulesMeta: {
+    color: MUTED_SOFT,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: "700" as const,
   },
   strategyRow: {
     flexDirection: "row" as const,
@@ -1645,16 +2069,131 @@ const styles = {
     fontWeight: "900" as const,
   },
   mainCard: {
-    borderRadius: 26,
-    backgroundColor: "#050505",
+    borderRadius: 22,
+    backgroundColor: "rgba(8,8,12,0.94)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
-    padding: 18,
+    borderColor: "rgba(255,49,72,0.18)",
+    padding: 12,
     shadowColor: "#000",
     shadowOpacity: 0.7,
     shadowRadius: 28,
     shadowOffset: { width: 0, height: 18 },
     overflow: "hidden" as const,
+  },
+  sectionHeaderRow: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    justifyContent: "space-between" as const,
+    gap: 12,
+    paddingHorizontal: 2,
+    paddingBottom: 8,
+  },
+  changeLineupButton: {
+    height: 40,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,49,72,0.22)",
+    backgroundColor: "rgba(255,255,255,0.035)",
+    paddingHorizontal: 12,
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    gap: 7,
+  },
+  changeLineupText: {
+    color: TEXT,
+    fontSize: 12,
+    fontWeight: "900" as const,
+  },
+  summaryCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "rgba(255,49,72,0.48)",
+    padding: 22,
+    overflow: "hidden" as const,
+    shadowColor: RED,
+    shadowOpacity: 0.18,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 10 },
+  },
+  summaryGlow: {
+    position: "absolute" as const,
+    right: -70,
+    top: -70,
+    width: 180,
+    height: 180,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,49,72,0.16)",
+  },
+  summaryTopRow: {
+    flexDirection: "row" as const,
+    justifyContent: "space-between" as const,
+    alignItems: "center" as const,
+    gap: 16,
+  },
+  summaryTitleRow: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    gap: 12,
+    flex: 1,
+  },
+  summaryIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,49,72,0.13)",
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+  },
+  summaryTitle: {
+    color: TEXT,
+    fontSize: 20,
+    lineHeight: 25,
+    fontWeight: "900" as const,
+    textTransform: "uppercase" as const,
+    flex: 1,
+  },
+  confidenceRing: {
+    width: 94,
+    height: 94,
+    borderRadius: 999,
+    borderWidth: 7,
+    borderColor: RED,
+    backgroundColor: "rgba(0,0,0,0.28)",
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+  },
+  summaryDivider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    marginTop: 22,
+    marginBottom: 12,
+  },
+  strategyPillsRow: {
+    flexDirection: "row" as const,
+    alignItems: "stretch" as const,
+  },
+  strategyPill: {
+    flex: 1,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+    paddingVertical: 8,
+    borderRightWidth: 1,
+    borderRightColor: "rgba(255,255,255,0.10)",
+  },
+  strategyPillActive: {
+    backgroundColor: "rgba(255,49,72,0.08)",
+    borderRadius: 12,
+  },
+  strategyPillLabel: {
+    color: "rgba(255,255,255,0.78)",
+    fontSize: 13,
+    fontWeight: "800" as const,
+  },
+  strategyPillValue: {
+    marginTop: 3,
+    color: GREEN,
+    fontSize: 20,
+    fontWeight: "900" as const,
   },
   compoHeader: {
     flexDirection: "row" as const,
@@ -1671,16 +2210,16 @@ const styles = {
     fontWeight: "900" as const,
   },
   compoSubtitle: {
-    marginTop: 12,
+    marginTop: 30,
     color: MUTED,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "600" as const,
   },
   projectedScore: {
     marginTop: 4,
-    color: GREEN,
-    fontSize: 33,
-    lineHeight: 38,
+    color: RED,
+    fontSize: 48,
+    lineHeight: 54,
     fontWeight: "900" as const,
   },
   confidenceLabel: {
@@ -1690,42 +2229,53 @@ const styles = {
     fontWeight: "600" as const,
   },
   confidenceValue: {
-    marginTop: 8,
     color: TEXT,
-    fontSize: 34,
-    lineHeight: 38,
+    fontSize: 26,
+    lineHeight: 30,
     fontWeight: "900" as const,
   },
   aiGwBox: {
-    borderRadius: 18,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: "rgba(255,196,0,0.18)",
-    backgroundColor: "rgba(255,255,255,0.035)",
-    padding: 12,
-    marginBottom: 14,
+    borderColor: "rgba(255,49,72,0.62)",
+    padding: 18,
     gap: 10,
+    overflow: "hidden" as const,
   },
   aiGwHeader: {
     flexDirection: "row" as const,
     alignItems: "center" as const,
-    gap: 10,
+    gap: 14,
+  },
+  aiGwIcon: {
+    width: 54,
+    height: 54,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,49,72,0.12)",
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
   },
   aiGwTitle: {
     color: TEXT,
-    fontSize: 17,
+    fontSize: 19,
     fontWeight: "900" as const,
+    textTransform: "uppercase" as const,
   },
   aiGwSubtitle: {
     color: MUTED,
-    fontSize: 12,
+    fontSize: 15,
     fontWeight: "700" as const,
     marginTop: 2,
   },
   aiGwButton: {
+    width: 54,
+    height: 54,
     borderRadius: 999,
-    backgroundColor: YELLOW,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
+    backgroundColor: "rgba(255,49,72,0.18)",
+    borderWidth: 1,
+    borderColor: RED,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
   },
   aiGwButtonText: {
     color: "#080808",
@@ -1804,19 +2354,19 @@ const styles = {
   },
   pitchWrap: {
     alignSelf: "center" as const,
-    marginTop: 2,
+    marginTop: 10,
     borderRadius: 18,
     overflow: "hidden" as const,
-    backgroundColor: "#02180d",
+    backgroundColor: "#07070A",
   },
   pitch: {
     flex: 1,
     borderRadius: 18,
     overflow: "hidden" as const,
     borderWidth: 1,
-    borderColor: "rgba(84,160,103,0.18)",
-    shadowColor: "#12ff73",
-    shadowOpacity: 0.12,
+    borderColor: "rgba(255,49,72,0.32)",
+    shadowColor: RED,
+    shadowOpacity: 0.16,
     shadowRadius: 28,
   },
   pitchVignette: {
@@ -1834,7 +2384,7 @@ const styles = {
     top: "7%" as const,
     bottom: "5%" as const,
     borderWidth: 2,
-    borderColor: "rgba(143,220,151,0.17)",
+    borderColor: "rgba(255,49,72,0.19)",
   },
   pitchHalfLine: {
     position: "absolute" as const,
@@ -1842,7 +2392,7 @@ const styles = {
     right: "4%" as const,
     top: "50%" as const,
     height: 1,
-    backgroundColor: "rgba(143,220,151,0.17)",
+    backgroundColor: "rgba(255,49,72,0.18)",
   },
   pitchCenterCircle: {
     position: "absolute" as const,
@@ -1852,7 +2402,7 @@ const styles = {
     height: "16%" as const,
     borderWidth: 2,
     borderRadius: 999,
-    borderColor: "rgba(143,220,151,0.15)",
+    borderColor: "rgba(255,49,72,0.17)",
   },
   pitchCenterDot: {
     position: "absolute" as const,
@@ -1861,7 +2411,7 @@ const styles = {
     width: 10,
     height: 10,
     borderRadius: 999,
-    backgroundColor: "rgba(143,220,151,0.18)",
+    backgroundColor: "rgba(255,49,72,0.22)",
   },
   pitchBox: {
     position: "absolute" as const,
@@ -1869,7 +2419,7 @@ const styles = {
     width: "26%" as const,
     height: "15%" as const,
     borderWidth: 2,
-    borderColor: "rgba(143,220,151,0.14)",
+    borderColor: "rgba(255,49,72,0.16)",
   },
   pitchBoxTop: {
     top: "7%" as const,
@@ -1883,7 +2433,7 @@ const styles = {
     width: "14%" as const,
     height: "7%" as const,
     borderWidth: 2,
-    borderColor: "rgba(143,220,151,0.12)",
+    borderColor: "rgba(255,49,72,0.14)",
   },
   pitchSmallBoxTop: {
     top: "7%" as const,
@@ -1896,7 +2446,7 @@ const styles = {
     width: 28,
     height: 28,
     borderWidth: 2,
-    borderColor: "rgba(143,220,151,0.12)",
+    borderColor: "rgba(255,49,72,0.14)",
     borderRadius: 999,
   },
   cornerTopLeft: {
@@ -1916,19 +2466,25 @@ const styles = {
     bottom: "3.8%" as const,
   },
   slotLabel: {
-    color: TEXT,
-    fontSize: 14,
+    color: "rgba(255,255,255,0.72)",
+    fontSize: 12,
     lineHeight: 17,
     fontWeight: "900" as const,
     marginBottom: 6,
     textAlign: "center" as const,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    paddingHorizontal: 12,
+    paddingVertical: 3,
+    borderRadius: 999,
+    overflow: "hidden" as const,
+    alignSelf: "center" as const,
   },
   playerCard: {
-    borderRadius: 10,
+    borderRadius: 12,
     overflow: "hidden" as const,
-    backgroundColor: "#0b0b0b",
+    backgroundColor: "#0A080A",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.32)",
+    borderColor: "rgba(255,49,72,0.44)",
     shadowColor: "#000",
     shadowOpacity: 0.55,
     shadowRadius: 12,
@@ -1955,7 +2511,7 @@ const styles = {
     paddingHorizontal: 5,
     paddingVertical: 3,
     borderRadius: 7,
-    backgroundColor: "rgba(0,0,0,0.38)",
+    backgroundColor: "rgba(67,5,12,0.72)",
   },
   cardScoreLabel: {
     marginTop: -2,
@@ -1971,7 +2527,7 @@ const styles = {
     width: 22,
     height: 22,
     borderRadius: 5,
-    backgroundColor: "rgba(0,0,0,0.58)",
+    backgroundColor: "rgba(0,0,0,0.68)",
     borderWidth: 1,
     borderColor: "rgba(255,196,0,0.6)",
     alignItems: "center" as const,
@@ -2134,11 +2690,16 @@ const styles = {
     backgroundColor: "rgba(255,255,255,0.16)",
   },
   suggestionsBlock: {
-    marginTop: 16,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "rgba(255,49,72,0.30)",
+    backgroundColor: "rgba(10,10,15,0.92)",
+    padding: 16,
+    gap: 4,
   },
   sectionTitle: {
     color: TEXT,
-    fontSize: 21,
+    fontSize: 22,
     fontWeight: "900" as const,
   },
   sectionSubtitle: {
@@ -2149,7 +2710,7 @@ const styles = {
   },
   suggestionsRow: {
     paddingTop: 12,
-    gap: 18,
+    gap: 12,
     paddingRight: 8,
   },
   suggestionShell: {
@@ -2168,9 +2729,9 @@ const styles = {
   },
   whyBlock: {
     borderRadius: 18,
-    backgroundColor: "#050505",
+    backgroundColor: "#0A0A0F",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
+    borderColor: "rgba(255,49,72,0.18)",
     padding: 18,
   },
   whyTitle: {
@@ -2208,24 +2769,42 @@ const styles = {
     shadowOffset: { width: 0, height: 8 },
   },
   primaryButtonText: {
-    color: "#080808",
+    color: TEXT,
     fontSize: 20,
     fontWeight: "900" as const,
   },
   secondaryButton: {
-    height: 54,
-    borderRadius: 14,
-    backgroundColor: "#0b0b0b",
+    minHeight: 78,
+    borderRadius: 18,
+    backgroundColor: "#0B0B10",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
+    borderColor: "rgba(255,49,72,0.22)",
     alignItems: "center" as const,
     justifyContent: "center" as const,
+    flexDirection: "row" as const,
+    gap: 14,
+    paddingHorizontal: 18,
     marginTop: -8,
   },
+  secondaryButtonIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,49,72,0.12)",
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+  },
   secondaryButtonText: {
-    color: "rgba(255,255,255,0.68)",
-    fontSize: 20,
-    fontWeight: "800" as const,
+    color: TEXT,
+    fontSize: 18,
+    fontWeight: "900" as const,
+    textTransform: "uppercase" as const,
+  },
+  secondaryButtonSubtext: {
+    color: MUTED,
+    fontSize: 14,
+    marginTop: 3,
+    fontWeight: "600" as const,
   },
   toast: {
     position: "absolute" as const,
