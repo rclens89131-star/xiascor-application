@@ -229,8 +229,97 @@ const strategies: {
 // XS_PLAY_ELIGIBILITY_FILTERS_V1: robust local card eligibility extraction and exclusion reasons.
 // XS_PLAY_LINEUP_VALIDATION_V1: validate selected Game Week lineups before save or AI prediction.
 // XS_PLAY_GAMEWEEK_UX_V1: make Game Week eligibility and lineup validation easier to understand.
+// XS_PLAY_CLUB_LEAGUE_FALLBACK_V1: infer league from known club when gallery cards miss league fields.
 const PLAY_RARITIES_V1: PlayRarityV1[] = ["Limited", "Rare", "Super Rare", "Unique"];
 const PLAY_ALL_POSITIONS_V1: SlotKey[] = ["GK", "DEF", "MID", "FWD", "FLEX"];
+const PLAY_CLUB_LEAGUE_FALLBACK_V1: Record<string, string> = {
+  // Gallery clubs observed locally.
+  "rc-lens": "ligue-1-fr",
+  "stade-brestois-29": "ligue-1-fr",
+  "rc-strasbourg-alsace": "ligue-1-fr",
+  "as-monaco": "ligue-1-fr",
+  "angers-sco": "ligue-1-fr",
+  "borussia-dortmund": "bundesliga-de",
+  // Ligue 1.
+  "paris-saint-germain": "ligue-1-fr",
+  psg: "ligue-1-fr",
+  "olympique-de-marseille": "ligue-1-fr",
+  "olympique-lyonnais": "ligue-1-fr",
+  "losc-lille": "ligue-1-fr",
+  "ogc-nice": "ligue-1-fr",
+  "stade-rennais-fc": "ligue-1-fr",
+  "fc-nantes": "ligue-1-fr",
+  "toulouse-fc": "ligue-1-fr",
+  "montpellier-hsc": "ligue-1-fr",
+  "fc-metz": "ligue-1-fr",
+  "fc-lorient": "ligue-1-fr",
+  "aj-auxerre": "ligue-1-fr",
+  "le-havre-ac": "ligue-1-fr",
+  "stade-de-reims": "ligue-1-fr",
+  // Premier League.
+  "arsenal-fc": "premier-league-gb-eng",
+  arsenal: "premier-league-gb-eng",
+  "chelsea-fc": "premier-league-gb-eng",
+  "liverpool-fc": "premier-league-gb-eng",
+  "manchester-city": "premier-league-gb-eng",
+  "manchester-united": "premier-league-gb-eng",
+  "tottenham-hotspur": "premier-league-gb-eng",
+  "newcastle-united": "premier-league-gb-eng",
+  "aston-villa": "premier-league-gb-eng",
+  "brighton-and-hove-albion": "premier-league-gb-eng",
+  "west-ham-united": "premier-league-gb-eng",
+  // Bundesliga.
+  "fc-bayern-munchen": "bundesliga-de",
+  "bayern-munich": "bundesliga-de",
+  "bayer-04-leverkusen": "bundesliga-de",
+  "rb-leipzig": "bundesliga-de",
+  "eintracht-frankfurt": "bundesliga-de",
+  "vfb-stuttgart": "bundesliga-de",
+  "vfl-wolfsburg": "bundesliga-de",
+  "borussia-monchengladbach": "bundesliga-de",
+  // LaLiga.
+  "real-madrid-cf": "laliga-es",
+  "fc-barcelona": "laliga-es",
+  "atletico-madrid": "laliga-es",
+  "real-sociedad": "laliga-es",
+  "athletic-club": "laliga-es",
+  "sevilla-fc": "laliga-es",
+  "valencia-cf": "laliga-es",
+  "real-betis": "laliga-es",
+  // Serie A.
+  "juventus-fc": "serie-a-it",
+  juventus: "serie-a-it",
+  "inter-milano": "serie-a-it",
+  "ac-milan": "serie-a-it",
+  "ssc-napoli": "serie-a-it",
+  "as-roma": "serie-a-it",
+  "ss-lazio": "serie-a-it",
+  "atalanta-bc": "serie-a-it",
+  // Eredivisie.
+  "afc-ajax": "eredivisie-nl",
+  ajax: "eredivisie-nl",
+  "psv-eindhoven": "eredivisie-nl",
+  feyenoord: "eredivisie-nl",
+  "az-alkmaar": "eredivisie-nl",
+  "fc-utrecht": "eredivisie-nl",
+  // Jupiler Pro League.
+  "club-brugge": "belgium-pro-league",
+  "rsc-anderlecht": "belgium-pro-league",
+  "royal-antwerp-fc": "belgium-pro-league",
+  "union-saint-gilloise": "belgium-pro-league",
+  "krc-genk": "belgium-pro-league",
+  "standard-liege": "belgium-pro-league",
+  // MLS.
+  "inter-miami-cf": "mls-us",
+  "los-angeles-fc": "mls-us",
+  "la-galaxy": "mls-us",
+  "atlanta-united": "mls-us",
+  "seattle-sounders-fc": "mls-us",
+  "new-york-city-fc": "mls-us",
+  "new-york-red-bulls": "mls-us",
+  "fc-cincinnati": "mls-us",
+  "columbus-crew": "mls-us",
+};
 const PLAY_GAMEWEEK_COMPETITIONS_V1: PlayGameWeekCompetitionV1[] = [
   {
     id: "all-star",
@@ -687,7 +776,25 @@ function getCardLeagueSlug(card: SorareCard): string | null {
     card.anyPlayer?.activeClub?.domesticLeague?.slug,
     card.player?.activeClub?.domesticLeague?.slug,
   ];
-  return values.map(xsPlayRuleKeyV1).find(Boolean) || null;
+  const direct = values.map(xsPlayRuleKeyV1).find(Boolean);
+  if (direct) return direct;
+
+  const clubValues = [
+    card.clubSlug,
+    card.teamSlug,
+    card.clubName,
+    card.teamName,
+    card.club?.slug,
+    card.club?.name,
+    card.team?.slug,
+    card.team?.name,
+    card.anyPlayer?.activeClub?.slug,
+    card.anyPlayer?.activeClub?.name,
+    card.player?.activeClub?.slug,
+    card.player?.activeClub?.name,
+  ];
+  const clubKey = clubValues.map(xsPlayRuleKeyV1).find((key) => key && PLAY_CLUB_LEAGUE_FALLBACK_V1[key]);
+  return clubKey ? PLAY_CLUB_LEAGUE_FALLBACK_V1[clubKey] : null;
 }
 
 function xsPlayCardLeagueKeysV1(card: SorareCard) {
@@ -1857,6 +1964,9 @@ export default function PlayScreen() {
                 </View>
                 <Text style={styles.rulesMeta}>
                   Format requis {lineupValidation.requiredCardsCount} cartes · max {lineupValidation.maxCards} · {selectedCompetition.futureRulesPlaceholder}
+                </Text>
+                <Text style={styles.rulesMeta}>
+                  Ligue déduite du club quand la carte ne fournit pas encore leagueSlug/leagueName.
                 </Text>
                 <View style={styles.eligibilityBox}>
                   <View style={styles.eligibilityHeader}>
