@@ -190,6 +190,22 @@ type GeneratedLineup = {
   maxScore: number;
   slots: { slot: SlotKey; player: CoachPlayer }[];
 };
+type PlayLineupValidationV1 = {
+  isValid: boolean;
+  severity: "valid" | "warning" | "error";
+  validCardsCount: number;
+  requiredCardsCount: number;
+  maxCards: number;
+  errors: string[];
+  warnings: string[];
+  missingSlots: number;
+  invalidCards: Array<{
+    slotId?: string;
+    playerName?: string;
+    cardSlug?: string;
+    reasons: string[];
+  }>;
+};
 
 const modes: { key: ModeKey; label: string }[] = [
   { key: "classic", label: "Classic" },
@@ -211,6 +227,7 @@ const strategies: {
 
 // XS_PLAY_GAMEWEEKS_RULES_V1: local, extensible Sorare Game Week competition rules used only by the Play tab.
 // XS_PLAY_ELIGIBILITY_FILTERS_V1: robust local card eligibility extraction and exclusion reasons.
+// XS_PLAY_LINEUP_VALIDATION_V1: validate selected Game Week lineups before save or AI prediction.
 const PLAY_RARITIES_V1: PlayRarityV1[] = ["Limited", "Rare", "Super Rare", "Unique"];
 const PLAY_ALL_POSITIONS_V1: SlotKey[] = ["GK", "DEF", "MID", "FWD", "FLEX"];
 const PLAY_GAMEWEEK_COMPETITIONS_V1: PlayGameWeekCompetitionV1[] = [
@@ -742,6 +759,93 @@ function getCardIneligibilityReasons(card: SorareCard, competition: PlayGameWeek
 
 function isCardEligibleForCompetition(card: SorareCard, competition: PlayGameWeekCompetitionV1, rarity: PlayRarityV1) {
   return getCardIneligibilityReasons(card, competition, rarity).length === 0;
+}
+
+function getRequiredCardsCount(competition: PlayGameWeekCompetitionV1) {
+  return Math.max(competition.minCards, Math.min(competition.defaultCards, competition.maxCards));
+}
+
+function getSelectedLineupCards(slots: GeneratedLineup["slots"]) {
+  return slots
+    .filter((item) => !item.player.rawCard?.isEmptySlot)
+    .map((item) => ({ slot: item.slot, player: item.player, card: item.player.rawCard || null }));
+}
+
+function xsPlayCardStableIdV1(card: SorareCard | null | undefined, player: CoachPlayer) {
+  return String(card?.cardId ?? card?.id ?? card?.slug ?? card?.token?.slug ?? player.id ?? "").trim();
+}
+
+function validateLineupForCompetition(
+  slots: GeneratedLineup["slots"],
+  competition: PlayGameWeekCompetitionV1,
+  rarity: PlayRarityV1
+): PlayLineupValidationV1 {
+  const requiredCardsCount = getRequiredCardsCount(competition);
+  const selectedCards = getSelectedLineupCards(slots);
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const invalidCards: PlayLineupValidationV1["invalidCards"] = [];
+  const seen = new Set<string>();
+  let validCardsCount = 0;
+  const missingSlots = slots.filter((item) => item.player.rawCard?.isEmptySlot).length;
+
+  if (selectedCards.length < requiredCardsCount) {
+    errors.push(`Composition incomplète : ajoute encore ${requiredCardsCount - selectedCards.length} carte(s) éligible(s).`);
+  }
+  if (selectedCards.length > competition.maxCards) {
+    errors.push(`Trop de cartes sélectionnées : maximum ${competition.maxCards}.`);
+  }
+  if (selectedCards.length !== competition.defaultCards) {
+    warnings.push(`Format attendu : ${competition.defaultCards} carte(s).`);
+  }
+  if (missingSlots > 0) {
+    errors.push(`${missingSlots} slot(s) vide(s).`);
+  }
+
+  selectedCards.forEach(({ slot, player, card }) => {
+    const cardSlug = xsPlayCardStableIdV1(card, player);
+    const reasons = card ? getCardIneligibilityReasons(card, competition, rarity) : ["donnée manquante"];
+    if (cardSlug) {
+      if (seen.has(cardSlug)) reasons.push("doublon carte");
+      seen.add(cardSlug);
+    }
+    if (!cardSlug) reasons.push("donnée manquante");
+
+    const uniqueReasons = [...new Set(reasons)];
+    if (uniqueReasons.length) {
+      invalidCards.push({ slotId: slot, playerName: player.name, cardSlug: cardSlug || undefined, reasons: uniqueReasons });
+      return;
+    }
+    validCardsCount += 1;
+  });
+
+  if (invalidCards.length) {
+    errors.push(`${invalidCards.length} carte(s) invalide(s).`);
+  }
+  if (validCardsCount > competition.maxCards) {
+    errors.push(`Nombre de cartes valides supérieur au maximum ${competition.maxCards}.`);
+  }
+
+  const isValid = errors.length === 0 && validCardsCount >= requiredCardsCount && validCardsCount <= competition.maxCards;
+  return {
+    isValid,
+    severity: isValid ? (warnings.length ? "warning" : "valid") : "error",
+    validCardsCount,
+    requiredCardsCount,
+    maxCards: competition.maxCards,
+    errors: [...new Set(errors)],
+    warnings: [...new Set(warnings)],
+    missingSlots,
+    invalidCards,
+  };
+}
+
+function getLineupValidationMessages(validation: PlayLineupValidationV1) {
+  if (validation.isValid) return ["Composition valide pour cette Game Week."];
+  if (validation.validCardsCount < validation.requiredCardsCount) {
+    return [`Composition incomplète : ajoute encore ${validation.requiredCardsCount - validation.validCardsCount} carte(s) éligible(s).`];
+  }
+  return ["Composition invalide pour cette Game Week."];
 }
 
 function xsPlaySlotsForCompetitionV1(competition: PlayGameWeekCompetitionV1): SlotKey[] {
@@ -1575,6 +1679,11 @@ export default function PlayScreen() {
       confidence: Math.round(slots.reduce((sum, item) => sum + item.player.confidence, 0) / slots.length),
     };
   }, [candidates, generated, overrides]);
+  const lineupValidation = useMemo(
+    () => validateLineupForCompetition(displayLineup.slots, selectedCompetition, selectedRarity),
+    [displayLineup.slots, selectedCompetition, selectedRarity]
+  );
+  const lineupValidationMessages = useMemo(() => getLineupValidationMessages(lineupValidation), [lineupValidation]);
 
   const selectedIds = useMemo(() => new Set(displayLineup.slots.map((item) => item.player.id)), [displayLineup.slots]);
   const suggestions = useMemo(
@@ -1588,7 +1697,10 @@ export default function PlayScreen() {
   const variants = useMemo(() => strategies.map((item) => generateLineup(candidates, item.key, mode, selectedCompetition)), [candidates, mode, selectedCompetition]);
   const glowOpacity = glow.interpolate({ inputRange: [0, 1], outputRange: [0.22, 0.72] });
   const pageWidth = Math.min(width, 1024);
-  const hasInvalidLineup = useMemo(() => displayLineup.slots.some((item) => item.player.rawCard?.isEmptySlot), [displayLineup.slots]);
+  const availableEligibleReplacements = useMemo(
+    () => candidates.filter((player) => !selectedIds.has(player.id) && !player.rawCard?.isEmptySlot).slice(0, 5),
+    [candidates, selectedIds]
+  );
   const gameweekKey = useMemo(
     () => `GW358|${competitionId}|${selectedRarity}|${mode}|${strategy}|${displayLineup.slots.map((item) => item.player.id).join("|")}`,
     [competitionId, displayLineup.slots, mode, selectedRarity, strategy]
@@ -1603,8 +1715,8 @@ export default function PlayScreen() {
     setGameweekPredictionLoading(true);
     setGameweekPredictionError("");
     try {
-      if (hasInvalidLineup || eligibleGallery.length < selectedCompetition.defaultCards) {
-        throw new Error("Composition incomplète ou non éligible pour cette Game Week.");
+      if (!lineupValidation.isValid) {
+        throw new Error(lineupValidationMessages[0] || "Composition invalide pour cette Game Week.");
       }
       const deviceId =
         (await AsyncStorage.getItem("xs_device_id").catch(() => null)) ||
@@ -1638,8 +1750,8 @@ export default function PlayScreen() {
 
   async function useLineup() {
     try {
-      if (hasInvalidLineup || eligibleGallery.length < selectedCompetition.defaultCards) {
-        setToast("Composition incomplète ou non éligible");
+      if (!lineupValidation.isValid) {
+        setToast(lineupValidationMessages[0] || "Composition invalide");
         return;
       }
       setSaving(true);
@@ -1753,6 +1865,39 @@ export default function PlayScreen() {
                     </View>
                   ) : null}
                 </View>
+                <View style={[styles.validationBox, lineupValidation.severity === "valid" ? styles.validationBoxValid : styles.validationBoxError]}>
+                  <View style={styles.validationHeader}>
+                    <View>
+                      <Text style={styles.validationTitle}>Validation composition</Text>
+                      <Text style={[styles.validationStatus, lineupValidation.isValid ? styles.validationStatusValid : styles.validationStatusError]}>
+                        {lineupValidationMessages[0]}
+                      </Text>
+                    </View>
+                    <View style={styles.validationCountBadge}>
+                      <Text style={styles.validationCountText}>{lineupValidation.validCardsCount}/{lineupValidation.requiredCardsCount}</Text>
+                      <Text style={styles.validationCountLabel}>max {lineupValidation.maxCards}</Text>
+                    </View>
+                  </View>
+                  {lineupValidation.errors.slice(0, 2).map((message) => (
+                    <Text key={`validation-error-${message}`} style={styles.validationErrorText}>• {message}</Text>
+                  ))}
+                  {lineupValidation.warnings.slice(0, 2).map((message) => (
+                    <Text key={`validation-warning-${message}`} style={styles.validationWarningText}>• {message}</Text>
+                  ))}
+                  {lineupValidation.invalidCards.slice(0, 3).map((item, index) => (
+                    <Text key={`${item.slotId || "slot"}-${item.cardSlug || index}`} numberOfLines={1} style={styles.validationInvalidCard}>
+                      {item.slotId || "Slot"} · {item.playerName || "Carte"} : {item.reasons[0] || "donnée manquante"}
+                    </Text>
+                  ))}
+                  {availableEligibleReplacements.length ? (
+                    <View style={styles.validationReplacementRow}>
+                      <Text style={styles.validationReplacementTitle}>Cartes éligibles disponibles</Text>
+                      <Text numberOfLines={1} style={styles.validationReplacementNames}>
+                        {availableEligibleReplacements.map((player) => player.name).join(" · ")}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
               </View>
 
               <LinearGradient colors={["rgba(96,8,18,0.58)", "rgba(12,12,18,0.98)"]} style={styles.summaryCard}>
@@ -1794,7 +1939,7 @@ export default function PlayScreen() {
                         Analyse et optimise ta composition
                       </Text>
                     </View>
-                    <PremiumPressable onPress={runGameweekPrediction} disabled={gameweekPredictionLoading} style={styles.aiGwButton}>
+                    <PremiumPressable onPress={runGameweekPrediction} disabled={gameweekPredictionLoading || !lineupValidation.isValid} style={styles.aiGwButton}>
                       {gameweekPredictionLoading ? (
                         <ActivityIndicator color={TEXT} size="small" />
                       ) : (
@@ -1876,7 +2021,7 @@ export default function PlayScreen() {
                 }}
               />
 
-              <PremiumPressable onPress={useLineup} disabled={saving} style={styles.primaryButton}>
+              <PremiumPressable onPress={useLineup} disabled={saving || !lineupValidation.isValid} style={styles.primaryButton}>
                 <LinearGradient colors={[YELLOW, YELLOW_DEEP]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.fillCenter}>
                   <Text style={styles.primaryButtonText}>{saving ? "Activation..." : "Utiliser cette compo"}</Text>
                 </LinearGradient>
@@ -2181,6 +2326,95 @@ const styles = {
     paddingHorizontal: 8,
     paddingVertical: 4,
     fontSize: 11,
+    fontWeight: "800" as const,
+  },
+  validationBox: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 11,
+    gap: 6,
+  },
+  validationBoxValid: {
+    borderColor: "rgba(25,240,122,0.22)",
+    backgroundColor: "rgba(25,240,122,0.07)",
+  },
+  validationBoxError: {
+    borderColor: "rgba(255,49,72,0.34)",
+    backgroundColor: "rgba(255,49,72,0.08)",
+  },
+  validationHeader: {
+    flexDirection: "row" as const,
+    justifyContent: "space-between" as const,
+    alignItems: "flex-start" as const,
+    gap: 10,
+  },
+  validationTitle: {
+    color: TEXT,
+    fontSize: 14,
+    fontWeight: "900" as const,
+  },
+  validationStatus: {
+    marginTop: 3,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "900" as const,
+  },
+  validationStatusValid: {
+    color: GREEN,
+  },
+  validationStatusError: {
+    color: "#FFB4BF",
+  },
+  validationCountBadge: {
+    minWidth: 64,
+    borderRadius: 12,
+    backgroundColor: "rgba(0,0,0,0.24)",
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    alignItems: "center" as const,
+  },
+  validationCountText: {
+    color: TEXT,
+    fontSize: 14,
+    fontWeight: "900" as const,
+  },
+  validationCountLabel: {
+    color: MUTED,
+    fontSize: 10,
+    fontWeight: "800" as const,
+  },
+  validationErrorText: {
+    color: "#FFB4BF",
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "800" as const,
+  },
+  validationWarningText: {
+    color: "#FFD27A",
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "800" as const,
+  },
+  validationInvalidCard: {
+    color: "rgba(255,255,255,0.78)",
+    fontSize: 11,
+    fontWeight: "800" as const,
+  },
+  validationReplacementRow: {
+    marginTop: 2,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.08)",
+    paddingTop: 7,
+  },
+  validationReplacementTitle: {
+    color: MUTED,
+    fontSize: 11,
+    fontWeight: "900" as const,
+  },
+  validationReplacementNames: {
+    marginTop: 3,
+    color: TEXT,
+    fontSize: 12,
     fontWeight: "800" as const,
   },
   strategyRow: {
