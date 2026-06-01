@@ -228,6 +228,7 @@ const strategies: {
 // XS_PLAY_GAMEWEEKS_RULES_V1: local, extensible Sorare Game Week competition rules used only by the Play tab.
 // XS_PLAY_ELIGIBILITY_FILTERS_V1: robust local card eligibility extraction and exclusion reasons.
 // XS_PLAY_LINEUP_VALIDATION_V1: validate selected Game Week lineups before save or AI prediction.
+// XS_PLAY_GAMEWEEK_UX_V1: make Game Week eligibility and lineup validation easier to understand.
 const PLAY_RARITIES_V1: PlayRarityV1[] = ["Limited", "Rare", "Super Rare", "Unique"];
 const PLAY_ALL_POSITIONS_V1: SlotKey[] = ["GK", "DEF", "MID", "FWD", "FLEX"];
 const PLAY_GAMEWEEK_COMPETITIONS_V1: PlayGameWeekCompetitionV1[] = [
@@ -841,11 +842,23 @@ function validateLineupForCompetition(
 }
 
 function getLineupValidationMessages(validation: PlayLineupValidationV1) {
-  if (validation.isValid) return ["Composition valide pour cette Game Week."];
-  if (validation.validCardsCount < validation.requiredCardsCount) {
-    return [`Composition incomplète : ajoute encore ${validation.requiredCardsCount - validation.validCardsCount} carte(s) éligible(s).`];
-  }
+  if (validation.isValid) return ["Ta composition est prête."];
+  const missing = Math.max(0, validation.requiredCardsCount - validation.validCardsCount);
+  if (missing > 0) return [`Il manque ${missing} carte(s) éligible(s).`];
+  if (validation.invalidCards.length) return ["Certaines cartes ne respectent pas les règles."];
   return ["Composition invalide pour cette Game Week."];
+}
+
+function xsPlayMissingSlotsLabelV1(validation: PlayLineupValidationV1) {
+  const slots = validation.invalidCards
+    .filter((item) => item.reasons.includes("donnée manquante"))
+    .map((item) => item.slotId)
+    .filter(Boolean);
+  return [...new Set(slots)].join(", ");
+}
+
+function xsPlayBlockedReasonV1(validation: PlayLineupValidationV1) {
+  return validation.isValid ? "" : getLineupValidationMessages(validation)[0] || "Composition invalide pour cette Game Week.";
 }
 
 function xsPlaySlotsForCompetitionV1(competition: PlayGameWeekCompetitionV1): SlotKey[] {
@@ -1684,6 +1697,9 @@ export default function PlayScreen() {
     [displayLineup.slots, selectedCompetition, selectedRarity]
   );
   const lineupValidationMessages = useMemo(() => getLineupValidationMessages(lineupValidation), [lineupValidation]);
+  const lineupBlockedReason = useMemo(() => xsPlayBlockedReasonV1(lineupValidation), [lineupValidation]);
+  const missingSlotsLabel = useMemo(() => xsPlayMissingSlotsLabelV1(lineupValidation), [lineupValidation]);
+  const gameWeekStateLabel = lineupValidation.isValid ? "prête" : lineupValidation.validCardsCount < lineupValidation.requiredCardsCount ? "incomplète" : "invalide";
 
   const selectedIds = useMemo(() => new Set(displayLineup.slots.map((item) => item.player.id)), [displayLineup.slots]);
   const suggestions = useMemo(
@@ -1716,7 +1732,7 @@ export default function PlayScreen() {
     setGameweekPredictionError("");
     try {
       if (!lineupValidation.isValid) {
-        throw new Error(lineupValidationMessages[0] || "Composition invalide pour cette Game Week.");
+        throw new Error(lineupBlockedReason || "Composition invalide pour cette Game Week.");
       }
       const deviceId =
         (await AsyncStorage.getItem("xs_device_id").catch(() => null)) ||
@@ -1751,7 +1767,7 @@ export default function PlayScreen() {
   async function useLineup() {
     try {
       if (!lineupValidation.isValid) {
-        setToast(lineupValidationMessages[0] || "Composition invalide");
+        setToast(lineupBlockedReason || "Composition invalide");
         return;
       }
       setSaving(true);
@@ -1805,12 +1821,12 @@ export default function PlayScreen() {
               <View style={styles.gameWeekRulesCard}>
                 <View style={styles.rulesHeaderRow}>
                   <View>
-                    <Text style={styles.rulesTitle}>Game Week</Text>
-                    <Text style={styles.rulesSubtitle}>{selectedCompetition.rulesDescription}</Text>
+                    <Text style={styles.rulesTitle}>Choisis ta Game Week</Text>
+                    <Text style={styles.rulesSubtitle}>{selectedCompetition.label} · {selectedRarity} · {selectedCompetition.rulesDescription}</Text>
                   </View>
-                  <View style={styles.rulesCountBadge}>
-                    <Text style={styles.rulesCountText}>{eligibleGallery.length}</Text>
-                    <Text style={styles.rulesCountLabel}>cartes</Text>
+                  <View style={[styles.rulesCountBadge, lineupValidation.isValid ? styles.rulesCountBadgeReady : styles.rulesCountBadgeBlocked]}>
+                    <Text style={styles.rulesCountText}>{gameWeekStateLabel}</Text>
+                    <Text style={styles.rulesCountLabel}>{lineupValidation.validCardsCount}/{lineupValidation.requiredCardsCount}</Text>
                   </View>
                 </View>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rulesChipRow}>
@@ -1840,7 +1856,7 @@ export default function PlayScreen() {
                   })}
                 </View>
                 <Text style={styles.rulesMeta}>
-                  Format {selectedCompetition.defaultCards}/{selectedCompetition.maxCards} cartes · {selectedCompetition.futureRulesPlaceholder}
+                  Format requis {lineupValidation.requiredCardsCount} cartes · max {lineupValidation.maxCards} · {selectedCompetition.futureRulesPlaceholder}
                 </Text>
                 <View style={styles.eligibilityBox}>
                   <View style={styles.eligibilityHeader}>
@@ -1853,7 +1869,7 @@ export default function PlayScreen() {
                     {eligibilitySummary.eligibleCount} cartes éligibles · {eligibilitySummary.excludedCount} exclues
                   </Text>
                   {eligibilitySummary.eligibleCount === 0 && eligibilitySummary.total > 0 ? (
-                    <Text style={styles.eligibilityWarning}>Aucune carte éligible pour cette compétition et cette rareté.</Text>
+                    <Text style={styles.eligibilityWarning}>Aucune carte éligible pour cette compétition avec cette rareté. Change de rareté ou choisis une autre compétition.</Text>
                   ) : null}
                   {eligibilitySummary.reasons.length ? (
                     <View style={styles.eligibilityReasonsRow}>
@@ -1884,6 +1900,9 @@ export default function PlayScreen() {
                   {lineupValidation.warnings.slice(0, 2).map((message) => (
                     <Text key={`validation-warning-${message}`} style={styles.validationWarningText}>• {message}</Text>
                   ))}
+                  {missingSlotsLabel ? (
+                    <Text style={styles.validationWarningText}>Postes à compléter : {missingSlotsLabel}</Text>
+                  ) : null}
                   {lineupValidation.invalidCards.slice(0, 3).map((item, index) => (
                     <Text key={`${item.slotId || "slot"}-${item.cardSlug || index}`} numberOfLines={1} style={styles.validationInvalidCard}>
                       {item.slotId || "Slot"} · {item.playerName || "Carte"} : {item.reasons[0] || "donnée manquante"}
@@ -1891,10 +1910,15 @@ export default function PlayScreen() {
                   ))}
                   {availableEligibleReplacements.length ? (
                     <View style={styles.validationReplacementRow}>
-                      <Text style={styles.validationReplacementTitle}>Cartes éligibles disponibles</Text>
-                      <Text numberOfLines={1} style={styles.validationReplacementNames}>
-                        {availableEligibleReplacements.map((player) => player.name).join(" · ")}
-                      </Text>
+                      <Text style={styles.validationReplacementTitle}>Remplacements éligibles</Text>
+                      <View style={styles.replacementMiniList}>
+                        {availableEligibleReplacements.slice(0, 5).map((player) => (
+                          <View key={player.id} style={styles.replacementMiniCard}>
+                            <Text numberOfLines={1} style={styles.replacementMiniName}>{player.name}</Text>
+                            <Text style={styles.replacementMiniMeta}>{player.position} · {selectedRarity} · {player.score}</Text>
+                          </View>
+                        ))}
+                      </View>
                     </View>
                   ) : null}
                 </View>
@@ -1947,6 +1971,9 @@ export default function PlayScreen() {
                       )}
                     </PremiumPressable>
                   </View>
+                  {!lineupValidation.isValid ? (
+                    <Text style={styles.aiGwBlockedText}>Bloqué : {lineupBlockedReason}</Text>
+                  ) : null}
                   {gameweekPredictionError ? (
                     <Text style={styles.aiGwError}>{gameweekPredictionError}</Text>
                   ) : null}
@@ -2026,6 +2053,9 @@ export default function PlayScreen() {
                   <Text style={styles.primaryButtonText}>{saving ? "Activation..." : "Utiliser cette compo"}</Text>
                 </LinearGradient>
               </PremiumPressable>
+              {!lineupValidation.isValid ? (
+                <Text style={styles.primaryBlockedText}>Sauvegarde bloquée : {lineupBlockedReason}</Text>
+              ) : null}
 
               <PremiumPressable onPress={() => setVariantsOpen(true)} style={styles.secondaryButton}>
                 <View style={styles.secondaryButtonIcon}>
@@ -2198,7 +2228,7 @@ const styles = {
     maxWidth: 680,
   },
   rulesCountBadge: {
-    minWidth: 58,
+    minWidth: 72,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: "rgba(255,49,72,0.35)",
@@ -2207,10 +2237,19 @@ const styles = {
     paddingVertical: 7,
     alignItems: "center" as const,
   },
+  rulesCountBadgeReady: {
+    borderColor: "rgba(25,240,122,0.28)",
+    backgroundColor: "rgba(25,240,122,0.08)",
+  },
+  rulesCountBadgeBlocked: {
+    borderColor: "rgba(255,49,72,0.35)",
+    backgroundColor: "rgba(255,49,72,0.10)",
+  },
   rulesCountText: {
-    color: RED,
-    fontSize: 18,
+    color: TEXT,
+    fontSize: 12,
     fontWeight: "900" as const,
+    textTransform: "uppercase" as const,
   },
   rulesCountLabel: {
     color: MUTED,
@@ -2415,6 +2454,29 @@ const styles = {
     marginTop: 3,
     color: TEXT,
     fontSize: 12,
+    fontWeight: "800" as const,
+  },
+  replacementMiniList: {
+    marginTop: 6,
+    gap: 6,
+  },
+  replacementMiniCard: {
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.055)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+  },
+  replacementMiniName: {
+    color: TEXT,
+    fontSize: 12,
+    fontWeight: "900" as const,
+  },
+  replacementMiniMeta: {
+    color: MUTED,
+    fontSize: 11,
+    marginTop: 2,
     fontWeight: "800" as const,
   },
   strategyRow: {
@@ -2675,6 +2737,12 @@ const styles = {
   aiGwError: {
     color: "#ff9a9a",
     fontSize: 12,
+    fontWeight: "800" as const,
+  },
+  aiGwBlockedText: {
+    color: "#FFB4BF",
+    fontSize: 12,
+    lineHeight: 16,
     fontWeight: "800" as const,
   },
   aiGwResult: {
@@ -3162,6 +3230,14 @@ const styles = {
     color: TEXT,
     fontSize: 20,
     fontWeight: "900" as const,
+  },
+  primaryBlockedText: {
+    marginTop: -10,
+    color: "#FFB4BF",
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "800" as const,
+    textAlign: "center" as const,
   },
   secondaryButton: {
     minHeight: 78,
