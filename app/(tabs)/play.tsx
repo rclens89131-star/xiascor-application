@@ -36,6 +36,11 @@ type SorareCard = {
   avatarUrl?: string;
   clubName?: string;
   teamName?: string;
+  leagueSlug?: string | null;
+  leagueName?: string | null;
+  age?: number | null;
+  birthDate?: string | null;
+  dateOfBirth?: string | null;
   nextOpponent?: string;
   nextMatch?: string;
   l5?: number;
@@ -231,6 +236,7 @@ const strategies: {
 // XS_PLAY_GAMEWEEK_UX_V1: make Game Week eligibility and lineup validation easier to understand.
 // XS_PLAY_CLUB_LEAGUE_FALLBACK_V1: infer league from known club when gallery cards miss league fields.
 // XS_PLAY_CLUB_LEAGUE_FALLBACK_EXTENDED_V1: temporary club-to-league fallback until backend cards expose leagueSlug.
+// XS_PLAY_USE_BACKEND_ENRICHED_CARDS_V1: refresh Play gallery from /my-cards source=auto and keep cache fallback.
 const PLAY_RARITIES_V1: PlayRarityV1[] = ["Limited", "Rare", "Super Rare", "Unique"];
 const PLAY_ALL_POSITIONS_V1: SlotKey[] = ["GK", "DEF", "MID", "FWD", "FLEX"];
 const PLAY_CLUB_LEAGUE_FALLBACK_V1: Record<string, string> = {
@@ -682,7 +688,7 @@ const PLAY_GAMEWEEK_COMPETITIONS_V1: PlayGameWeekCompetitionV1[] = [
     type: "regional",
     category: "regional",
     rarityAllowed: PLAY_RARITIES_V1,
-    eligibleLeagues: ["mls", "mls-us", "j-league", "k-league", "brasileirao", "argentina-primera", "liga-mx", "scottish-premiership", "swiss-super-league", "austrian-bundesliga"],
+    eligibleLeagues: ["mls", "mls-us", "mlspa", "j-league", "k-league", "brasileirao", "argentina-primera", "liga-mx", "scottish-premiership", "swiss-super-league", "austrian-bundesliga"],
     eligiblePositions: PLAY_ALL_POSITIONS_V1,
     minCards: 5,
     maxCards: 7,
@@ -721,7 +727,7 @@ const PLAY_GAMEWEEK_COMPETITIONS_V1: PlayGameWeekCompetitionV1[] = [
     isActive: true,
     futureRulesPlaceholder: "Brancher contraintes Arena officielles.",
   },
-  { id: "mls", label: "MLS", type: "league", category: "league", rarityAllowed: PLAY_RARITIES_V1, eligibleLeagues: ["mls", "mls-us"], eligiblePositions: PLAY_ALL_POSITIONS_V1, minCards: 5, maxCards: 7, defaultCards: 5, rulesDescription: "Cartes MLS uniquement.", isActive: true, futureRulesPlaceholder: "Ajouter règles MLS dynamiques." },
+  { id: "mls", label: "MLS", type: "league", category: "league", rarityAllowed: PLAY_RARITIES_V1, eligibleLeagues: ["mls", "mls-us", "mlspa"], eligiblePositions: PLAY_ALL_POSITIONS_V1, minCards: 5, maxCards: 7, defaultCards: 5, rulesDescription: "Cartes MLS uniquement.", isActive: true, futureRulesPlaceholder: "Ajouter règles MLS dynamiques." },
   { id: "ligue-1", label: "Ligue 1", type: "league", category: "league", rarityAllowed: PLAY_RARITIES_V1, eligibleLeagues: ["ligue-1", "ligue-1-fr"], eligiblePositions: PLAY_ALL_POSITIONS_V1, minCards: 5, maxCards: 7, defaultCards: 5, rulesDescription: "Cartes Ligue 1 uniquement.", isActive: true, futureRulesPlaceholder: "Ajouter règles Ligue 1 dynamiques." },
   { id: "premier-league", label: "Premier League", type: "league", category: "league", rarityAllowed: PLAY_RARITIES_V1, eligibleLeagues: ["premier-league", "premier-league-gb-eng"], eligiblePositions: PLAY_ALL_POSITIONS_V1, minCards: 5, maxCards: 7, defaultCards: 5, rulesDescription: "Cartes Premier League uniquement.", isActive: true, futureRulesPlaceholder: "Ajouter règles Premier League dynamiques." },
   { id: "bundesliga", label: "Bundesliga", type: "league", category: "league", rarityAllowed: PLAY_RARITIES_V1, eligibleLeagues: ["bundesliga", "bundesliga-de"], eligiblePositions: PLAY_ALL_POSITIONS_V1, minCards: 5, maxCards: 7, defaultCards: 5, rulesDescription: "Cartes Bundesliga uniquement.", isActive: true, futureRulesPlaceholder: "Ajouter règles Bundesliga dynamiques." },
@@ -1150,6 +1156,54 @@ function getCardPlayerAge(card: SorareCard): number | null {
   return new Date().getFullYear() - year;
 }
 
+function xsPlayCardMergeKeyV1(card: any, index = 0): string {
+  return String(
+    card?.cardSlug ??
+      card?.slug ??
+      card?.cardId ??
+      card?.id ??
+      card?.playerSlug ??
+      card?.player?.slug ??
+      card?.anyPlayer?.slug ??
+      `play-card-${index}`
+  ).trim().toLowerCase();
+}
+
+function xsPlayMergeBackendGalleryV1(cacheCards: SorareCard[], backendCards: SorareCard[]): SorareCard[] {
+  const cache = Array.isArray(cacheCards) ? cacheCards : [];
+  const backend = Array.isArray(backendCards) ? backendCards : [];
+  if (!backend.length) return cache;
+  const cacheByKey = new Map(cache.map((card, index) => [xsPlayCardMergeKeyV1(card, index), card]));
+  const used = new Set<string>();
+  const merged = backend.map((card, index) => {
+    const key = xsPlayCardMergeKeyV1(card, index);
+    used.add(key);
+    return {
+      ...(cacheByKey.get(key) || {}),
+      ...card,
+    };
+  });
+  cache.forEach((card, index) => {
+    const key = xsPlayCardMergeKeyV1(card, index);
+    if (!used.has(key)) merged.push(card);
+  });
+  return merged;
+}
+
+async function xsPlayReadDeviceIdV1(): Promise<string | null> {
+  const candidates = [
+    "xs_device_id",
+    "XS_JWT_DEVICE_ID_V1",
+    "xs_device_id_v1",
+  ];
+  for (const key of candidates) {
+    const value = await AsyncStorage.getItem(key).catch(() => null);
+    const text = String(value || "").trim();
+    if (text) return text;
+  }
+  return null;
+}
+
 function getCardIneligibilityReasons(card: SorareCard, competition: PlayGameWeekCompetitionV1, rarity: PlayRarityV1) {
   const reasons: string[] = [];
   const cardRarity = getCardRarity(card);
@@ -1502,14 +1556,37 @@ function usePersistedGallery() {
 
   useEffect(() => {
     let mounted = true;
-    AsyncStorage.getItem("xs_app_store_v1")
-      .then((raw) => {
-        if (!raw || !mounted) return;
-        const parsed = JSON.parse(raw);
-        const cards = parsed?.state?.gallery ?? parsed?.gallery;
-        if (Array.isArray(cards)) setGallery(cards);
-      })
-      .catch(() => null);
+    let cachedCards: SorareCard[] = [];
+
+    async function loadGallery() {
+      try {
+        const raw = await AsyncStorage.getItem("xs_app_store_v1");
+        if (raw && mounted) {
+          const parsed = JSON.parse(raw);
+          const cards = parsed?.state?.gallery ?? parsed?.gallery;
+          if (Array.isArray(cards)) {
+            cachedCards = cards;
+            setGallery(cards);
+          }
+        }
+      } catch (_) {}
+
+      try {
+        const deviceId = await xsPlayReadDeviceIdV1();
+        if (!deviceId || !mounted) return;
+        const resp = await fetch(`${xsPlayAiBaseUrlV1()}/my-cards?deviceId=${encodeURIComponent(deviceId)}&first=80&source=auto`, {
+          headers: { accept: "application/json" },
+        });
+        const json = await resp.json().catch(() => null);
+        const backendCards = Array.isArray(json?.cards) ? json.cards : [];
+        if (!resp.ok || !backendCards.length || !mounted) return;
+        setGallery(xsPlayMergeBackendGalleryV1(cachedCards, backendCards));
+      } catch (_) {
+        // Keep AsyncStorage gallery as fallback if backend is unavailable.
+      }
+    }
+
+    loadGallery();
     return () => {
       mounted = false;
     };
