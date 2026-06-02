@@ -36,6 +36,10 @@ type SorareCard = {
   avatarUrl?: string;
   clubName?: string;
   teamName?: string;
+  cardLeagueSlug?: string | null;
+  cardLeagueName?: string | null;
+  currentLeagueSlug?: string | null;
+  currentLeagueName?: string | null;
   leagueSlug?: string | null;
   leagueName?: string | null;
   age?: number | null;
@@ -1074,12 +1078,17 @@ function getCardRarity(card: SorareCard): PlayRarityV1 | null {
 }
 
 function getCardLeagueSlug(card: SorareCard): string | null {
+  // XS_PLAY_USE_CURRENT_LEAGUE_SLUG_V1: Game Week eligibility uses the player's current league first.
   const values = [
+    card.currentLeagueSlug,
     card.leagueSlug,
+    card.cardLeagueSlug,
     card.league?.slug,
     card.activeLeague?.slug,
     card.competitionSlug,
     card.leagueName,
+    card.currentLeagueName,
+    card.cardLeagueName,
     card.competition,
     card.competitionName,
     card.tournamentName,
@@ -1116,8 +1125,12 @@ function getCardLeagueSlug(card: SorareCard): string | null {
 function xsPlayCardLeagueKeysV1(card: SorareCard) {
   return [
     getCardLeagueSlug(card),
+    card.currentLeagueSlug,
     card.leagueSlug,
+    card.cardLeagueSlug,
+    card.currentLeagueName,
     card.leagueName,
+    card.cardLeagueName,
     card.competition,
     card.competitionName,
     card.tournamentName,
