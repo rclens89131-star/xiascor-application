@@ -1382,7 +1382,8 @@ function readableName(card: SorareCard) {
 }
 
 function buildGalleryCandidates(gallery: SorareCard[], allowMockFallback = true): CoachPlayer[] {
-  if (!Array.isArray(gallery) || gallery.length < 5) return allowMockFallback ? mockPlayers : [];
+  // XS_PLAY_ALLOW_PARTIAL_ELIGIBLE_CANDIDATES_V1: keep real eligible cards even when a lineup is incomplete.
+  if (!Array.isArray(gallery) || gallery.length === 0) return allowMockFallback ? mockPlayers : [];
 
   const colors: [string, string][] = [
     ["#77b8f2", "#1f78be"],
