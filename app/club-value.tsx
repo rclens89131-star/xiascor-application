@@ -1,9 +1,10 @@
 /* XS_CLUB_VALUE_DETAIL_V1 */
+/* XS_CLUB_VALUE_REFRESH_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -36,6 +37,17 @@ type ClubValuePayload = {
   unpricedCards?: number | null;
   clubValueText?: string | null;
   cards?: ClubValueCard[];
+};
+
+type ClubValueRefreshPayload = {
+  ok?: boolean;
+  marker?: string;
+  rateLimited?: boolean;
+  skipped?: boolean;
+  reason?: string | null;
+  attempted?: number;
+  filledPlayers?: number;
+  insertedOrUpdated?: number;
 };
 
 async function readClubValueDeviceIdV1(): Promise<string | null> {
@@ -71,33 +83,55 @@ function getValuationToneV1(method: unknown): "green" | "gold" | "muted" {
 export default function ClubValueScreen() {
   const [payload, setPayload] = useState<ClubValuePayload | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let mounted = true;
-    async function loadValueDetail() {
-      try {
-        setLoading(true);
-        const deviceId = await readClubValueDeviceIdV1();
-        const qs = new URLSearchParams();
-        if (deviceId) qs.set("deviceId", deviceId);
-        const result = await apiFetch<ClubValuePayload>(`/club/value-detail${qs.toString() ? `?${qs.toString()}` : ""}`);
-        if (!mounted) return;
-        setPayload(result && result.ok !== false ? result : null);
-        setError(null);
-      } catch (err) {
-        if (!mounted) return;
-        setPayload(null);
-        setError(String(err instanceof Error ? err.message : err || "Données indisponibles"));
-      } finally {
-        if (mounted) setLoading(false);
-      }
+  const loadValueDetail = useCallback(async (opts?: { quiet?: boolean }) => {
+    try {
+      if (!opts?.quiet) setLoading(true);
+      const deviceId = await readClubValueDeviceIdV1();
+      const qs = new URLSearchParams();
+      if (deviceId) qs.set("deviceId", deviceId);
+      const result = await apiFetch<ClubValuePayload>(`/club/value-detail${qs.toString() ? `?${qs.toString()}` : ""}`);
+      setPayload(result && result.ok !== false ? result : null);
+      setError(null);
+    } catch (err) {
+      setPayload(null);
+      setError(String(err instanceof Error ? err.message : err || "Données indisponibles"));
+    } finally {
+      if (!opts?.quiet) setLoading(false);
     }
-    loadValueDetail();
-    return () => {
-      mounted = false;
-    };
   }, []);
+
+  useEffect(() => {
+    loadValueDetail();
+  }, [loadValueDetail]);
+
+  const refreshClubValue = useCallback(async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    setStatusMessage("Analyse du marché en cours...");
+    try {
+      const deviceId = await readClubValueDeviceIdV1();
+      const qs = new URLSearchParams();
+      if (deviceId) qs.set("deviceId", deviceId);
+      qs.set("limitPlayers", "5");
+      const result = await apiFetch<ClubValueRefreshPayload>(`/club/value-refresh?${qs.toString()}`, { method: "POST" });
+      if (result?.rateLimited) {
+        setStatusMessage("Sorare limite temporairement les demandes. Réessayez plus tard.");
+      } else if (result?.skipped && result?.reason === "global_cooldown") {
+        setStatusMessage("Analyse récente déjà effectuée. Réessayez dans quelques instants.");
+      } else {
+        setStatusMessage("Valeur du club actualisée");
+      }
+      await loadValueDetail({ quiet: true });
+    } catch {
+      setStatusMessage("Actualisation indisponible pour le moment.");
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadValueDetail, refreshing]);
 
   const cards = useMemo(() => {
     const items = Array.isArray(payload?.cards) ? payload.cards : [];
@@ -107,6 +141,10 @@ export default function ClubValueScreen() {
       return bv - av;
     });
   }, [payload]);
+  const pricedCount = typeof payload?.pricedCards === "number" ? payload.pricedCards : 0;
+  const totalCount = typeof payload?.cardCount === "number" ? payload.cardCount : 0;
+  const unpricedCount = typeof payload?.unpricedCards === "number" ? payload.unpricedCards : Math.max(0, totalCount - pricedCount);
+  const marketCoverage = totalCount > 0 ? Math.round((pricedCount / totalCount) * 100) : null;
 
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={styles.screen}>
@@ -144,6 +182,39 @@ export default function ClubValueScreen() {
               <Text style={styles.kpiValue}>{payload?.unpricedCards ?? "—"}</Text>
               <Text style={styles.kpiLabel}>Sans prix</Text>
             </View>
+          </View>
+          <View style={styles.coveragePanel}>
+            <View style={styles.coverageHeader}>
+              <View>
+                <Text style={styles.coverageLabel}>Valeur actuelle</Text>
+                <Text style={styles.coverageValue}>{cleanTextV1(payload?.clubValueText)}</Text>
+              </View>
+              <View style={styles.coverageBadge}>
+                <Text style={styles.coverageBadgeText}>{marketCoverage === null ? "—" : `${marketCoverage}%`}</Text>
+              </View>
+            </View>
+            <View style={styles.coverageLine}>
+              <Text style={styles.coverageMuted}>Cartes valorisées</Text>
+              <Text style={styles.coverageStrong}>{pricedCount || "—"} / {totalCount || "—"}</Text>
+            </View>
+            <View style={styles.coverageLine}>
+              <Text style={styles.coverageMuted}>Couverture marché</Text>
+              <Text style={styles.coverageStrong}>{marketCoverage === null ? "—" : `${marketCoverage}%`}</Text>
+            </View>
+            <View style={styles.coverageLine}>
+              <Text style={styles.coverageMuted}>Cartes restantes à analyser</Text>
+              <Text style={styles.coverageStrong}>{totalCount ? unpricedCount : "—"}</Text>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              disabled={refreshing}
+              onPress={refreshClubValue}
+              style={({ pressed }) => [styles.refreshButton, (pressed || refreshing) && styles.pressed]}
+            >
+              {refreshing ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Ionicons name="sync" size={18} color="#FFFFFF" />}
+              <Text style={styles.refreshButtonText}>{refreshing ? "Analyse du marché en cours..." : "Actualiser la valeur du club"}</Text>
+            </Pressable>
+            {statusMessage ? <Text style={styles.refreshStatus}>{statusMessage}</Text> : null}
           </View>
         </LinearGradient>
 
@@ -299,6 +370,86 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     marginTop: 2,
+  },
+  coveragePanel: {
+    borderRadius: 16,
+    padding: 14,
+    gap: 10,
+    backgroundColor: "rgba(0,0,0,0.30)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+  },
+  coverageHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  coverageLabel: {
+    color: "rgba(255,255,255,0.58)",
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
+  coverageValue: {
+    color: "#FFFFFF",
+    fontSize: 26,
+    fontWeight: "900",
+    marginTop: 2,
+  },
+  coverageBadge: {
+    minWidth: 58,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,49,72,0.20)",
+    borderWidth: 1,
+    borderColor: "rgba(255,49,72,0.55)",
+  },
+  coverageBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  coverageLine: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  coverageMuted: {
+    color: "rgba(255,255,255,0.62)",
+    fontSize: 13,
+    fontWeight: "700",
+    flex: 1,
+  },
+  coverageStrong: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  refreshButton: {
+    minHeight: 46,
+    borderRadius: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "rgba(255,49,72,0.26)",
+    borderWidth: 1,
+    borderColor: "rgba(255,49,72,0.70)",
+  },
+  refreshButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  refreshStatus: {
+    color: "rgba(255,255,255,0.70)",
+    fontSize: 12,
+    fontWeight: "700",
+    textAlign: "center",
   },
   stateCard: {
     minHeight: 140,
