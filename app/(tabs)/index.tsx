@@ -253,11 +253,23 @@ function SectionTitle({ icon, title, action }: { icon: keyof typeof Ionicons.gly
   );
 }
 
-function StatPill({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.statPill}>
+function StatPill({ label, value, onPress }: { label: string; value: string; onPress?: () => void }) {
+  const content = (
+    <>
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
+    </>
+  );
+  if (onPress) {
+    return (
+      <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.statPill, pressed && styles.pressed]}>
+        {content}
+      </Pressable>
+    );
+  }
+  return (
+    <View style={styles.statPill}>
+      {content}
     </View>
   );
 }
@@ -353,7 +365,11 @@ export default function HomeScreen() {
           </View>
           <View style={styles.statsGrid}>
             {clubStats.map((stat) => (
-              <StatPill key={stat.label} {...stat} />
+              <StatPill
+                key={stat.label}
+                {...stat}
+                onPress={stat.label === "Valeur du club" ? () => router.push("/club-value") : undefined}
+              />
             ))}
           </View>
         </LinearGradient>
