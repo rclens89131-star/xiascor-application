@@ -1,5 +1,6 @@
 /* XS_CLUB_VALUE_DETAIL_V1 */
 /* XS_CLUB_VALUE_REFRESH_V1 */
+/* XS_CLUB_VALUE_AUTO_REFRESH_24H_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -48,6 +49,12 @@ type ClubValueRefreshPayload = {
   attempted?: number;
   filledPlayers?: number;
   insertedOrUpdated?: number;
+  status?: string | null;
+  lastRunAt?: string | null;
+  nextAllowedAt?: string | null;
+  processedPlayers?: number | null;
+  remainingPlayers?: number | null;
+  message?: string | null;
 };
 
 async function readClubValueDeviceIdV1(): Promise<string | null> {
@@ -80,8 +87,17 @@ function getValuationToneV1(method: unknown): "green" | "gold" | "muted" {
   return "muted";
 }
 
+function formatClubValueDateV1(value: unknown): string {
+  const text = String(value ?? "").trim();
+  if (!text) return "—";
+  const date = new Date(text);
+  if (!Number.isFinite(date.getTime())) return "—";
+  return date.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
 export default function ClubValueScreen() {
   const [payload, setPayload] = useState<ClubValuePayload | null>(null);
+  const [refreshStatus, setRefreshStatus] = useState<ClubValueRefreshPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -94,7 +110,9 @@ export default function ClubValueScreen() {
       const qs = new URLSearchParams();
       if (deviceId) qs.set("deviceId", deviceId);
       const result = await apiFetch<ClubValuePayload>(`/club/value-detail${qs.toString() ? `?${qs.toString()}` : ""}`);
+      const status = await apiFetch<ClubValueRefreshPayload>(`/club/value-refresh-status${qs.toString() ? `?${qs.toString()}` : ""}`).catch(() => null);
       setPayload(result && result.ok !== false ? result : null);
+      setRefreshStatus(status && status.ok !== false ? status : null);
       setError(null);
     } catch (err) {
       setPayload(null);
@@ -117,11 +135,14 @@ export default function ClubValueScreen() {
       const qs = new URLSearchParams();
       if (deviceId) qs.set("deviceId", deviceId);
       qs.set("limitPlayers", "5");
-      const result = await apiFetch<ClubValueRefreshPayload>(`/club/value-refresh?${qs.toString()}`, { method: "POST" });
+      const result = await apiFetch<ClubValueRefreshPayload>(`/club/value-refresh-all?${qs.toString()}`, { method: "POST" });
+      setRefreshStatus(result && result.ok !== false ? result : null);
       if (result?.rateLimited) {
-        setStatusMessage("Sorare limite temporairement les demandes. Réessayez plus tard.");
+        setStatusMessage("Sorare limite temporairement les demandes. Xiascor reprendra automatiquement plus tard.");
       } else if (result?.skipped && result?.reason === "global_cooldown") {
         setStatusMessage("Analyse récente déjà effectuée. Réessayez dans quelques instants.");
+      } else if (result?.status === "partial") {
+        setStatusMessage("Analyse complète lancée. Xiascor continue progressivement pour éviter les limites Sorare.");
       } else {
         setStatusMessage("Valeur du club actualisée");
       }
@@ -145,6 +166,8 @@ export default function ClubValueScreen() {
   const totalCount = typeof payload?.cardCount === "number" ? payload.cardCount : 0;
   const unpricedCount = typeof payload?.unpricedCards === "number" ? payload.unpricedCards : Math.max(0, totalCount - pricedCount);
   const marketCoverage = totalCount > 0 ? Math.round((pricedCount / totalCount) * 100) : null;
+  const processedPlayers = typeof refreshStatus?.processedPlayers === "number" ? refreshStatus.processedPlayers : null;
+  const remainingPlayers = typeof refreshStatus?.remainingPlayers === "number" ? refreshStatus.remainingPlayers : unpricedCount;
 
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={styles.screen}>
@@ -212,9 +235,33 @@ export default function ClubValueScreen() {
               style={({ pressed }) => [styles.refreshButton, (pressed || refreshing) && styles.pressed]}
             >
               {refreshing ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Ionicons name="sync" size={18} color="#FFFFFF" />}
-              <Text style={styles.refreshButtonText}>{refreshing ? "Analyse du marché en cours..." : "Actualiser la valeur du club"}</Text>
+              <Text style={styles.refreshButtonText}>{refreshing ? "Analyse du marché en cours..." : "Actualiser toute la valeur du club"}</Text>
             </Pressable>
             {statusMessage ? <Text style={styles.refreshStatus}>{statusMessage}</Text> : null}
+            <View style={styles.refreshMetaPanel}>
+              <View style={styles.coverageLine}>
+                <Text style={styles.coverageMuted}>Joueurs analysés</Text>
+                <Text style={styles.coverageStrong}>{processedPlayers === null ? "—" : processedPlayers}</Text>
+              </View>
+              <View style={styles.coverageLine}>
+                <Text style={styles.coverageMuted}>Restants</Text>
+                <Text style={styles.coverageStrong}>{remainingPlayers}</Text>
+              </View>
+              <View style={styles.coverageLine}>
+                <Text style={styles.coverageMuted}>Dernière actualisation</Text>
+                <Text style={styles.coverageStrong}>{formatClubValueDateV1(refreshStatus?.lastRunAt)}</Text>
+              </View>
+              <View style={styles.coverageLine}>
+                <Text style={styles.coverageMuted}>Prochaine reprise</Text>
+                <Text style={styles.coverageStrong}>{formatClubValueDateV1(refreshStatus?.nextAllowedAt)}</Text>
+              </View>
+              {refreshStatus?.status === "partial" ? (
+                <Text style={styles.refreshStatus}>Xiascor continue l'analyse progressivement pour éviter les limites Sorare.</Text>
+              ) : null}
+              {refreshStatus?.status === "rate_limited" ? (
+                <Text style={styles.refreshStatus}>Sorare limite temporairement les demandes. Xiascor reprendra automatiquement plus tard.</Text>
+              ) : null}
+            </View>
           </View>
         </LinearGradient>
 
@@ -450,6 +497,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     textAlign: "center",
+  },
+  refreshMetaPanel: {
+    borderRadius: 12,
+    padding: 10,
+    gap: 8,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
   },
   stateCard: {
     minHeight: 140,
