@@ -1,4 +1,5 @@
 /* XS_HOME_CLUB_PRESIDENT_V1 */
+/* XS_HOME_CLUB_EVOLUTION_HISTORY_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -13,6 +14,7 @@ import { myCardsList } from "../../src/scoutApi";
 const DEVICE_ID_KEY = "XS_DEVICE_ID_V1";
 const JWT_DEVICE_ID_KEY = "XS_JWT_DEVICE_ID_V1";
 const OAUTH_DEVICE_ID_KEY = "xs_device_id";
+const CLUB_VALUE_HISTORY_KEY = "club_value_history";
 
 const MORNING_ALERTS = [
   { icon: "trending-up", tone: "green", text: "Ryan Cherki est en forme sur les derniers matchs." },
@@ -47,6 +49,17 @@ type ClubMetrics = {
   weeklyDelta: number | null;
   clubValueText?: string | null;
   weeklyDeltaText?: string | null;
+  evolutionText?: string | null;
+};
+
+type ClubValueHistorySnapshot = {
+  id: string;
+  label: string;
+  createdAt: string;
+  clubValueEur: number;
+  clubValueText: string;
+  pricedCards?: number | null;
+  cardCount?: number | null;
 };
 
 type HomeGameWeekSummary = {
@@ -90,6 +103,67 @@ function formatWeeklyDelta(value: number | null): string {
   const rounded = Math.round(value);
   const sign = rounded > 0 ? "+" : "";
   return `${sign}${rounded.toLocaleString("fr-FR")} €`;
+}
+
+function formatSignedEuro(value: number): string {
+  const rounded = Math.round(value);
+  const sign = rounded > 0 ? "+" : "";
+  return `${sign}${rounded.toLocaleString("fr-FR")} €`;
+}
+
+async function readClubValueHistoryV1(): Promise<ClubValueHistorySnapshot[]> {
+  try {
+    const raw = await AsyncStorage.getItem(CLUB_VALUE_HISTORY_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed)
+      ? parsed
+          .map((item: any) => ({
+            id: String(item?.id || item?.createdAt || ""),
+            label: String(item?.label || ""),
+            createdAt: String(item?.createdAt || ""),
+            clubValueEur: metricNumber(item?.clubValueEur) ?? 0,
+            clubValueText: String(item?.clubValueText || ""),
+            pricedCards: metricNumber(item?.pricedCards),
+            cardCount: metricNumber(item?.cardCount),
+          }))
+          .filter((item) => item.createdAt && Number.isFinite(item.clubValueEur))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+async function upsertClubValueSnapshotV1(payload: any): Promise<ClubValueHistorySnapshot[]> {
+  const value = metricNumber(payload?.clubValueEur);
+  if (value === null) return readClubValueHistoryV1();
+  const current = await readClubValueHistoryV1();
+  const last = current[current.length - 1];
+  const today = new Date();
+  const dayKey = today.toISOString().slice(0, 10);
+  const next: ClubValueHistorySnapshot = {
+    id: dayKey,
+    label: `GW${current.length + 521}`,
+    createdAt: today.toISOString(),
+    clubValueEur: Math.round(value * 100) / 100,
+    clubValueText: typeof payload?.clubValueText === "string" ? payload.clubValueText : formatEuro(value),
+    pricedCards: metricNumber(payload?.pricedCards),
+    cardCount: metricNumber(payload?.cardCount),
+  };
+  const merged = last && last.id === dayKey
+    ? [...current.slice(0, -1), { ...last, ...next, label: last.label || next.label }]
+    : current.length && Math.abs((last?.clubValueEur ?? 0) - next.clubValueEur) < 0.01
+      ? current
+      : [...current, next];
+  const trimmed = merged.slice(-120);
+  try { await AsyncStorage.setItem(CLUB_VALUE_HISTORY_KEY, JSON.stringify(trimmed)); } catch {}
+  return trimmed;
+}
+
+function getClubEvolutionTextV1(history: ClubValueHistorySnapshot[], currentValue: number | null): string {
+  if (currentValue === null || !history.length) return "0 €";
+  const firstValue = history[0]?.clubValueEur;
+  if (!Number.isFinite(firstValue)) return "0 €";
+  return formatSignedEuro(currentValue - firstValue);
 }
 
 function normalizeHomeTextV1(value: unknown): string {
@@ -225,12 +299,15 @@ async function fetchHomeClubMetricsEndpointV1(deviceId: string): Promise<ClubMet
     qs.set("deviceId", deviceId);
     const payload = await apiFetch<any>(`/club/metrics?${qs.toString()}`);
     if (!payload || payload.ok === false) return null;
+    const history = await upsertClubValueSnapshotV1(payload);
+    const clubValue = firstMetricNumber(payload.clubValueEur);
     return {
-      clubValue: firstMetricNumber(payload.clubValueEur),
+      clubValue,
       squadCount: firstMetricNumber(payload.cardCount),
       weeklyDelta: firstMetricNumber(payload.weeklyDeltaEur),
       clubValueText: typeof payload.clubValueText === "string" && payload.clubValueText.trim() ? payload.clubValueText : null,
       weeklyDeltaText: typeof payload.weeklyDeltaText === "string" && payload.weeklyDeltaText.trim() ? payload.weeklyDeltaText : null,
+      evolutionText: getClubEvolutionTextV1(history, clubValue),
     };
   } catch {
     return null;
@@ -328,7 +405,7 @@ export default function HomeScreen() {
     () => [
       { label: "Valeur du club", value: clubMetrics.clubValueText || formatEuro(clubMetrics.clubValue) },
       { label: "Effectif", value: clubMetrics.squadCount === null ? "—" : `${clubMetrics.squadCount} joueurs` },
-      { label: "Évolution", value: clubMetrics.weeklyDeltaText || formatWeeklyDelta(clubMetrics.weeklyDelta) },
+      { label: "Évolution du club", value: clubMetrics.evolutionText || "0 €" },
       { label: "Réputation", value: "Niv. 7" },
     ],
     [clubMetrics]
@@ -368,7 +445,13 @@ export default function HomeScreen() {
               <StatPill
                 key={stat.label}
                 {...stat}
-                onPress={stat.label === "Valeur du club" ? () => router.push("/club-value") : undefined}
+                onPress={
+                  stat.label === "Valeur du club"
+                    ? () => router.push("/club-value")
+                    : stat.label === "Évolution du club"
+                      ? () => router.push("/club-evolution")
+                      : undefined
+                }
               />
             ))}
           </View>
