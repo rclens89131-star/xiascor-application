@@ -1,5 +1,6 @@
 /* XS_HOME_CLUB_PRESIDENT_V1 */
 /* XS_HOME_CLUB_EVOLUTION_HISTORY_V1 */
+/* XS_FINANCIAL_CENTER_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -50,6 +51,8 @@ type ClubMetrics = {
   clubValueText?: string | null;
   weeklyDeltaText?: string | null;
   evolutionText?: string | null;
+  pricedCards?: number | null;
+  coveragePct?: number | null;
 };
 
 type ClubValueHistorySnapshot = {
@@ -360,13 +363,18 @@ async function fetchHomeClubMetricsEndpointV1(deviceId: string): Promise<ClubMet
     let history = await readClubValueBackendHistoryV1(deviceId);
     if (!history.length) history = await upsertClubValueSnapshotV1(payload);
     const clubValue = firstMetricNumber(payload.clubValueEur);
+    const cardCount = firstMetricNumber(payload.cardCount);
+    const pricedCards = firstMetricNumber(payload.pricedCards);
+    const coveragePct = cardCount && pricedCards !== null ? Math.round((pricedCards / cardCount) * 100) : null;
     return {
       clubValue,
-      squadCount: firstMetricNumber(payload.cardCount),
+      squadCount: cardCount,
       weeklyDelta: firstMetricNumber(payload.weeklyDeltaEur),
       clubValueText: typeof payload.clubValueText === "string" && payload.clubValueText.trim() ? payload.clubValueText : null,
       weeklyDeltaText: typeof payload.weeklyDeltaText === "string" && payload.weeklyDeltaText.trim() ? payload.weeklyDeltaText : null,
       evolutionText: getClubEvolutionTextV1(history, clubValue),
+      pricedCards,
+      coveragePct,
     };
   } catch {
     return null;
@@ -526,6 +534,37 @@ export default function HomeScreen() {
             ))}
           </View>
         </SectionCard>
+
+        <Pressable accessibilityRole="button" onPress={() => router.push("/club-finance")} style={({ pressed }) => [pressed && styles.pressed]}>
+          <SectionCard style={styles.financeCard}>
+            <SectionTitle icon="cash-outline" title="Centre Financier" action="Patrimoine" />
+            <View style={styles.financeMainRow}>
+              <View style={styles.financeIconBubble}>
+                <Ionicons name="wallet-outline" size={24} color="#FFFFFF" />
+              </View>
+              <View style={styles.financeTextBlock}>
+                <Text style={styles.bigMetric}>{clubMetrics.clubValueText || formatEuro(clubMetrics.clubValue)}</Text>
+                <Text style={styles.muted}>Valeur du club suivie comme portefeuille d'investissement.</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.72)" />
+            </View>
+            <View style={styles.financeKpiRow}>
+              <View>
+                <Text style={styles.scoutLabel}>Couverture</Text>
+                <Text style={styles.scoutValueGreen}>{clubMetrics.coveragePct === null || clubMetrics.coveragePct === undefined ? "—" : `${clubMetrics.coveragePct}%`}</Text>
+              </View>
+              <View>
+                <Text style={styles.scoutLabel}>Cartes valorisées</Text>
+                <Text style={styles.scoutValue}>{clubMetrics.pricedCards ?? "—"} / {clubMetrics.squadCount ?? "—"}</Text>
+              </View>
+              <View>
+                <Text style={styles.scoutLabel}>ROI</Text>
+                <Text style={styles.scoutValue}>À connecter</Text>
+              </View>
+            </View>
+            <Text style={styles.financeReport}>Directeur Financier : valeur, couverture marché et historique disponibles. Achats, ventes et ROI restent à connecter.</Text>
+          </SectionCard>
+        </Pressable>
 
         <View style={styles.twoCols}>
           <SectionCard style={styles.flexCard}>
@@ -779,6 +818,44 @@ const styles = StyleSheet.create({
   },
   briefingCard: {
     borderColor: "rgba(255,49,72,0.45)",
+  },
+  financeCard: {
+    borderColor: "rgba(255,49,72,0.38)",
+  },
+  financeMainRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12,
+  },
+  financeIconBubble: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,49,72,0.20)",
+    borderColor: "rgba(255,49,72,0.55)",
+    borderRadius: 18,
+    borderWidth: 1,
+    height: 48,
+    justifyContent: "center",
+    width: 48,
+  },
+  financeTextBlock: {
+    flex: 1,
+  },
+  financeKpiRow: {
+    alignItems: "center",
+    borderTopColor: "rgba(255,255,255,0.08)",
+    borderTopWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 14,
+    paddingTop: 13,
+    gap: 12,
+  },
+  financeReport: {
+    color: "rgba(255,255,255,0.66)",
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 18,
+    marginTop: 12,
   },
   sectionHeader: {
     alignItems: "center",
