@@ -2,6 +2,7 @@
 /* XS_HOME_CLUB_EVOLUTION_HISTORY_V1 */
 /* XS_FINANCIAL_CENTER_V1 */
 /* XS_DIRECTOR_REPORT_V1 */
+/* XS_AI_MARKET_OPPORTUNITIES_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -73,6 +74,22 @@ type DirectorReportPayload = {
     valueText?: string | null;
   } | null;
   summary?: string | null;
+};
+
+type MarketOpportunity = {
+  playerSlug?: string | null;
+  playerName?: string | null;
+  priceEur?: number | null;
+  priceText?: string | null;
+  estimatedValueEur?: number | null;
+  estimatedValueText?: string | null;
+  potentialPct?: number | null;
+  reason?: string | null;
+};
+
+type MarketOpportunitiesPayload = {
+  ok?: boolean;
+  opportunities?: MarketOpportunity[];
 };
 
 type ClubValueHistorySnapshot = {
@@ -413,6 +430,17 @@ async function fetchHomeDirectorReportV1(deviceId: string): Promise<DirectorRepo
   }
 }
 
+async function fetchHomeMarketOpportunitiesV1(): Promise<MarketOpportunity[]> {
+  // XS_AI_MARKET_OPPORTUNITIES_V1: Accueil reads top data-only mercato opportunities.
+  try {
+    const payload = await apiFetch<MarketOpportunitiesPayload>("/market/ai-opportunities?limit=3");
+    if (!payload || payload.ok === false || !Array.isArray(payload.opportunities)) return [];
+    return payload.opportunities.filter((item) => item && item.playerSlug && item.playerName).slice(0, 3);
+  } catch {
+    return [];
+  }
+}
+
 function SectionCard({ children, style }: { children: React.ReactNode; style?: any }) {
   return <View style={[styles.card, style]}>{children}</View>;
 }
@@ -464,6 +492,8 @@ export default function HomeScreen() {
   const [clubMetrics, setClubMetrics] = useState<ClubMetrics>({ clubValue: null, squadCount: null, weeklyDelta: null });
   const [directorReport, setDirectorReport] = useState<DirectorReportPayload | null>(null);
   const [directorLoading, setDirectorLoading] = useState(false);
+  const [marketOpportunities, setMarketOpportunities] = useState<MarketOpportunity[]>([]);
+  const [marketOpportunitiesLoading, setMarketOpportunitiesLoading] = useState(false);
   const [gameWeekSummary, setGameWeekSummary] = useState<HomeGameWeekSummary>({
     label: "Données indisponibles",
     rarity: "—",
@@ -518,6 +548,25 @@ export default function HomeScreen() {
       }
     }
     loadDirectorReport();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    async function loadMarketOpportunities() {
+      try {
+        setMarketOpportunitiesLoading(true);
+        const opportunities = await fetchHomeMarketOpportunitiesV1();
+        if (mounted) setMarketOpportunities(opportunities);
+      } catch {
+        if (mounted) setMarketOpportunities([]);
+      } finally {
+        if (mounted) setMarketOpportunitiesLoading(false);
+      }
+    }
+    loadMarketOpportunities();
     return () => {
       mounted = false;
     };
@@ -745,6 +794,43 @@ export default function HomeScreen() {
             </View>
           </SectionCard>
         </View>
+
+        <SectionCard style={styles.marketOpportunityCard}>
+          <SectionTitle icon="flame" title="Opportunités Mercato" action="Assistant IA" />
+          {marketOpportunities.length > 0 ? (
+            marketOpportunities.map((opportunity) => (
+              <Pressable
+                accessibilityRole="button"
+                key={opportunity.playerSlug || opportunity.playerName || "market-opportunity"}
+                onPress={() => {
+                  if (opportunity.playerSlug) (router as any).push(`/recruter/player/${opportunity.playerSlug}`);
+                }}
+                style={({ pressed }) => [styles.marketOpportunityLine, pressed && styles.pressed]}
+              >
+                <View style={styles.marketOpportunityBadge}>
+                  <Text style={styles.marketOpportunityPotential}>
+                    {opportunity.potentialPct === null || opportunity.potentialPct === undefined ? "—" : `+${Math.round(opportunity.potentialPct)}%`}
+                  </Text>
+                </View>
+                <View style={styles.marketOpportunityTextBlock}>
+                  <Text style={styles.marketOpportunityName}>{opportunity.playerName || "Donnée indisponible"}</Text>
+                  <Text style={styles.marketOpportunityMeta}>
+                    Prix {opportunity.priceText || "Prix indisponible"} · Valeur {opportunity.estimatedValueText || "Prix indisponible"}
+                  </Text>
+                  <Text style={styles.marketOpportunityReason}>{opportunity.reason || "Donnée insuffisante"}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.72)" />
+              </Pressable>
+            ))
+          ) : (
+            <View style={styles.marketOpportunityEmpty}>
+              <Text style={styles.marketOpportunityEmptyTitle}>
+                {marketOpportunitiesLoading ? "Analyse du marché en cours..." : "Aucune opportunité fiable aujourd'hui"}
+              </Text>
+              <Text style={styles.marketOpportunityEmptyText}>Xiascor n'affiche que les joueurs avec prix et performances réelles.</Text>
+            </View>
+          )}
+        </SectionCard>
 
         <SectionCard>
           <SectionTitle icon="diamond" title="Pépites détectées" action="Marché" />
@@ -1223,6 +1309,75 @@ const styles = StyleSheet.create({
     color: "#FFB020",
     fontSize: 12,
     fontWeight: "900",
+  },
+  marketOpportunityCard: {
+    borderColor: "rgba(255,49,72,0.34)",
+  },
+  marketOpportunityLine: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,49,72,0.055)",
+    borderColor: "rgba(255,49,72,0.18)",
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 10,
+    padding: 11,
+  },
+  marketOpportunityBadge: {
+    alignItems: "center",
+    backgroundColor: "rgba(47,230,107,0.14)",
+    borderColor: "rgba(47,230,107,0.42)",
+    borderRadius: 12,
+    borderWidth: 1,
+    height: 46,
+    justifyContent: "center",
+    width: 58,
+  },
+  marketOpportunityPotential: {
+    color: "#2FE66B",
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  marketOpportunityTextBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  marketOpportunityName: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  marketOpportunityMeta: {
+    color: "rgba(255,255,255,0.7)",
+    fontSize: 12,
+    fontWeight: "800",
+    marginTop: 4,
+  },
+  marketOpportunityReason: {
+    color: "#FFB8C0",
+    fontSize: 11,
+    fontWeight: "800",
+    marginTop: 3,
+  },
+  marketOpportunityEmpty: {
+    backgroundColor: "rgba(255,255,255,0.035)",
+    borderColor: "rgba(255,255,255,0.08)",
+    borderRadius: 14,
+    borderWidth: 1,
+    marginTop: 10,
+    padding: 12,
+  },
+  marketOpportunityEmptyTitle: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  marketOpportunityEmptyText: {
+    color: "rgba(255,255,255,0.58)",
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 4,
   },
   gemLine: {
     alignItems: "center",
