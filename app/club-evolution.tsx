@@ -1,4 +1,5 @@
 /* XS_HOME_CLUB_EVOLUTION_HISTORY_V1 */
+/* XS_GAMEWEEK_REWARDS_ACCOUNTING_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -30,6 +31,20 @@ type ClubValueHistorySnapshot = {
   bestCardGainEur?: number | null;
   worstCardSlug?: string | null;
   worstCardGainEur?: number | null;
+};
+
+type ClubRewardHistoryItem = {
+  id?: string | null;
+  gameWeekLabel?: string | null;
+  competition?: string | null;
+  division?: string | null;
+  rewardType?: string | null;
+  rewardTotalText?: string | null;
+  rewardCashText?: string | null;
+  rewardEthText?: string | null;
+  rewardCardPlayerName?: string | null;
+  rewardCardValueText?: string | null;
+  createdAt?: string | null;
 };
 
 function normalizeBackendHistoryItemV1(item: any): ClubValueHistorySnapshot {
@@ -168,6 +183,26 @@ async function createBackendSnapshotV1(deviceId: string | null): Promise<void> {
   await apiFetch<any>(`/club/value-history/snapshot${qs.toString() ? `?${qs.toString()}` : ""}`, { method: "POST" });
 }
 
+async function readRewardEventsV1(deviceId: string | null): Promise<ClubRewardHistoryItem[]> {
+  const qs = new URLSearchParams();
+  if (deviceId) qs.set("deviceId", deviceId);
+  const payload = await apiFetch<any>(`/club/rewards-history${qs.toString() ? `?${qs.toString()}` : ""}`);
+  const items = Array.isArray(payload?.items) ? payload.items : [];
+  return items.map((item: any) => ({
+    id: item?.id ? String(item.id) : null,
+    gameWeekLabel: item?.gameWeekLabel ? String(item.gameWeekLabel) : null,
+    competition: item?.competition ? String(item.competition) : null,
+    division: item?.division ? String(item.division) : null,
+    rewardType: item?.rewardType ? String(item.rewardType) : null,
+    rewardTotalText: item?.rewardTotalText ? String(item.rewardTotalText) : null,
+    rewardCashText: item?.rewardCashText ? String(item.rewardCashText) : null,
+    rewardEthText: item?.rewardEthText ? String(item.rewardEthText) : null,
+    rewardCardPlayerName: item?.rewardCardPlayerName ? String(item.rewardCardPlayerName) : null,
+    rewardCardValueText: item?.rewardCardValueText ? String(item.rewardCardValueText) : null,
+    createdAt: item?.createdAt ? String(item.createdAt) : null,
+  }));
+}
+
 function ChartBars({ history }: { history: ClubValueHistorySnapshot[] }) {
   const values = history.map((item) => item.clubValueEur);
   const min = Math.min(...values, 0);
@@ -209,21 +244,37 @@ function formatSlugLabel(value?: string | null): string {
     .join(" ");
 }
 
+function rewardEventTitleV1(item: ClubRewardHistoryItem): string {
+  return item.gameWeekLabel || item.competition || item.rewardType || "Game Week";
+}
+
+function rewardEventValueV1(item: ClubRewardHistoryItem): string {
+  if (item.rewardTotalText && item.rewardTotalText !== "À connecter") return item.rewardTotalText;
+  if (item.rewardCardPlayerName) return `Carte gagnée : ${item.rewardCardPlayerName}`;
+  if (item.rewardCashText && item.rewardCashText !== "À connecter") return item.rewardCashText;
+  if (item.rewardEthText && item.rewardEthText !== "À connecter") return item.rewardEthText;
+  return "À connecter";
+}
+
 export default function ClubEvolutionScreen() {
   const [history, setHistory] = useState<ClubValueHistorySnapshot[]>([]);
+  const [rewardEvents, setRewardEvents] = useState<ClubRewardHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     try {
       setLoading(true);
       const deviceId = await readDeviceIdV1();
+      const rewards = await readRewardEventsV1(deviceId).catch(() => []);
       let next = await readBackendHistoryV1(deviceId);
       if (!next.length) {
         await createBackendSnapshotV1(deviceId);
         next = await readBackendHistoryV1(deviceId);
       }
+      setRewardEvents(rewards);
       setHistory(next.length ? next : await upsertCurrentSnapshotV1());
     } catch {
+      setRewardEvents([]);
       setHistory(await readHistoryV1());
     } finally {
       setLoading(false);
@@ -342,6 +393,26 @@ export default function ClubEvolutionScreen() {
               </View>
             );
           })}
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>Événements financiers</Text>
+            <Ionicons name="trophy" size={18} color="#FF3148" />
+          </View>
+          {rewardEvents.length ? (
+            rewardEvents.slice(0, 8).map((item, index) => (
+              <View key={`${item.id || item.gameWeekLabel || "reward"}-${index}`} style={styles.historyRow}>
+                <View>
+                  <Text style={styles.historyLabel}>{rewardEventTitleV1(item)}</Text>
+                  <Text style={styles.muted}>{item.competition || item.division || item.rewardType || formatSnapshotDate(item.createdAt || "")}</Text>
+                </View>
+                <Text style={styles.historyValue}>{rewardEventValueV1(item)}</Text>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.muted}>Aucun événement financier connecté.</Text>
+          )}
         </View>
 
         <View style={styles.card}>

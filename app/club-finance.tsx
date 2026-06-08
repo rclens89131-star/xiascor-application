@@ -1,5 +1,6 @@
 /* XS_FINANCIAL_CENTER_V1 */
 /* XS_FINANCIAL_CENTER_V2_V1 */
+/* XS_GAMEWEEK_REWARDS_ACCOUNTING_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -28,6 +29,9 @@ type ClubFinancialSummary = {
   rewardEthText?: string | null;
   rewardCardsValueEur?: number | null;
   rewardCardsValueText?: string | null;
+  totalRewardsEur?: number | null;
+  totalRewardsText?: string | null;
+  rewardCount?: number | null;
   totalAssetsEur?: number | null;
   totalAssetsText?: string | null;
   profitEur?: number | null;
@@ -44,6 +48,31 @@ type ClubFinancialSummary = {
   pricedCards?: number | null;
   cardCount?: number | null;
   coveragePct?: number | null;
+};
+
+type ClubRewardItem = {
+  id?: string | null;
+  gameWeekLabel?: string | null;
+  competition?: string | null;
+  division?: string | null;
+  rewardType?: string | null;
+  rewardCashText?: string | null;
+  rewardEthText?: string | null;
+  rewardCardPlayerName?: string | null;
+  rewardCardValueText?: string | null;
+  rewardTotalText?: string | null;
+  createdAt?: string | null;
+};
+
+type ClubRewardsSummary = {
+  ok?: boolean;
+  totalRewardEur?: number | null;
+  totalRewardText?: string | null;
+  cashRewardText?: string | null;
+  ethRewardText?: string | null;
+  cardRewardValueText?: string | null;
+  rewardCount?: number | null;
+  items?: ClubRewardItem[];
 };
 
 async function readClubFinanceDeviceIdV1(): Promise<string | null> {
@@ -67,6 +96,16 @@ function financePendingTextV2(value: unknown): string {
   return cleanFinanceTextV1(value, "À connecter");
 }
 
+function rewardEventTitleV1(item: ClubRewardItem): string {
+  return cleanFinanceTextV1(item.gameWeekLabel || item.competition || item.rewardType, "Game Week");
+}
+
+function rewardEventValueV1(item: ClubRewardItem): string {
+  if (item.rewardTotalText && item.rewardTotalText !== "À connecter") return item.rewardTotalText;
+  if (item.rewardCardPlayerName) return `Carte gagnée : ${item.rewardCardPlayerName}`;
+  return "À connecter";
+}
+
 function MetricTile({ label, value, tone }: { label: string; value: string; tone?: "red" | "green" }) {
   return (
     <View style={styles.metricTile}>
@@ -78,6 +117,7 @@ function MetricTile({ label, value, tone }: { label: string; value: string; tone
 
 export default function ClubFinanceScreen() {
   const [payload, setPayload] = useState<ClubFinancialSummary | null>(null);
+  const [rewardsPayload, setRewardsPayload] = useState<ClubRewardsSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -91,10 +131,13 @@ export default function ClubFinanceScreen() {
       if (!result || result.ok === false) {
         result = await apiFetch<ClubFinancialSummary>(`/club/financial-summary${qs.toString() ? `?${qs.toString()}` : ""}`);
       }
+      const rewardsResult = await apiFetch<ClubRewardsSummary>(`/club/rewards-summary${qs.toString() ? `?${qs.toString()}` : ""}`).catch(() => null);
       setPayload(result && result.ok !== false ? result : null);
+      setRewardsPayload(rewardsResult && rewardsResult.ok !== false ? rewardsResult : null);
       setError(null);
     } catch (err) {
       setPayload(null);
+      setRewardsPayload(null);
       setError(String(err instanceof Error ? err.message : err || "Données indisponibles"));
     } finally {
       setLoading(false);
@@ -112,11 +155,17 @@ export default function ClubFinanceScreen() {
     const total = payload?.cardCount ?? "—";
     const totalAssets = cleanFinanceTextV1(payload?.totalAssetsText, "À connecter");
     const hasFullFinance = payload?.totalAssetsEur !== null && payload?.totalAssetsEur !== undefined;
+    const rewardsText = financePendingTextV2(payload?.totalRewardsText ?? rewardsPayload?.totalRewardText);
     if (hasFullFinance) {
-      return `Votre club vaut actuellement ${value}. Le patrimoine total est estimé à ${totalAssets}. Couverture marché : ${coverage}.`;
+      return `Votre club vaut actuellement ${value}. Le patrimoine total est estimé à ${totalAssets}. Récompenses Game Week : ${rewardsText}. Couverture marché : ${coverage}.`;
     }
-    return `Votre club vaut actuellement ${value}. ${priced} / ${total} carte(s) sont valorisée(s). Données insuffisantes pour calcul complet du profit et du ROI.`;
-  }, [payload]);
+    const rewardSentence = rewardsText === "À connecter"
+      ? "Les récompenses Game Week ne sont pas encore connectées."
+      : `Le club a généré ${rewardsText} de récompenses Game Week.`;
+    return `Votre club vaut actuellement ${value}. ${priced} / ${total} carte(s) sont valorisée(s). ${rewardSentence} Données insuffisantes pour calcul complet du profit et du ROI.`;
+  }, [payload, rewardsPayload]);
+
+  const rewardItems = useMemo(() => Array.isArray(rewardsPayload?.items) ? rewardsPayload.items.slice(0, 5) : [], [rewardsPayload]);
 
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={styles.screen}>
@@ -159,7 +208,7 @@ export default function ClubFinanceScreen() {
             <View style={styles.metricGrid}>
               <MetricTile label="💰 Capital investi" value={financePendingTextV2(payload?.investedText ?? payload?.totalInvestedText)} />
               <MetricTile label="💵 Revenus ventes" value={financePendingTextV2(payload?.soldText ?? payload?.totalSoldText)} />
-              <MetricTile label="🏆 Récompenses Game Week" value={financePendingTextV2(payload?.rewardCashText)} />
+              <MetricTile label="🏆 Récompenses Game Week" value={financePendingTextV2(payload?.totalRewardsText ?? rewardsPayload?.totalRewardText)} />
               <MetricTile label="💎 Récompenses ETH" value={financePendingTextV2(payload?.rewardEthText)} />
               <MetricTile label="🎁 Cartes gagnées" value={financePendingTextV2(payload?.rewardCardsValueText)} />
               <MetricTile label="🏦 Patrimoine total" value={financePendingTextV2(payload?.totalAssetsText)} />
@@ -167,6 +216,37 @@ export default function ClubFinanceScreen() {
               <MetricTile label="🚀 ROI" value={financePendingTextV2(payload?.roiText)} />
               <MetricTile label="Couverture marché" value={payload?.coveragePct === null || payload?.coveragePct === undefined ? "—" : `${payload.coveragePct}%`} tone="green" />
               <MetricTile label="Cartes valorisées" value={`${payload?.pricedCards ?? "—"} / ${payload?.cardCount ?? "—"}`} />
+            </View>
+
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <View style={styles.cardTitleRow}>
+                  <Ionicons name="trophy" size={18} color="#FF3148" />
+                  <Text style={styles.cardTitle}>Récompenses Game Week</Text>
+                </View>
+                <Text style={styles.cardAction}>{rewardsPayload?.rewardCount ?? 0} flux</Text>
+              </View>
+              <View style={styles.rewardGrid}>
+                <View style={styles.rewardTile}><Text style={styles.futureLabel}>Cash gagné</Text><Text style={styles.futureValue}>{financePendingTextV2(rewardsPayload?.cashRewardText ?? payload?.rewardCashText)}</Text></View>
+                <View style={styles.rewardTile}><Text style={styles.futureLabel}>ETH gagné</Text><Text style={styles.futureValue}>{financePendingTextV2(rewardsPayload?.ethRewardText ?? payload?.rewardEthText)}</Text></View>
+                <View style={styles.rewardTile}><Text style={styles.futureLabel}>Cartes gagnées</Text><Text style={styles.futureValue}>{financePendingTextV2(rewardsPayload?.cardRewardValueText ?? payload?.rewardCardsValueText)}</Text></View>
+                <View style={styles.rewardTile}><Text style={styles.futureLabel}>Valeur totale</Text><Text style={styles.futureValue}>{financePendingTextV2(rewardsPayload?.totalRewardText ?? payload?.totalRewardsText)}</Text></View>
+              </View>
+              {rewardItems.length ? (
+                <View style={styles.rewardList}>
+                  {rewardItems.map((item, index) => (
+                    <View key={`${item.id || item.gameWeekLabel || "reward"}-${index}`} style={styles.futureRow}>
+                      <View>
+                        <Text style={styles.futureLabel}>{rewardEventTitleV1(item)}</Text>
+                        <Text style={styles.flowHint}>{cleanFinanceTextV1(item.competition || item.division || item.rewardType, "Récompense Game Week")}</Text>
+                      </View>
+                      <Text style={styles.futureValue}>{rewardEventValueV1(item)}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <Text style={styles.flowHint}>Les récompenses Game Week ne sont pas encore connectées.</Text>
+              )}
             </View>
 
             <View style={styles.card}>
@@ -185,7 +265,7 @@ export default function ClubFinanceScreen() {
               <Text style={styles.flowHint}>Achats, ventes et récompenses seront affichés ici dès que Xiascor aura des flux réels à relier.</Text>
               <View style={styles.futureRow}><Text style={styles.futureLabel}>Achats</Text><Text style={styles.futureValue}>À connecter</Text></View>
               <View style={styles.futureRow}><Text style={styles.futureLabel}>Ventes</Text><Text style={styles.futureValue}>À connecter</Text></View>
-              <View style={styles.futureRow}><Text style={styles.futureLabel}>Récompenses</Text><Text style={styles.futureValue}>À connecter</Text></View>
+              <View style={styles.futureRow}><Text style={styles.futureLabel}>Récompenses</Text><Text style={styles.futureValue}>{financePendingTextV2(rewardsPayload?.totalRewardText ?? payload?.totalRewardsText)}</Text></View>
               <View style={styles.futureRow}><Text style={styles.futureLabel}>Profit / ROI</Text><Text style={styles.futureValue}>À connecter</Text></View>
             </View>
           </>
@@ -263,6 +343,17 @@ const styles = StyleSheet.create({
   metricLabel: { color: "rgba(255,255,255,0.58)", fontSize: 12, fontWeight: "800", marginTop: 4 },
   greenText: { color: "#2FE66B" },
   redText: { color: "#FF3148" },
+  rewardGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  rewardTile: {
+    backgroundColor: "rgba(255,49,72,0.08)",
+    borderColor: "rgba(255,49,72,0.18)",
+    borderRadius: 14,
+    borderWidth: 1,
+    flexGrow: 1,
+    minWidth: 135,
+    padding: 12,
+  },
+  rewardList: { marginTop: 8 },
   card: {
     backgroundColor: "rgba(9,11,15,0.94)",
     borderColor: "rgba(255,255,255,0.10)",
