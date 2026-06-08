@@ -78,6 +78,26 @@ type HomeGameWeekSummary = {
   projectionLabel: string;
 };
 
+function normalizeClubValueBackendHistoryItemV1(item: any): ClubValueHistorySnapshot {
+  return {
+    id: String(item?.id || item?.snapshotDate || item?.createdAt || ""),
+    label: String(item?.gameWeekLabel || item?.label || ""),
+    createdAt: String(item?.snapshotDate || item?.createdAt || ""),
+    clubValueEur: metricNumber(item?.clubValueEur) ?? 0,
+    clubValueText: String(item?.clubValueText || ""),
+    pricedCards: metricNumber(item?.pricedCards),
+    cardCount: metricNumber(item?.cardCount),
+    totalInvestedEur: metricNumber(item?.totalInvestedEur ?? item?.cashSpentEur),
+    totalSoldEur: metricNumber(item?.totalSoldEur ?? item?.cashReceivedEur),
+    estimatedProfitEur: metricNumber(item?.estimatedProfitEur ?? item?.profitLossEur),
+    estimatedProfitPct: metricNumber(item?.estimatedProfitPct),
+    bestCardSlug: item?.bestCardSlug ? String(item.bestCardSlug) : null,
+    bestCardGainEur: metricNumber(item?.bestCardGainEur),
+    worstCardSlug: item?.worstCardSlug ? String(item.worstCardSlug) : null,
+    worstCardGainEur: metricNumber(item?.worstCardGainEur),
+  };
+}
+
 const HOME_GAMEWEEK_OPTIONS_V1 = [
   { label: "Champion", rarity: "Limited", leagues: ["premier-league-gb-eng", "laliga-es", "bundesliga-de", "serie-a-it", "ligue-1-fr"], requiredCards: 5 },
   { label: "Ligue 1", rarity: "Limited", leagues: ["ligue-1-fr"], requiredCards: 5 },
@@ -181,6 +201,20 @@ async function upsertClubValueSnapshotV1(payload: any): Promise<ClubValueHistory
   const trimmed = merged.slice(-120);
   try { await AsyncStorage.setItem(CLUB_VALUE_HISTORY_KEY, JSON.stringify(trimmed)); } catch {}
   return trimmed;
+}
+
+async function readClubValueBackendHistoryV1(deviceId: string | null): Promise<ClubValueHistorySnapshot[]> {
+  try {
+    const qs = new URLSearchParams();
+    if (deviceId) qs.set("deviceId", deviceId);
+    const payload = await apiFetch<any>(`/club/value-history${qs.toString() ? `?${qs.toString()}` : ""}`);
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+    return items
+      .map(normalizeClubValueBackendHistoryItemV1)
+      .filter((item) => item.createdAt && Number.isFinite(item.clubValueEur));
+  } catch {
+    return [];
+  }
 }
 
 function getClubEvolutionTextV1(history: ClubValueHistorySnapshot[], currentValue: number | null): string {
@@ -323,7 +357,8 @@ async function fetchHomeClubMetricsEndpointV1(deviceId: string): Promise<ClubMet
     qs.set("deviceId", deviceId);
     const payload = await apiFetch<any>(`/club/metrics?${qs.toString()}`);
     if (!payload || payload.ok === false) return null;
-    const history = await upsertClubValueSnapshotV1(payload);
+    let history = await readClubValueBackendHistoryV1(deviceId);
+    if (!history.length) history = await upsertClubValueSnapshotV1(payload);
     const clubValue = firstMetricNumber(payload.clubValueEur);
     return {
       clubValue,

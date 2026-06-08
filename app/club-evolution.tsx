@@ -32,6 +32,26 @@ type ClubValueHistorySnapshot = {
   worstCardGainEur?: number | null;
 };
 
+function normalizeBackendHistoryItemV1(item: any): ClubValueHistorySnapshot {
+  return {
+    id: String(item?.id || item?.snapshotDate || item?.createdAt || ""),
+    label: String(item?.gameWeekLabel || item?.label || ""),
+    createdAt: String(item?.snapshotDate || item?.createdAt || ""),
+    clubValueEur: metricNumber(item?.clubValueEur) ?? 0,
+    clubValueText: String(item?.clubValueText || ""),
+    pricedCards: metricNumber(item?.pricedCards),
+    cardCount: metricNumber(item?.cardCount),
+    totalInvestedEur: metricNumber(item?.totalInvestedEur ?? item?.cashSpentEur),
+    totalSoldEur: metricNumber(item?.totalSoldEur ?? item?.cashReceivedEur),
+    estimatedProfitEur: metricNumber(item?.estimatedProfitEur ?? item?.profitLossEur),
+    estimatedProfitPct: metricNumber(item?.estimatedProfitPct),
+    bestCardSlug: item?.bestCardSlug ? String(item.bestCardSlug) : null,
+    bestCardGainEur: metricNumber(item?.bestCardGainEur),
+    worstCardSlug: item?.worstCardSlug ? String(item.worstCardSlug) : null,
+    worstCardGainEur: metricNumber(item?.worstCardGainEur),
+  };
+}
+
 async function readDeviceIdV1(): Promise<string | null> {
   const oauthId = (await AsyncStorage.getItem(OAUTH_DEVICE_ID_KEY)) || "";
   if (oauthId.trim()) return oauthId.trim();
@@ -132,6 +152,22 @@ async function upsertCurrentSnapshotV1(): Promise<ClubValueHistorySnapshot[]> {
   return trimmed;
 }
 
+async function readBackendHistoryV1(deviceId: string | null): Promise<ClubValueHistorySnapshot[]> {
+  const qs = new URLSearchParams();
+  if (deviceId) qs.set("deviceId", deviceId);
+  const payload = await apiFetch<any>(`/club/value-history${qs.toString() ? `?${qs.toString()}` : ""}`);
+  const items = Array.isArray(payload?.items) ? payload.items : [];
+  return items
+    .map(normalizeBackendHistoryItemV1)
+    .filter((item) => item.createdAt && Number.isFinite(item.clubValueEur));
+}
+
+async function createBackendSnapshotV1(deviceId: string | null): Promise<void> {
+  const qs = new URLSearchParams();
+  if (deviceId) qs.set("deviceId", deviceId);
+  await apiFetch<any>(`/club/value-history/snapshot${qs.toString() ? `?${qs.toString()}` : ""}`, { method: "POST" });
+}
+
 function ChartBars({ history }: { history: ClubValueHistorySnapshot[] }) {
   const values = history.map((item) => item.clubValueEur);
   const min = Math.min(...values, 0);
@@ -180,8 +216,13 @@ export default function ClubEvolutionScreen() {
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const next = await upsertCurrentSnapshotV1();
-      setHistory(next);
+      const deviceId = await readDeviceIdV1();
+      let next = await readBackendHistoryV1(deviceId);
+      if (!next.length) {
+        await createBackendSnapshotV1(deviceId);
+        next = await readBackendHistoryV1(deviceId);
+      }
+      setHistory(next.length ? next : await upsertCurrentSnapshotV1());
     } catch {
       setHistory(await readHistoryV1());
     } finally {
@@ -253,8 +294,13 @@ export default function ClubEvolutionScreen() {
               <ActivityIndicator color="#FF3148" />
               <Text style={styles.muted}>Chargement de l'historique...</Text>
             </View>
-          ) : history.length ? (
+          ) : history.length > 1 ? (
             <ChartBars history={history} />
+          ) : history.length === 1 ? (
+            <View style={styles.loadingBox}>
+              <Ionicons name="trending-up" size={28} color="#FF3148" />
+              <Text style={styles.mutedCenter}>L'historique commence aujourd'hui. La courbe apparaîtra après plusieurs snapshots.</Text>
+            </View>
           ) : (
             <View style={styles.loadingBox}>
               <Text style={styles.muted}>Aucun historique disponible</Text>
@@ -363,6 +409,7 @@ const styles = StyleSheet.create({
   chartLabel: { color: "rgba(255,255,255,0.52)", fontSize: 10, fontWeight: "800" },
   loadingBox: { minHeight: 160, alignItems: "center", justifyContent: "center", gap: 10 },
   muted: { color: "rgba(255,255,255,0.58)", fontSize: 13, fontWeight: "700" },
+  mutedCenter: { color: "rgba(255,255,255,0.62)", fontSize: 13, fontWeight: "800", textAlign: "center", lineHeight: 20, maxWidth: 280 },
   summaryGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   kpi: { width: "48%", borderRadius: 14, padding: 12, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: 1, borderColor: "rgba(255,255,255,0.09)" },
   kpiValue: { color: "#FFFFFF", fontSize: 20, fontWeight: "900" },
