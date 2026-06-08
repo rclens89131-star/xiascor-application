@@ -1,4 +1,5 @@
 /* XS_FINANCIAL_CENTER_V1 */
+/* XS_FINANCIAL_CENTER_V2_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -17,6 +18,21 @@ type ClubFinancialSummary = {
   ok?: boolean;
   clubValueEur?: number | null;
   clubValueText?: string | null;
+  investedEur?: number | null;
+  investedText?: string | null;
+  soldEur?: number | null;
+  soldText?: string | null;
+  rewardCashEur?: number | null;
+  rewardCashText?: string | null;
+  rewardEthEur?: number | null;
+  rewardEthText?: string | null;
+  rewardCardsValueEur?: number | null;
+  rewardCardsValueText?: string | null;
+  totalAssetsEur?: number | null;
+  totalAssetsText?: string | null;
+  profitEur?: number | null;
+  profitText?: string | null;
+  status?: string | null;
   totalInvestedEur?: number | null;
   totalInvestedText?: string | null;
   totalSoldEur?: number | null;
@@ -47,6 +63,10 @@ function cleanFinanceTextV1(value: unknown, fallback = "—"): string {
   return text || fallback;
 }
 
+function financePendingTextV2(value: unknown): string {
+  return cleanFinanceTextV1(value, "À connecter");
+}
+
 function MetricTile({ label, value, tone }: { label: string; value: string; tone?: "red" | "green" }) {
   return (
     <View style={styles.metricTile}>
@@ -67,7 +87,10 @@ export default function ClubFinanceScreen() {
       const deviceId = await readClubFinanceDeviceIdV1();
       const qs = new URLSearchParams();
       if (deviceId) qs.set("deviceId", deviceId);
-      const result = await apiFetch<ClubFinancialSummary>(`/club/financial-summary${qs.toString() ? `?${qs.toString()}` : ""}`);
+      let result = await apiFetch<ClubFinancialSummary>(`/club/financial-summary-v2${qs.toString() ? `?${qs.toString()}` : ""}`);
+      if (!result || result.ok === false) {
+        result = await apiFetch<ClubFinancialSummary>(`/club/financial-summary${qs.toString() ? `?${qs.toString()}` : ""}`);
+      }
       setPayload(result && result.ok !== false ? result : null);
       setError(null);
     } catch (err) {
@@ -87,7 +110,12 @@ export default function ClubFinanceScreen() {
     const coverage = payload?.coveragePct === null || payload?.coveragePct === undefined ? "—" : `${payload.coveragePct}%`;
     const priced = payload?.pricedCards ?? "—";
     const total = payload?.cardCount ?? "—";
-    return `Valeur du club : ${value}. Couverture : ${coverage}. ${priced} / ${total} carte(s) valorisée(s). Historique disponible dans l'évolution du club.`;
+    const totalAssets = cleanFinanceTextV1(payload?.totalAssetsText, "À connecter");
+    const hasFullFinance = payload?.totalAssetsEur !== null && payload?.totalAssetsEur !== undefined;
+    if (hasFullFinance) {
+      return `Votre club vaut actuellement ${value}. Le patrimoine total est estimé à ${totalAssets}. Couverture marché : ${coverage}.`;
+    }
+    return `Votre club vaut actuellement ${value}. ${priced} / ${total} carte(s) sont valorisée(s). Données insuffisantes pour calcul complet du profit et du ROI.`;
   }, [payload]);
 
   return (
@@ -129,10 +157,14 @@ export default function ClubFinanceScreen() {
         ) : (
           <>
             <View style={styles.metricGrid}>
-              <MetricTile label="Capital investi" value={cleanFinanceTextV1(payload?.totalInvestedText, "À connecter")} />
-              <MetricTile label="Revenus ventes" value={cleanFinanceTextV1(payload?.totalSoldText, "À connecter")} />
-              <MetricTile label="Profit estimé" value={cleanFinanceTextV1(payload?.estimatedProfitText, "À connecter")} />
-              <MetricTile label="ROI" value={cleanFinanceTextV1(payload?.roiText, "À connecter")} />
+              <MetricTile label="💰 Capital investi" value={financePendingTextV2(payload?.investedText ?? payload?.totalInvestedText)} />
+              <MetricTile label="💵 Revenus ventes" value={financePendingTextV2(payload?.soldText ?? payload?.totalSoldText)} />
+              <MetricTile label="🏆 Récompenses Game Week" value={financePendingTextV2(payload?.rewardCashText)} />
+              <MetricTile label="💎 Récompenses ETH" value={financePendingTextV2(payload?.rewardEthText)} />
+              <MetricTile label="🎁 Cartes gagnées" value={financePendingTextV2(payload?.rewardCardsValueText)} />
+              <MetricTile label="🏦 Patrimoine total" value={financePendingTextV2(payload?.totalAssetsText)} />
+              <MetricTile label="📈 Profit" value={financePendingTextV2(payload?.profitText ?? payload?.estimatedProfitText)} />
+              <MetricTile label="🚀 ROI" value={financePendingTextV2(payload?.roiText)} />
               <MetricTile label="Couverture marché" value={payload?.coveragePct === null || payload?.coveragePct === undefined ? "—" : `${payload.coveragePct}%`} tone="green" />
               <MetricTile label="Cartes valorisées" value={`${payload?.pricedCards ?? "—"} / ${payload?.cardCount ?? "—"}`} />
             </View>
@@ -149,11 +181,12 @@ export default function ClubFinanceScreen() {
             </View>
 
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>À connecter ensuite</Text>
+              <Text style={styles.cardTitle}>Historique des flux</Text>
+              <Text style={styles.flowHint}>Achats, ventes et récompenses seront affichés ici dès que Xiascor aura des flux réels à relier.</Text>
               <View style={styles.futureRow}><Text style={styles.futureLabel}>Achats</Text><Text style={styles.futureValue}>À connecter</Text></View>
               <View style={styles.futureRow}><Text style={styles.futureLabel}>Ventes</Text><Text style={styles.futureValue}>À connecter</Text></View>
-              <View style={styles.futureRow}><Text style={styles.futureLabel}>Profit</Text><Text style={styles.futureValue}>À connecter</Text></View>
-              <View style={styles.futureRow}><Text style={styles.futureLabel}>ROI</Text><Text style={styles.futureValue}>À connecter</Text></View>
+              <View style={styles.futureRow}><Text style={styles.futureLabel}>Récompenses</Text><Text style={styles.futureValue}>À connecter</Text></View>
+              <View style={styles.futureRow}><Text style={styles.futureLabel}>Profit / ROI</Text><Text style={styles.futureValue}>À connecter</Text></View>
             </View>
           </>
         )}
@@ -242,6 +275,14 @@ const styles = StyleSheet.create({
   cardTitle: { color: "#FFFFFF", fontSize: 16, fontWeight: "900" },
   cardAction: { color: "#FF3148", fontSize: 12, fontWeight: "900" },
   reportText: { color: "rgba(255,255,255,0.76)", fontSize: 14, fontWeight: "700", lineHeight: 20 },
+  flowHint: {
+    color: "rgba(255,255,255,0.62)",
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 18,
+    marginTop: 8,
+    marginBottom: 2,
+  },
   futureRow: {
     alignItems: "center",
     borderTopColor: "rgba(255,255,255,0.07)",
