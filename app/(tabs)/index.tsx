@@ -1,6 +1,7 @@
 /* XS_HOME_CLUB_PRESIDENT_V1 */
 /* XS_HOME_CLUB_EVOLUTION_HISTORY_V1 */
 /* XS_FINANCIAL_CENTER_V1 */
+/* XS_DIRECTOR_REPORT_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -53,6 +54,25 @@ type ClubMetrics = {
   evolutionText?: string | null;
   pricedCards?: number | null;
   coveragePct?: number | null;
+};
+
+type DirectorReportPayload = {
+  ok?: boolean;
+  clubValueText?: string | null;
+  variationText?: string | null;
+  coveragePct?: number | null;
+  pricedCards?: number | null;
+  cardCount?: number | null;
+  unpricedCards?: number | null;
+  bestPerformer?: {
+    playerName?: string | null;
+    valueText?: string | null;
+  } | null;
+  watchPlayer?: {
+    playerName?: string | null;
+    valueText?: string | null;
+  } | null;
+  summary?: string | null;
 };
 
 type ClubValueHistorySnapshot = {
@@ -381,6 +401,18 @@ async function fetchHomeClubMetricsEndpointV1(deviceId: string): Promise<ClubMet
   }
 }
 
+async function fetchHomeDirectorReportV1(deviceId: string): Promise<DirectorReportPayload | null> {
+  // XS_DIRECTOR_REPORT_V1: President Home reads the data-only sporting director report.
+  try {
+    const qs = new URLSearchParams();
+    qs.set("deviceId", deviceId);
+    const payload = await apiFetch<DirectorReportPayload>(`/club/director-report?${qs.toString()}`);
+    return payload && payload.ok !== false ? payload : null;
+  } catch {
+    return null;
+  }
+}
+
 function SectionCard({ children, style }: { children: React.ReactNode; style?: any }) {
   return <View style={[styles.card, style]}>{children}</View>;
 }
@@ -430,6 +462,8 @@ function AlertLine({ item }: { item: (typeof MORNING_ALERTS)[number] }) {
 
 export default function HomeScreen() {
   const [clubMetrics, setClubMetrics] = useState<ClubMetrics>({ clubValue: null, squadCount: null, weeklyDelta: null });
+  const [directorReport, setDirectorReport] = useState<DirectorReportPayload | null>(null);
+  const [directorLoading, setDirectorLoading] = useState(false);
   const [gameWeekSummary, setGameWeekSummary] = useState<HomeGameWeekSummary>({
     label: "Données indisponibles",
     rarity: "—",
@@ -463,6 +497,27 @@ export default function HomeScreen() {
       }
     }
     loadClubMetrics();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    async function loadDirectorReport() {
+      try {
+        setDirectorLoading(true);
+        const deviceId = await readHomeDeviceIdV1();
+        if (!deviceId || !mounted) return;
+        const report = await fetchHomeDirectorReportV1(deviceId);
+        if (mounted) setDirectorReport(report);
+      } catch {
+        if (mounted) setDirectorReport(null);
+      } finally {
+        if (mounted) setDirectorLoading(false);
+      }
+    }
+    loadDirectorReport();
     return () => {
       mounted = false;
     };
@@ -533,6 +588,38 @@ export default function HomeScreen() {
               <AlertLine key={item.text} item={item} />
             ))}
           </View>
+        </SectionCard>
+
+        <SectionCard style={styles.directorCard}>
+          <SectionTitle icon="mic-outline" title="Directeur Sportif IA" action="Rapport quotidien" />
+          <Text style={styles.directorHello}>Bonjour Président</Text>
+          <View style={styles.directorGrid}>
+            <View style={styles.directorMetric}>
+              <Text style={styles.scoutLabel}>Valeur du club</Text>
+              <Text style={styles.scoutValue}>{directorReport?.clubValueText || (directorLoading ? "Chargement..." : "Donnée indisponible")}</Text>
+            </View>
+            <View style={styles.directorMetric}>
+              <Text style={styles.scoutLabel}>Variation</Text>
+              <Text style={styles.scoutValueGreen}>{directorReport?.variationText || "Donnée indisponible"}</Text>
+            </View>
+            <View style={styles.directorMetric}>
+              <Text style={styles.scoutLabel}>Couverture marché</Text>
+              <Text style={styles.scoutValue}>{directorReport?.coveragePct === null || directorReport?.coveragePct === undefined ? "Donnée indisponible" : `${directorReport.coveragePct}%`}</Text>
+            </View>
+            <View style={styles.directorMetric}>
+              <Text style={styles.scoutLabel}>Cartes valorisées</Text>
+              <Text style={styles.scoutValue}>{directorReport ? `${directorReport.pricedCards ?? "—"} / ${directorReport.cardCount ?? "—"}` : "Donnée indisponible"}</Text>
+            </View>
+          </View>
+          <View style={styles.directorLine}>
+            <Text style={styles.scoutLabel}>Meilleure progression</Text>
+            <Text style={styles.directorValue}>{directorReport?.bestPerformer?.playerName ? `${directorReport.bestPerformer.playerName}${directorReport.bestPerformer.valueText ? ` ${directorReport.bestPerformer.valueText}` : ""}` : "Donnée indisponible"}</Text>
+          </View>
+          <View style={styles.directorLine}>
+            <Text style={styles.scoutLabel}>Carte à surveiller</Text>
+            <Text style={styles.directorValue}>{directorReport?.watchPlayer?.playerName || "Donnée indisponible"}</Text>
+          </View>
+          <Text style={styles.directorSummary}>{directorReport?.summary || (directorLoading ? "Analyse du rapport en cours..." : "Donnée indisponible")}</Text>
         </SectionCard>
 
         <Pressable accessibilityRole="button" onPress={() => router.push("/club-finance")} style={({ pressed }) => [pressed && styles.pressed]}>
@@ -818,6 +905,53 @@ const styles = StyleSheet.create({
   },
   briefingCard: {
     borderColor: "rgba(255,49,72,0.45)",
+  },
+  directorCard: {
+    borderColor: "rgba(255,49,72,0.42)",
+  },
+  directorHello: {
+    color: "#FFFFFF",
+    fontSize: 22,
+    fontWeight: "900",
+  },
+  directorGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginTop: 14,
+  },
+  directorMetric: {
+    backgroundColor: "rgba(255,255,255,0.055)",
+    borderColor: "rgba(255,255,255,0.10)",
+    borderRadius: 14,
+    borderWidth: 1,
+    flexGrow: 1,
+    minWidth: 145,
+    padding: 12,
+  },
+  directorLine: {
+    alignItems: "center",
+    borderTopColor: "rgba(255,255,255,0.08)",
+    borderTopWidth: 1,
+    flexDirection: "row",
+    gap: 12,
+    justifyContent: "space-between",
+    marginTop: 12,
+    paddingTop: 12,
+  },
+  directorValue: {
+    color: "#FFFFFF",
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "900",
+    textAlign: "right",
+  },
+  directorSummary: {
+    color: "rgba(255,255,255,0.74)",
+    fontSize: 14,
+    fontWeight: "800",
+    lineHeight: 20,
+    marginTop: 14,
   },
   financeCard: {
     borderColor: "rgba(255,49,72,0.38)",
