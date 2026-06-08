@@ -22,6 +22,14 @@ type ClubValueHistorySnapshot = {
   clubValueText: string;
   pricedCards?: number | null;
   cardCount?: number | null;
+  totalInvestedEur?: number | null;
+  totalSoldEur?: number | null;
+  estimatedProfitEur?: number | null;
+  estimatedProfitPct?: number | null;
+  bestCardSlug?: string | null;
+  bestCardGainEur?: number | null;
+  worstCardSlug?: string | null;
+  worstCardGainEur?: number | null;
 };
 
 async function readDeviceIdV1(): Promise<string | null> {
@@ -70,6 +78,14 @@ async function readHistoryV1(): Promise<ClubValueHistorySnapshot[]> {
             clubValueText: String(item?.clubValueText || ""),
             pricedCards: metricNumber(item?.pricedCards),
             cardCount: metricNumber(item?.cardCount),
+            totalInvestedEur: metricNumber(item?.totalInvestedEur),
+            totalSoldEur: metricNumber(item?.totalSoldEur),
+            estimatedProfitEur: metricNumber(item?.estimatedProfitEur),
+            estimatedProfitPct: metricNumber(item?.estimatedProfitPct),
+            bestCardSlug: item?.bestCardSlug ? String(item.bestCardSlug) : null,
+            bestCardGainEur: metricNumber(item?.bestCardGainEur),
+            worstCardSlug: item?.worstCardSlug ? String(item.worstCardSlug) : null,
+            worstCardGainEur: metricNumber(item?.worstCardGainEur),
           }))
           .filter((item) => item.createdAt && Number.isFinite(item.clubValueEur))
       : [];
@@ -97,6 +113,14 @@ async function upsertCurrentSnapshotV1(): Promise<ClubValueHistorySnapshot[]> {
     clubValueText: typeof payload?.clubValueText === "string" ? payload.clubValueText : formatEuro(value),
     pricedCards: metricNumber(payload?.pricedCards),
     cardCount: metricNumber(payload?.cardCount),
+    totalInvestedEur: metricNumber(payload?.totalInvestedEur),
+    totalSoldEur: metricNumber(payload?.totalSoldEur),
+    estimatedProfitEur: metricNumber(payload?.estimatedProfitEur),
+    estimatedProfitPct: metricNumber(payload?.estimatedProfitPct),
+    bestCardSlug: payload?.bestCardSlug ? String(payload.bestCardSlug) : null,
+    bestCardGainEur: metricNumber(payload?.bestCardGainEur),
+    worstCardSlug: payload?.worstCardSlug ? String(payload.worstCardSlug) : null,
+    worstCardGainEur: metricNumber(payload?.worstCardGainEur),
   };
   const merged = last && last.id === dayKey
     ? [...current.slice(0, -1), { ...last, ...next, label: last.label || next.label }]
@@ -139,6 +163,16 @@ function ChartBars({ history }: { history: ClubValueHistorySnapshot[] }) {
   );
 }
 
+function formatSlugLabel(value?: string | null): string {
+  if (!value) return "—";
+  return value
+    .split("-")
+    .filter(Boolean)
+    .slice(0, 3)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 export default function ClubEvolutionScreen() {
   const [history, setHistory] = useState<ClubValueHistorySnapshot[]>([]);
   const [loading, setLoading] = useState(true);
@@ -164,8 +198,29 @@ export default function ClubEvolutionScreen() {
     const last = history[history.length - 1] || null;
     const variation = first && last ? last.clubValueEur - first.clubValueEur : 0;
     const coverage = last?.cardCount ? Math.round(((last.pricedCards || 0) / last.cardCount) * 100) : null;
-    return { first, last, variation, coverage };
+    const remainingCards = last?.cardCount !== null && last?.cardCount !== undefined
+      ? Math.max(0, last.cardCount - (last.pricedCards || 0))
+      : null;
+    return { first, last, variation, coverage, remainingCards };
   }, [history]);
+
+  const financeReport = useMemo(() => {
+    const variationText = formatSignedEuro(summary.variation);
+    const priced = summary.last?.pricedCards ?? 0;
+    const coverageText = summary.coverage === null ? "indisponible" : `${summary.coverage}%`;
+    const remainingText = summary.remainingCards === null ? "Les cartes restantes sont à analyser." : `${summary.remainingCards} carte(s) restent à analyser.`;
+    return `La valeur du club a progressé de ${variationText} depuis le premier snapshot. ${priced} carte(s) sont valorisées. La couverture marché atteint ${coverageText}. ${remainingText}`;
+  }, [summary]);
+
+  const topMovers = useMemo(() => {
+    const best = summary.last?.bestCardSlug && summary.last.bestCardGainEur !== null && summary.last.bestCardGainEur !== undefined
+      ? [{ slug: summary.last.bestCardSlug, gain: summary.last.bestCardGainEur }]
+      : [];
+    const worst = summary.last?.worstCardSlug && summary.last.worstCardGainEur !== null && summary.last.worstCardGainEur !== undefined
+      ? [{ slug: summary.last.worstCardSlug, gain: summary.last.worstCardGainEur }]
+      : [];
+    return { best, worst };
+  }, [summary.last]);
 
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={styles.screen}>
@@ -210,8 +265,17 @@ export default function ClubEvolutionScreen() {
         <View style={styles.summaryGrid}>
           <View style={styles.kpi}><Text style={styles.kpiValue}>{summary.last?.clubValueText || "—"}</Text><Text style={styles.kpiLabel}>Valeur actuelle</Text></View>
           <View style={styles.kpi}><Text style={[styles.kpiValue, summary.variation >= 0 ? styles.positive : styles.negative]}>{formatSignedEuro(summary.variation)}</Text><Text style={styles.kpiLabel}>Variation totale</Text></View>
+          <View style={styles.kpi}><Text style={styles.kpiValue}>{summary.last?.estimatedProfitPct === null || summary.last?.estimatedProfitPct === undefined ? "À connecter" : `${Math.round(summary.last.estimatedProfitPct)}%`}</Text><Text style={styles.kpiLabel}>ROI</Text></View>
           <View style={styles.kpi}><Text style={styles.kpiValue}>{summary.coverage === null ? "—" : `${summary.coverage}%`}</Text><Text style={styles.kpiLabel}>Couverture marché</Text></View>
           <View style={styles.kpi}><Text style={styles.kpiValue}>{summary.last?.pricedCards ?? "—"} / {summary.last?.cardCount ?? "—"}</Text><Text style={styles.kpiLabel}>Cartes valorisées</Text></View>
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>Rapport du Directeur Financier</Text>
+            <Ionicons name="analytics" size={18} color="#FF3148" />
+          </View>
+          <Text style={styles.reportText}>{financeReport}</Text>
         </View>
 
         <View style={styles.card}>
@@ -235,10 +299,36 @@ export default function ClubEvolutionScreen() {
         </View>
 
         <View style={styles.card}>
+          <Text style={styles.cardTitle}>Top progressions</Text>
+          {topMovers.best.length ? (
+            topMovers.best.map((item) => (
+              <View key={`best-${item.slug}`} style={styles.historyRow}>
+                <Text style={styles.historyLabel}>{formatSlugLabel(item.slug)}</Text>
+                <Text style={styles.positive}>{formatSignedEuro(item.gain)}</Text>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.muted}>Top hausses à connecter</Text>
+          )}
+          <View style={styles.separator} />
+          <Text style={styles.cardSubTitle}>Top baisses</Text>
+          {topMovers.worst.length ? (
+            topMovers.worst.map((item) => (
+              <View key={`worst-${item.slug}`} style={styles.historyRow}>
+                <Text style={styles.historyLabel}>{formatSlugLabel(item.slug)}</Text>
+                <Text style={styles.negative}>{formatSignedEuro(item.gain)}</Text>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.muted}>Top baisses à connecter</Text>
+          )}
+        </View>
+
+        <View style={styles.card}>
           <Text style={styles.cardTitle}>Performance nette</Text>
-          <View style={styles.historyRow}><Text style={styles.muted}>Dépenses</Text><Text style={styles.historyValue}>À connecter</Text></View>
-          <View style={styles.historyRow}><Text style={styles.muted}>Reventes</Text><Text style={styles.historyValue}>À connecter</Text></View>
-          <View style={styles.historyRow}><Text style={styles.muted}>Profit net</Text><Text style={styles.historyValue}>À connecter</Text></View>
+          <View style={styles.historyRow}><Text style={styles.muted}>Dépenses</Text><Text style={styles.historyValue}>{summary.last?.totalInvestedEur === null || summary.last?.totalInvestedEur === undefined ? "À connecter" : formatEuro(summary.last.totalInvestedEur)}</Text></View>
+          <View style={styles.historyRow}><Text style={styles.muted}>Reventes</Text><Text style={styles.historyValue}>{summary.last?.totalSoldEur === null || summary.last?.totalSoldEur === undefined ? "À connecter" : formatEuro(summary.last.totalSoldEur)}</Text></View>
+          <View style={styles.historyRow}><Text style={styles.muted}>Profit net</Text><Text style={styles.historyValue}>{summary.last?.estimatedProfitEur === null || summary.last?.estimatedProfitEur === undefined ? "À connecter" : formatSignedEuro(summary.last.estimatedProfitEur)}</Text></View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -260,7 +350,9 @@ const styles = StyleSheet.create({
   card: { borderRadius: 18, padding: 14, gap: 14, backgroundColor: "rgba(13,14,18,0.96)", borderWidth: 1, borderColor: "rgba(255,49,72,0.26)" },
   cardHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   cardTitle: { color: "#FFFFFF", fontSize: 18, fontWeight: "900" },
+  cardSubTitle: { color: "rgba(255,255,255,0.72)", fontSize: 13, fontWeight: "900", textTransform: "uppercase" },
   cardAction: { color: "rgba(255,255,255,0.45)", fontSize: 11, fontWeight: "800" },
+  reportText: { color: "rgba(255,255,255,0.78)", fontSize: 14, fontWeight: "700", lineHeight: 21 },
   chart: { minHeight: 230, borderRadius: 14, overflow: "hidden", backgroundColor: "rgba(0,0,0,0.30)", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" },
   chartGrid: { ...StyleSheet.absoluteFillObject, borderTopWidth: 1, borderBottomWidth: 1, borderColor: "rgba(255,255,255,0.06)" },
   chartRows: { flex: 1, flexDirection: "row", alignItems: "flex-end", gap: 8, padding: 12 },
@@ -279,6 +371,7 @@ const styles = StyleSheet.create({
   historyLabel: { color: "#FFFFFF", fontSize: 15, fontWeight: "900" },
   historyRight: { alignItems: "flex-end" },
   historyValue: { color: "#FFFFFF", fontSize: 15, fontWeight: "900" },
+  separator: { height: 1, backgroundColor: "rgba(255,255,255,0.06)", marginVertical: 2 },
   positive: { color: "#2FE66B" },
   negative: { color: "#FF4D61" },
   pressed: { opacity: 0.72, transform: [{ scale: 0.99 }] },

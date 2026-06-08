@@ -60,6 +60,14 @@ type ClubValueHistorySnapshot = {
   clubValueText: string;
   pricedCards?: number | null;
   cardCount?: number | null;
+  totalInvestedEur?: number | null;
+  totalSoldEur?: number | null;
+  estimatedProfitEur?: number | null;
+  estimatedProfitPct?: number | null;
+  bestCardSlug?: string | null;
+  bestCardGainEur?: number | null;
+  worstCardSlug?: string | null;
+  worstCardGainEur?: number | null;
 };
 
 type HomeGameWeekSummary = {
@@ -125,6 +133,14 @@ async function readClubValueHistoryV1(): Promise<ClubValueHistorySnapshot[]> {
             clubValueText: String(item?.clubValueText || ""),
             pricedCards: metricNumber(item?.pricedCards),
             cardCount: metricNumber(item?.cardCount),
+            totalInvestedEur: metricNumber(item?.totalInvestedEur),
+            totalSoldEur: metricNumber(item?.totalSoldEur),
+            estimatedProfitEur: metricNumber(item?.estimatedProfitEur),
+            estimatedProfitPct: metricNumber(item?.estimatedProfitPct),
+            bestCardSlug: item?.bestCardSlug ? String(item.bestCardSlug) : null,
+            bestCardGainEur: metricNumber(item?.bestCardGainEur),
+            worstCardSlug: item?.worstCardSlug ? String(item.worstCardSlug) : null,
+            worstCardGainEur: metricNumber(item?.worstCardGainEur),
           }))
           .filter((item) => item.createdAt && Number.isFinite(item.clubValueEur))
       : [];
@@ -148,6 +164,14 @@ async function upsertClubValueSnapshotV1(payload: any): Promise<ClubValueHistory
     clubValueText: typeof payload?.clubValueText === "string" ? payload.clubValueText : formatEuro(value),
     pricedCards: metricNumber(payload?.pricedCards),
     cardCount: metricNumber(payload?.cardCount),
+    totalInvestedEur: metricNumber(payload?.totalInvestedEur),
+    totalSoldEur: metricNumber(payload?.totalSoldEur),
+    estimatedProfitEur: metricNumber(payload?.estimatedProfitEur),
+    estimatedProfitPct: metricNumber(payload?.estimatedProfitPct),
+    bestCardSlug: payload?.bestCardSlug ? String(payload.bestCardSlug) : null,
+    bestCardGainEur: metricNumber(payload?.bestCardGainEur),
+    worstCardSlug: payload?.worstCardSlug ? String(payload.worstCardSlug) : null,
+    worstCardGainEur: metricNumber(payload?.worstCardGainEur),
   };
   const merged = last && last.id === dayKey
     ? [...current.slice(0, -1), { ...last, ...next, label: last.label || next.label }]
