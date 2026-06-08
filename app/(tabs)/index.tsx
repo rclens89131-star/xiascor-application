@@ -3,6 +3,7 @@
 /* XS_FINANCIAL_CENTER_V1 */
 /* XS_DIRECTOR_REPORT_V1 */
 /* XS_AI_MARKET_OPPORTUNITIES_V1 */
+/* XS_BOARD_OBJECTIVES_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -90,6 +91,19 @@ type MarketOpportunity = {
 type MarketOpportunitiesPayload = {
   ok?: boolean;
   opportunities?: MarketOpportunity[];
+};
+
+type BoardObjectivesPayload = {
+  ok?: boolean;
+  clubValueText?: string | null;
+  targetValueEur?: number | null;
+  targetValueText?: string | null;
+  progressPct?: number | null;
+  coveragePct?: number | null;
+  cardCount?: number | null;
+  pricedCards?: number | null;
+  status?: "ahead" | "on_track" | "needs_reinforcement" | "unavailable" | string | null;
+  message?: string | null;
 };
 
 type ClubValueHistorySnapshot = {
@@ -441,6 +455,18 @@ async function fetchHomeMarketOpportunitiesV1(): Promise<MarketOpportunity[]> {
   }
 }
 
+async function fetchHomeBoardObjectivesV1(deviceId: string): Promise<BoardObjectivesPayload | null> {
+  // XS_BOARD_OBJECTIVES_V1: President Home reads board objectives from club metrics.
+  try {
+    const qs = new URLSearchParams();
+    qs.set("deviceId", deviceId);
+    const payload = await apiFetch<BoardObjectivesPayload>(`/club/board-objectives?${qs.toString()}`);
+    return payload && payload.ok !== false ? payload : null;
+  } catch {
+    return null;
+  }
+}
+
 function SectionCard({ children, style }: { children: React.ReactNode; style?: any }) {
   return <View style={[styles.card, style]}>{children}</View>;
 }
@@ -488,12 +514,21 @@ function AlertLine({ item }: { item: (typeof MORNING_ALERTS)[number] }) {
   );
 }
 
+function boardStatusLabelV1(status?: string | null): string {
+  if (status === "ahead") return "En avance";
+  if (status === "on_track") return "Sur la bonne voie";
+  if (status === "needs_reinforcement") return "À renforcer";
+  return "Donnée indisponible";
+}
+
 export default function HomeScreen() {
   const [clubMetrics, setClubMetrics] = useState<ClubMetrics>({ clubValue: null, squadCount: null, weeklyDelta: null });
   const [directorReport, setDirectorReport] = useState<DirectorReportPayload | null>(null);
   const [directorLoading, setDirectorLoading] = useState(false);
   const [marketOpportunities, setMarketOpportunities] = useState<MarketOpportunity[]>([]);
   const [marketOpportunitiesLoading, setMarketOpportunitiesLoading] = useState(false);
+  const [boardObjectives, setBoardObjectives] = useState<BoardObjectivesPayload | null>(null);
+  const [boardObjectivesLoading, setBoardObjectivesLoading] = useState(false);
   const [gameWeekSummary, setGameWeekSummary] = useState<HomeGameWeekSummary>({
     label: "Données indisponibles",
     rarity: "—",
@@ -555,6 +590,27 @@ export default function HomeScreen() {
 
   useEffect(() => {
     let mounted = true;
+    async function loadBoardObjectives() {
+      try {
+        setBoardObjectivesLoading(true);
+        const deviceId = await readHomeDeviceIdV1();
+        if (!deviceId || !mounted) return;
+        const payload = await fetchHomeBoardObjectivesV1(deviceId);
+        if (mounted) setBoardObjectives(payload);
+      } catch {
+        if (mounted) setBoardObjectives(null);
+      } finally {
+        if (mounted) setBoardObjectivesLoading(false);
+      }
+    }
+    loadBoardObjectives();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
     async function loadMarketOpportunities() {
       try {
         setMarketOpportunitiesLoading(true);
@@ -582,6 +638,7 @@ export default function HomeScreen() {
     [clubMetrics]
   );
   const gameWeekProgress = Math.min(100, Math.round((((gameWeekSummary.eligibleCount ?? 0) || 0) / 5) * 100));
+  const boardProgress = Math.max(0, Math.min(100, Math.round(Number(boardObjectives?.progressPct ?? 0))));
 
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={styles.screen}>
@@ -669,6 +726,39 @@ export default function HomeScreen() {
             <Text style={styles.directorValue}>{directorReport?.watchPlayer?.playerName || "Donnée indisponible"}</Text>
           </View>
           <Text style={styles.directorSummary}>{directorReport?.summary || (directorLoading ? "Analyse du rapport en cours..." : "Donnée indisponible")}</Text>
+        </SectionCard>
+
+        <SectionCard style={styles.boardCard}>
+          <SectionTitle icon="business" title="Conseil d'Administration" action="Objectifs" />
+          <View style={styles.boardTopRow}>
+            <View style={styles.boardMainMetric}>
+              <Text style={styles.scoutLabel}>Objectif actuel</Text>
+              <Text style={styles.bigMetric}>{boardObjectives?.targetValueText || (boardObjectivesLoading ? "Chargement..." : "—")}</Text>
+            </View>
+            <View style={styles.boardStatusPill}>
+              <Text style={styles.boardStatusText}>{boardStatusLabelV1(boardObjectives?.status)}</Text>
+            </View>
+          </View>
+          <View style={styles.boardProgressTrack}>
+            <View style={[styles.boardProgressFill, { width: `${boardProgress}%` as any }]} />
+          </View>
+          <View style={styles.metricRow}>
+            <View>
+              <Text style={styles.scoutLabel}>Valeur du club</Text>
+              <Text style={styles.scoutValue}>{boardObjectives?.clubValueText || "—"}</Text>
+            </View>
+            <View>
+              <Text style={styles.scoutLabel}>Progression</Text>
+              <Text style={styles.scoutValueGreen}>{boardObjectives?.progressPct === null || boardObjectives?.progressPct === undefined ? "—" : `${boardObjectives.progressPct}%`}</Text>
+            </View>
+            <View>
+              <Text style={styles.scoutLabel}>Couverture marché</Text>
+              <Text style={styles.scoutValue}>{boardObjectives?.coveragePct === null || boardObjectives?.coveragePct === undefined ? "—" : `${boardObjectives.coveragePct}%`}</Text>
+            </View>
+          </View>
+          <Text style={styles.boardMessage}>
+            {boardObjectives?.message || (boardObjectivesLoading ? "Lecture des objectifs du Conseil..." : "Donnée indisponible")}
+          </Text>
         </SectionCard>
 
         <Pressable accessibilityRole="button" onPress={() => router.push("/club-finance")} style={({ pressed }) => [pressed && styles.pressed]}>
@@ -1038,6 +1128,51 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     lineHeight: 20,
     marginTop: 14,
+  },
+  boardCard: {
+    borderColor: "rgba(255,49,72,0.36)",
+  },
+  boardTopRow: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: 12,
+    justifyContent: "space-between",
+    marginTop: 6,
+  },
+  boardMainMetric: {
+    flex: 1,
+  },
+  boardStatusPill: {
+    backgroundColor: "rgba(255,49,72,0.16)",
+    borderColor: "rgba(255,49,72,0.42)",
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  boardStatusText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  boardProgressTrack: {
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderRadius: 999,
+    height: 10,
+    marginTop: 14,
+    overflow: "hidden",
+  },
+  boardProgressFill: {
+    backgroundColor: "#FF3148",
+    borderRadius: 999,
+    height: "100%",
+  },
+  boardMessage: {
+    color: "rgba(255,255,255,0.72)",
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 19,
+    marginTop: 12,
   },
   financeCard: {
     borderColor: "rgba(255,49,72,0.38)",
