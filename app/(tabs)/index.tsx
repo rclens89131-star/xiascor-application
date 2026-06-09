@@ -5,6 +5,7 @@
 /* XS_AI_MARKET_OPPORTUNITIES_V1 */
 /* XS_BOARD_OBJECTIVES_V1 */
 /* XS_HOME_AUDIT_FIX_V1 */
+/* XS_HOME_NEWS_BUTTON_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -764,10 +765,21 @@ export default function HomeScreen() {
             <Text style={styles.screenTitle}>Accueil</Text>
             <Text style={styles.subtitle}>Bureau du président</Text>
           </View>
-          <View style={styles.bellWrap}>
-            <Ionicons name="notifications-outline" size={24} color="#FFFFFF" />
-            <View style={styles.bellBadge}>
-              <Text style={styles.bellBadgeText}>3</Text>
+          <View style={styles.headerActions}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Ouvrir les actualités foot"
+              onPress={() => router.push("/news/football")}
+              style={({ pressed }) => [styles.newsButton, pressed && styles.pressed]}
+            >
+              <Ionicons name="newspaper-outline" size={16} color="#FFFFFF" />
+              <Text style={styles.newsButtonText}>Actualités</Text>
+            </Pressable>
+            <View style={styles.bellWrap}>
+              <Ionicons name="notifications-outline" size={24} color="#FFFFFF" />
+              <View style={styles.bellBadge}>
+                <Text style={styles.bellBadgeText}>3</Text>
+              </View>
             </View>
           </View>
         </View>
@@ -1075,6 +1087,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
+  },
+  headerActions: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10,
+  },
+  newsButton: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,33,59,0.16)",
+    borderColor: "rgba(255,49,72,0.55)",
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 6,
+    minHeight: 38,
+    paddingHorizontal: 12,
+  },
+  newsButtonText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "900",
   },
   screenTitle: {
     color: "#FFFFFF",
