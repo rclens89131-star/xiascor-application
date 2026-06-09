@@ -5,6 +5,7 @@
 /* XS_CLUB_EVOLUTION_EVENTS_V1 */
 /* XS_SORARE_TRANSACTIONS_V1 */
 /* XS_CLUB_EVOLUTION_TRADING_CHART_V1 */
+/* XS_CLUB_EVOLUTION_TRANSACTIONS_OVERLAY_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -63,6 +64,17 @@ type ClubTransactionHistoryItem = {
   cardSlug?: string | null;
   amountText?: string | null;
   transactionDate?: string | null;
+};
+
+type ClubFinancialTimelineEvent = {
+  id: string;
+  kind: "buy" | "sell" | "reward";
+  date: string;
+  dateMs: number;
+  title: string;
+  value: string;
+  detail: string;
+  positive: boolean;
 };
 
 type ClubEvolutionValueEvent = {
@@ -212,6 +224,49 @@ function xsClubEvolutionFilterHistoryByPeriodV1(
   });
 
   return filtered.length ? { items: filtered, fallbackUsed: false } : { items: history.slice(-1), fallbackUsed: true };
+}
+
+function xsClubEvolutionDateFromStringV1(value?: string | null): Date | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function xsClubEvolutionTimelineDateLabelV1(value: string): string {
+  const date = xsClubEvolutionDateFromStringV1(value);
+  if (!date) return "—";
+  return date.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function xsClubEvolutionPeriodCutoffV1(
+  history: ClubValueHistorySnapshot[],
+  events: ClubFinancialTimelineEvent[],
+  periodKey: ClubEvolutionPeriodKey
+): Date | null {
+  if (periodKey === "all") return null;
+  const period = XS_CLUB_EVOLUTION_PERIODS_V1.find((item) => item.key === periodKey);
+  if (!period?.days) return null;
+  const snapshotTimes = history
+    .map(xsClubEvolutionSnapshotDateV1)
+    .filter((date): date is Date => !!date)
+    .map((date) => date.getTime());
+  const eventTimes = events.map((event) => event.dateMs).filter((time) => Number.isFinite(time));
+  const allTimes = snapshotTimes.concat(eventTimes).sort((a, b) => a - b);
+  const anchor = allTimes[allTimes.length - 1];
+  if (!Number.isFinite(anchor)) return null;
+  return new Date(anchor - period.days * 24 * 60 * 60 * 1000);
+}
+
+function xsClubEvolutionFilterFinancialEventsByPeriodV1(
+  events: ClubFinancialTimelineEvent[],
+  history: ClubValueHistorySnapshot[],
+  periodKey: ClubEvolutionPeriodKey
+): ClubFinancialTimelineEvent[] {
+  const cutoff = xsClubEvolutionPeriodCutoffV1(history, events, periodKey);
+  const filtered = cutoff
+    ? events.filter((event) => event.dateMs >= cutoff.getTime())
+    : events;
+  return filtered.slice().sort((a, b) => b.dateMs - a.dateMs);
 }
 
 function buildEvolutionEvents(history: ClubValueHistorySnapshot[]): ClubEvolutionValueEvent[] {
@@ -418,6 +473,7 @@ async function createBackendSnapshotV1(deviceId: string | null): Promise<void> {
 async function readRewardEventsV1(deviceId: string | null): Promise<ClubRewardHistoryItem[]> {
   const qs = new URLSearchParams();
   if (deviceId) qs.set("deviceId", deviceId);
+  qs.set("limit", "200");
   const payload = await xsEvolutionAuditClubFetchV1<any>(`/club/rewards-history${qs.toString() ? `?${qs.toString()}` : ""}`);
   const items = Array.isArray(payload?.items) ? payload.items : [];
   return items.map((item: any) => ({
@@ -438,7 +494,7 @@ async function readRewardEventsV1(deviceId: string | null): Promise<ClubRewardHi
 async function readTransactionEventsV1(deviceId: string | null): Promise<ClubTransactionHistoryItem[]> {
   const qs = new URLSearchParams();
   if (deviceId) qs.set("deviceId", deviceId);
-  qs.set("limit", "20");
+  qs.set("limit", "200");
   const payload = await xsEvolutionAuditClubFetchV1<any>(`/club/transactions-history?${qs.toString()}`);
   const items = Array.isArray(payload?.items) ? payload.items : [];
   return items.map((item: any) => ({
@@ -453,10 +509,12 @@ async function readTransactionEventsV1(deviceId: string | null): Promise<ClubTra
 
 function ChartLine({
   history,
+  financialEvents,
   selectedKey,
   onSelect,
 }: {
   history: ClubValueHistorySnapshot[];
+  financialEvents: ClubFinancialTimelineEvent[];
   selectedKey: string | null;
   onSelect: (item: ClubValueHistorySnapshot) => void;
 }) {
@@ -469,12 +527,33 @@ function ChartLine({
   const plotWidth = 300;
   const plotHeight = 168;
   const pad = 18;
-  const step = history.length > 1 ? (plotWidth - pad * 2) / (history.length - 1) : 0;
+  const snapshotTimes = history
+    .map(xsClubEvolutionSnapshotDateV1)
+    .map((date) => date?.getTime() ?? null)
+    .filter((time): time is number => Number.isFinite(time));
+  const eventTimes = financialEvents.map((event) => event.dateMs).filter((time) => Number.isFinite(time));
+  const allTimes = snapshotTimes.concat(eventTimes).sort((a, b) => a - b);
+  const minTime = allTimes[0] ?? 0;
+  const maxTime = allTimes[allTimes.length - 1] ?? minTime;
+  const timeRange = Math.max(1, maxTime - minTime);
+  const timeToX = (time: number | null, index: number) => {
+    if (Number.isFinite(time)) return pad + (((time as number) - minTime) / timeRange) * (plotWidth - pad * 2);
+    if (history.length <= 1) return plotWidth / 2;
+    return pad + ((plotWidth - pad * 2) / (history.length - 1)) * index;
+  };
   const points = history.map((item, index) => ({
     item,
-    x: pad + step * index,
+    x: timeToX(xsClubEvolutionSnapshotDateV1(item)?.getTime() ?? null, index),
     y: pad + (1 - ((item.clubValueEur - min) / range)) * (plotHeight - pad * 2),
   }));
+  const financialDots = financialEvents
+    .filter((event) => event.dateMs >= minTime && event.dateMs <= maxTime)
+    .slice(0, 40)
+    .map((event, index) => ({
+      event,
+      index,
+      x: timeToX(event.dateMs, index),
+    }));
   const selectedIndexFromKey = selectedKey
     ? points.findIndex((point) => xsClubEvolutionSnapshotKeyV1(point.item) === selectedKey)
     : -1;
@@ -527,6 +606,16 @@ function ChartLine({
             ]}
           />
         ))}
+        {financialDots.map(({ event, index, x }) => (
+          <View
+            key={`financial-dot-${event.id}-${index}`}
+            style={[
+              styles.financialDot,
+              event.kind === "buy" ? styles.financialDotBuy : event.kind === "sell" ? styles.financialDotSell : styles.financialDotReward,
+              { left: x - 4, top: plotHeight - 24 },
+            ]}
+          />
+        ))}
       </View>
       <View style={styles.lineLabels}>
         {Array.from(labelIndexes).sort((a, b) => a - b).map((index) => {
@@ -576,6 +665,46 @@ function transactionEventValueV1(item: ClubTransactionHistoryItem): string {
   return item.transactionType === "sell" ? `+${value}` : `-${value}`;
 }
 
+function xsClubEvolutionBuildFinancialEventsV1(
+  transactions: ClubTransactionHistoryItem[],
+  rewards: ClubRewardHistoryItem[]
+): ClubFinancialTimelineEvent[] {
+  const transactionItems: ClubFinancialTimelineEvent[] = transactions.flatMap((item, index) => {
+    const date = xsClubEvolutionDateFromStringV1(item.transactionDate);
+    if (!date) return [];
+    const isSell = item.transactionType === "sell";
+    return [{
+      id: `transaction-${item.id || item.cardSlug || index}`,
+      kind: isSell ? "sell" as const : "buy" as const,
+      date: date.toISOString(),
+      dateMs: date.getTime(),
+      title: transactionEventTitleV1(item),
+      value: transactionEventValueV1(item),
+      detail: isSell ? "Vente Sorare" : "Achat Sorare",
+      positive: isSell,
+    }];
+  });
+
+  const rewardItems: ClubFinancialTimelineEvent[] = rewards.flatMap((item, index) => {
+    const date = xsClubEvolutionDateFromStringV1(item.createdAt);
+    if (!date) return [];
+    return [{
+      id: `reward-${item.id || item.gameWeekLabel || index}`,
+      kind: "reward" as const,
+      date: date.toISOString(),
+      dateMs: date.getTime(),
+      title: rewardEventTitleV1(item),
+      value: rewardEventValueV1(item),
+      detail: item.competition || item.division || item.rewardType || "Récompense Sorare",
+      positive: true,
+    }];
+  });
+
+  return transactionItems
+    .concat(rewardItems)
+    .sort((a, b) => b.dateMs - a.dateMs);
+}
+
 export default function ClubEvolutionScreen() {
   const [history, setHistory] = useState<ClubValueHistorySnapshot[]>([]);
   const [rewardEvents, setRewardEvents] = useState<ClubRewardHistoryItem[]>([]);
@@ -616,6 +745,14 @@ export default function ClubEvolutionScreen() {
     [history, selectedPeriod]
   );
   const periodHistory = periodWindow.items;
+  const financialTimelineEvents = useMemo(
+    () => xsClubEvolutionBuildFinancialEventsV1(transactionEvents, rewardEvents),
+    [rewardEvents, transactionEvents]
+  );
+  const periodFinancialEvents = useMemo(
+    () => xsClubEvolutionFilterFinancialEventsByPeriodV1(financialTimelineEvents, history, selectedPeriod),
+    [financialTimelineEvents, history, selectedPeriod]
+  );
   const defaultSelectedSnapshot = periodHistory[periodHistory.length - 1] || null;
   const defaultSelectedKey = defaultSelectedSnapshot ? xsClubEvolutionSnapshotKeyV1(defaultSelectedSnapshot) : "";
 
@@ -720,12 +857,48 @@ export default function ClubEvolutionScreen() {
             </View>
           ) : periodHistory.length ? (
             <>
-              <ChartLine history={periodHistory} selectedKey={activeSelectedKey} onSelect={setSelectedSnapshot} />
+              <ChartLine
+                history={periodHistory}
+                financialEvents={periodFinancialEvents}
+                selectedKey={activeSelectedKey}
+                onSelect={setSelectedSnapshot}
+              />
               {periodWindow.fallbackUsed ? (
                 <Text style={styles.chartHint}>Pas encore assez d'historique sur cette période. Dernier point connu affiché.</Text>
               ) : history.length === 1 ? (
                 <Text style={styles.chartHint}>L'historique commence aujourd'hui. La courbe gagnera en précision après plusieurs snapshots.</Text>
               ) : null}
+              <Text style={styles.chartHint}>Valeur marché : snapshots Xiascor. Achats/ventes/rewards : historique Sorare disponible.</Text>
+              <View style={styles.financialTimelineBox}>
+                <View style={styles.financialTimelineHeader}>
+                  <Text style={styles.financialTimelineTitle}>Timeline Sorare</Text>
+                  <Text style={styles.financialTimelineCount}>{periodFinancialEvents.length} événement(s)</Text>
+                </View>
+                {periodFinancialEvents.length ? (
+                  periodFinancialEvents.slice(0, 6).map((event) => (
+                    <View key={`chart-event-${event.id}`} style={styles.financialTimelineRow}>
+                      <View style={[
+                        styles.financialTimelineIcon,
+                        event.kind === "buy" ? styles.financialDotBuy : event.kind === "sell" ? styles.financialDotSell : styles.financialDotReward,
+                      ]}>
+                        <Ionicons
+                          name={event.kind === "buy" ? "arrow-down" : event.kind === "sell" ? "arrow-up" : "trophy"}
+                          size={12}
+                          color="#FFFFFF"
+                        />
+                      </View>
+                      <View style={styles.financialTimelineBody}>
+                        <Text style={styles.financialTimelineDate}>{xsClubEvolutionTimelineDateLabelV1(event.date)}</Text>
+                        <Text style={styles.financialTimelineName} numberOfLines={1}>{event.title}</Text>
+                        <Text style={styles.muted}>{event.detail}</Text>
+                      </View>
+                      <Text style={event.positive ? styles.positive : styles.negative}>{event.value}</Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.muted}>Aucun achat, vente ou reward Sorare sur cette période.</Text>
+                )}
+              </View>
               {activeSelectedSnapshot ? (
                 <View style={styles.selectedPointCard}>
                   <View style={styles.selectedPointLeft}>
@@ -817,29 +990,18 @@ export default function ClubEvolutionScreen() {
             <Text style={styles.cardTitle}>Événements financiers</Text>
             <Ionicons name="trophy" size={18} color="#FF3148" />
           </View>
-          {transactionEvents.length || rewardEvents.length ? (
-            <>
-              {transactionEvents.slice(0, 8).map((item, index) => (
-                <View key={`${item.id || item.cardSlug || "transaction"}-${index}`} style={styles.historyRow}>
-                  <View>
-                    <Text style={styles.historyLabel}>{transactionEventTitleV1(item)}</Text>
-                    <Text style={styles.muted}>{item.transactionDate ? new Date(item.transactionDate).toLocaleDateString("fr-FR") : "Transaction Sorare"}</Text>
-                  </View>
-                  <Text style={item.transactionType === "sell" ? styles.positive : styles.negative}>{transactionEventValueV1(item)}</Text>
+          {periodFinancialEvents.length ? (
+            periodFinancialEvents.slice(0, 12).map((event) => (
+              <View key={`financial-row-${event.id}`} style={styles.historyRow}>
+                <View>
+                  <Text style={styles.historyLabel}>{event.title}</Text>
+                  <Text style={styles.muted}>{xsClubEvolutionTimelineDateLabelV1(event.date)} · {event.detail}</Text>
                 </View>
-              ))}
-              {rewardEvents.slice(0, 8).map((item, index) => (
-                <View key={`${item.id || item.gameWeekLabel || "reward"}-${index}`} style={styles.historyRow}>
-                  <View>
-                    <Text style={styles.historyLabel}>{rewardEventTitleV1(item)}</Text>
-                    <Text style={styles.muted}>{item.competition || item.division || item.rewardType || formatSnapshotDate(item.createdAt || "")}</Text>
-                  </View>
-                  <Text style={styles.historyValue}>{rewardEventValueV1(item)}</Text>
-                </View>
-              ))}
-            </>
+                <Text style={event.positive ? styles.positive : styles.negative}>{event.value}</Text>
+              </View>
+            ))
           ) : (
-            <Text style={styles.muted}>Aucun événement financier connecté.</Text>
+            <Text style={styles.muted}>Aucun événement financier connecté sur cette période.</Text>
           )}
         </View>
 
@@ -911,6 +1073,10 @@ const styles = StyleSheet.create({
   lineSegment: { height: 3, borderRadius: 999, position: "absolute" },
   linePoint: { width: 11, height: 11, borderRadius: 6, position: "absolute", backgroundColor: "#FF3148", borderWidth: 2, borderColor: "#140407" },
   linePointSelected: { backgroundColor: "#FFFFFF", borderColor: "#FF3148", transform: [{ scale: 1.2 }] },
+  financialDot: { width: 8, height: 8, borderRadius: 4, position: "absolute", borderWidth: 1, borderColor: "rgba(255,255,255,0.78)" },
+  financialDotBuy: { backgroundColor: "#FF4D61" },
+  financialDotSell: { backgroundColor: "#2FE66B" },
+  financialDotReward: { backgroundColor: "#F7B733" },
   lineLabels: { flexDirection: "row", justifyContent: "space-between", gap: 6, paddingHorizontal: 12, paddingBottom: 12 },
   chartRows: { flex: 1, flexDirection: "row", alignItems: "flex-end", gap: 8, padding: 12 },
   chartColumn: { flex: 1, alignItems: "center", gap: 6, minWidth: 54 },
@@ -919,6 +1085,15 @@ const styles = StyleSheet.create({
   bar: { width: "72%", borderRadius: 8 },
   chartLabel: { color: "rgba(255,255,255,0.52)", fontSize: 10, fontWeight: "800" },
   chartHint: { color: "rgba(255,255,255,0.52)", fontSize: 12, fontWeight: "800", textAlign: "center", lineHeight: 18, paddingHorizontal: 8 },
+  financialTimelineBox: { borderRadius: 14, padding: 12, gap: 10, backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" },
+  financialTimelineHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  financialTimelineTitle: { color: "#FFFFFF", fontSize: 14, fontWeight: "900" },
+  financialTimelineCount: { color: "rgba(255,255,255,0.54)", fontSize: 12, fontWeight: "800" },
+  financialTimelineRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8, borderTopWidth: 1, borderColor: "rgba(255,255,255,0.06)" },
+  financialTimelineIcon: { width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center" },
+  financialTimelineBody: { flex: 1, gap: 2 },
+  financialTimelineDate: { color: "rgba(255,255,255,0.52)", fontSize: 11, fontWeight: "800" },
+  financialTimelineName: { color: "#FFFFFF", fontSize: 13, fontWeight: "900" },
   selectedPointCard: { flexDirection: "row", justifyContent: "space-between", gap: 12, borderRadius: 14, padding: 12, backgroundColor: "rgba(255,49,72,0.08)", borderWidth: 1, borderColor: "rgba(255,49,72,0.22)" },
   selectedPointLeft: { flex: 1, gap: 4 },
   selectedPointRight: { alignItems: "flex-end", justifyContent: "center", gap: 4, maxWidth: 150 },
