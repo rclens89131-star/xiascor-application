@@ -1,6 +1,7 @@
 /* XS_HOME_CLUB_EVOLUTION_HISTORY_V1 */
 /* XS_GAMEWEEK_REWARDS_ACCOUNTING_V1 */
 /* XS_HOME_AUDIT_FIX_V1 */
+/* XS_CLUB_EVOLUTION_DATE_AXIS_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -99,6 +100,41 @@ function formatSnapshotDate(value: string): string {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return "—";
   return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
+}
+
+function xsClubEvolutionSnapshotDateV1(item: ClubValueHistorySnapshot): Date | null {
+  const date = new Date(item.createdAt);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function xsClubEvolutionHasRepeatedDayV1(history: ClubValueHistorySnapshot[]): boolean {
+  const counts = new Map<string, number>();
+  history.forEach((item) => {
+    const date = xsClubEvolutionSnapshotDateV1(item);
+    if (!date) return;
+    const key = date.toISOString().slice(0, 10);
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+  return Array.from(counts.values()).some((count) => count > 1);
+}
+
+function xsClubEvolutionDateLabelV1(item: ClubValueHistorySnapshot, includeTime: boolean): string {
+  const date = xsClubEvolutionSnapshotDateV1(item);
+  if (!date) return "—";
+  const datePart = date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
+  if (!includeTime) return datePart;
+  const timePart = date.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  return `${datePart} ${timePart}`;
+}
+
+function xsClubEvolutionSecondaryLabelV1(item: ClubValueHistorySnapshot): string | null {
+  if (!item.label || /^session\s+\d+$/i.test(item.label)) return null;
+  return item.label;
+}
+
+function xsClubEvolutionAxisLabelIndexesV1(length: number): Set<number> {
+  if (length <= 4) return new Set(Array.from({ length }, (_, index) => index));
+  return new Set([0, Math.floor((length - 1) / 2), length - 1]);
 }
 
 async function xsEvolutionAuditFetchJsonV1<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -255,6 +291,8 @@ async function readRewardEventsV1(deviceId: string | null): Promise<ClubRewardHi
 
 function ChartLine({ history }: { history: ClubValueHistorySnapshot[] }) {
   const [selectedIndex, setSelectedIndex] = useState(Math.max(0, history.length - 1));
+  const includeTime = xsClubEvolutionHasRepeatedDayV1(history);
+  const labelIndexes = xsClubEvolutionAxisLabelIndexesV1(history.length);
   const values = history.map((item) => item.clubValueEur);
   const min = Math.min(...values);
   const max = Math.max(...values, 1);
@@ -275,9 +313,9 @@ function ChartLine({ history }: { history: ClubValueHistorySnapshot[] }) {
       <View style={styles.lineHeader}>
         <View>
           <Text style={styles.chartValueLarge}>{selected ? (selected.item.clubValueText || formatEuro(selected.item.clubValueEur)) : "—"}</Text>
-          <Text style={styles.chartLabel}>{selected ? (selected.item.label || formatSnapshotDate(selected.item.createdAt)) : "—"}</Text>
+          <Text style={styles.chartLabel}>{selected ? xsClubEvolutionDateLabelV1(selected.item, true) : "—"}</Text>
         </View>
-        <Text style={styles.cardAction}>club_value_history</Text>
+        <Text style={styles.cardAction}>Valeur du club</Text>
       </View>
       <View style={[styles.linePlot, { width: plotWidth, height: plotHeight }]}>
         {points.slice(1).map((point, index) => {
@@ -318,9 +356,14 @@ function ChartLine({ history }: { history: ClubValueHistorySnapshot[] }) {
         ))}
       </View>
       <View style={styles.lineLabels}>
-        {history.map((item, index) => (
-          <Text key={`label-${item.id}-${index}`} style={styles.chartLabel}>{item.label || formatSnapshotDate(item.createdAt)}</Text>
-        ))}
+        {history.map((item, index) => {
+          const shouldShow = labelIndexes.has(index);
+          return (
+            <Text key={`label-${item.id}-${index}`} style={styles.chartLabel} numberOfLines={1}>
+              {shouldShow ? xsClubEvolutionDateLabelV1(item, includeTime) : ""}
+            </Text>
+          );
+        })}
       </View>
     </View>
   );
@@ -429,8 +472,8 @@ export default function ClubEvolutionScreen() {
 
         <View style={styles.card}>
           <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>Graphique historique</Text>
-            <Text style={styles.cardAction}>club_value_history</Text>
+            <Text style={styles.cardTitle}>Évolution de la valeur</Text>
+            <Text style={styles.cardAction}>Historique par date</Text>
           </View>
           {loading ? (
             <View style={styles.loadingBox}>
@@ -472,11 +515,12 @@ export default function ClubEvolutionScreen() {
           {history.map((item, index) => {
             const previous = index > 0 ? history[index - 1].clubValueEur : item.clubValueEur;
             const diff = item.clubValueEur - previous;
+            const secondaryLabel = xsClubEvolutionSecondaryLabelV1(item);
             return (
               <View key={`${item.id}-row-${index}`} style={styles.historyRow}>
                 <View>
-                  <Text style={styles.historyLabel}>{item.label || formatSnapshotDate(item.createdAt)}</Text>
-                  <Text style={styles.muted}>{formatSnapshotDate(item.createdAt)}</Text>
+                  <Text style={styles.historyLabel}>{xsClubEvolutionDateLabelV1(item, true)}</Text>
+                  {secondaryLabel ? <Text style={styles.muted}>{secondaryLabel}</Text> : null}
                 </View>
                 <View style={styles.historyRight}>
                   <Text style={styles.historyValue}>{item.clubValueText || formatEuro(item.clubValueEur)}</Text>
