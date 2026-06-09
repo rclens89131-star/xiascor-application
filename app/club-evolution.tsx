@@ -2,6 +2,7 @@
 /* XS_GAMEWEEK_REWARDS_ACCOUNTING_V1 */
 /* XS_HOME_AUDIT_FIX_V1 */
 /* XS_CLUB_EVOLUTION_DATE_AXIS_V1 */
+/* XS_CLUB_EVOLUTION_EVENTS_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -25,7 +26,10 @@ type ClubValueHistorySnapshot = {
   clubValueEur: number;
   clubValueText: string;
   pricedCards?: number | null;
+  unpricedCards?: number | null;
   cardCount?: number | null;
+  coveragePct?: number | null;
+  source?: string | null;
   totalInvestedEur?: number | null;
   totalSoldEur?: number | null;
   estimatedProfitEur?: number | null;
@@ -50,6 +54,15 @@ type ClubRewardHistoryItem = {
   createdAt?: string | null;
 };
 
+type ClubEvolutionValueEvent = {
+  id: string;
+  dateLabel: string;
+  deltaValue: number;
+  deltaText: string;
+  descriptions: string[];
+  note?: string | null;
+};
+
 function normalizeBackendHistoryItemV1(item: any): ClubValueHistorySnapshot {
   return {
     id: String(item?.id || item?.snapshotDate || item?.createdAt || ""),
@@ -58,7 +71,10 @@ function normalizeBackendHistoryItemV1(item: any): ClubValueHistorySnapshot {
     clubValueEur: metricNumber(item?.clubValueEur) ?? 0,
     clubValueText: String(item?.clubValueText || ""),
     pricedCards: metricNumber(item?.pricedCards),
+    unpricedCards: metricNumber(item?.unpricedCards ?? item?.unpriced_cards),
     cardCount: metricNumber(item?.cardCount),
+    coveragePct: metricNumber(item?.coveragePct ?? item?.coverage_pct),
+    source: item?.source ? String(item.source) : null,
     totalInvestedEur: metricNumber(item?.totalInvestedEur ?? item?.cashSpentEur),
     totalSoldEur: metricNumber(item?.totalSoldEur ?? item?.cashReceivedEur),
     estimatedProfitEur: metricNumber(item?.estimatedProfitEur ?? item?.profitLossEur),
@@ -132,6 +148,42 @@ function xsClubEvolutionSecondaryLabelV1(item: ClubValueHistorySnapshot): string
   return item.label;
 }
 
+function buildEvolutionEvents(history: ClubValueHistorySnapshot[]): ClubEvolutionValueEvent[] {
+  const events: ClubEvolutionValueEvent[] = [];
+  for (let index = 1; index < history.length; index += 1) {
+    const previous = history[index - 1];
+    const current = history[index];
+    const roundedDelta = Math.round(current.clubValueEur - previous.clubValueEur);
+    const previousPriced = previous.pricedCards ?? null;
+    const currentPriced = current.pricedCards ?? null;
+    const previousCoverage = previous.coveragePct ?? null;
+    const currentCoverage = current.coveragePct ?? null;
+    const deltaPricedCards = previousPriced !== null && currentPriced !== null ? currentPriced - previousPriced : null;
+    const deltaCoverage = previousCoverage !== null && currentCoverage !== null ? Math.round(currentCoverage - previousCoverage) : null;
+    const descriptions: string[] = [];
+
+    if (deltaPricedCards !== null && deltaPricedCards > 0) {
+      const plural = deltaPricedCards > 1 ? "s" : "";
+      descriptions.push(`${deltaPricedCards} nouvelle${plural} carte${plural} valorisée${plural}`);
+    }
+    if (roundedDelta > 0) descriptions.push(`Valeur club en hausse de ${formatSignedEuro(roundedDelta)}`);
+    if (roundedDelta < 0) descriptions.push(`Valeur club en baisse de ${formatSignedEuro(roundedDelta)}`);
+    if (deltaCoverage !== null && deltaCoverage > 0) descriptions.push(`Couverture marché améliorée de +${deltaCoverage} %`);
+
+    const note = current.source === "manual_session_backfill" ? "Historique reconstruit de session" : null;
+    if (!descriptions.length && !note) continue;
+    events.push({
+      id: `${current.id || current.createdAt}-${index}`,
+      dateLabel: xsClubEvolutionDateLabelV1(current, true),
+      deltaValue: roundedDelta,
+      deltaText: formatSignedEuro(roundedDelta),
+      descriptions,
+      note,
+    });
+  }
+  return events;
+}
+
 function xsClubEvolutionAxisLabelIndexesV1(length: number): Set<number> {
   if (length <= 4) return new Set(Array.from({ length }, (_, index) => index));
   return new Set([0, Math.floor((length - 1) / 2), length - 1]);
@@ -190,7 +242,10 @@ async function readHistoryV1(): Promise<ClubValueHistorySnapshot[]> {
             clubValueEur: metricNumber(item?.clubValueEur) ?? 0,
             clubValueText: String(item?.clubValueText || ""),
             pricedCards: metricNumber(item?.pricedCards),
+            unpricedCards: metricNumber(item?.unpricedCards),
             cardCount: metricNumber(item?.cardCount),
+            coveragePct: metricNumber(item?.coveragePct),
+            source: item?.source ? String(item.source) : null,
             totalInvestedEur: metricNumber(item?.totalInvestedEur),
             totalSoldEur: metricNumber(item?.totalSoldEur),
             estimatedProfitEur: metricNumber(item?.estimatedProfitEur),
@@ -229,7 +284,10 @@ async function upsertCurrentSnapshotV1(): Promise<ClubValueHistorySnapshot[]> {
     clubValueEur: Math.round(value * 100) / 100,
     clubValueText: typeof payload?.clubValueText === "string" ? payload.clubValueText : formatEuro(value),
     pricedCards: metricNumber(payload?.pricedCards),
+    unpricedCards: metricNumber(payload?.unpricedCards),
     cardCount: metricNumber(payload?.cardCount),
+    coveragePct: metricNumber(payload?.coveragePct),
+    source: "local_snapshot",
     totalInvestedEur: metricNumber(payload?.totalInvestedEur),
     totalSoldEur: metricNumber(payload?.totalSoldEur),
     estimatedProfitEur: metricNumber(payload?.estimatedProfitEur),
@@ -424,12 +482,18 @@ export default function ClubEvolutionScreen() {
     const first = history[0] || null;
     const last = history[history.length - 1] || null;
     const variation = first && last ? last.clubValueEur - first.clubValueEur : 0;
-    const coverage = last?.cardCount ? Math.round(((last.pricedCards || 0) / last.cardCount) * 100) : null;
+    const coverage = last?.coveragePct !== null && last?.coveragePct !== undefined
+      ? Math.round(last.coveragePct)
+      : last?.cardCount
+        ? Math.round(((last.pricedCards || 0) / last.cardCount) * 100)
+        : null;
     const remainingCards = last?.cardCount !== null && last?.cardCount !== undefined
       ? Math.max(0, last.cardCount - (last.pricedCards || 0))
       : null;
     return { first, last, variation, coverage, remainingCards };
   }, [history]);
+
+  const valueEvents = useMemo(() => buildEvolutionEvents(history), [history]);
 
   const financeReport = useMemo(() => {
     const variationText = formatSignedEuro(summary.variation);
@@ -491,6 +555,32 @@ export default function ClubEvolutionScreen() {
             <View style={styles.loadingBox}>
               <Text style={styles.muted}>Aucun historique disponible</Text>
             </View>
+          )}
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>Événements de valeur</Text>
+            <Ionicons name="pin" size={18} color="#FF3148" />
+          </View>
+          {valueEvents.length ? (
+            valueEvents.map((event) => (
+              <View key={event.id} style={styles.eventRow}>
+                <View style={[styles.eventMarker, event.deltaValue >= 0 ? styles.eventMarkerPositive : styles.eventMarkerNegative]} />
+                <View style={styles.eventBody}>
+                  <View style={styles.eventTopLine}>
+                    <Text style={styles.eventDate}>{event.dateLabel}</Text>
+                    <Text style={[styles.eventDelta, event.deltaValue >= 0 ? styles.positive : styles.negative]}>{event.deltaText}</Text>
+                  </View>
+                  {event.descriptions.map((description) => (
+                    <Text key={`${event.id}-${description}`} style={styles.eventText}>{description}</Text>
+                  ))}
+                  {event.note ? <Text style={styles.eventNote}>{event.note}</Text> : null}
+                </View>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.muted}>Aucun événement de valeur déductible depuis les snapshots.</Text>
           )}
         </View>
 
@@ -628,6 +718,16 @@ const styles = StyleSheet.create({
   kpi: { width: "48%", borderRadius: 14, padding: 12, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: 1, borderColor: "rgba(255,255,255,0.09)" },
   kpiValue: { color: "#FFFFFF", fontSize: 20, fontWeight: "900" },
   kpiLabel: { color: "rgba(255,255,255,0.56)", fontSize: 12, fontWeight: "700", marginTop: 4 },
+  eventRow: { flexDirection: "row", gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderColor: "rgba(255,255,255,0.06)" },
+  eventMarker: { width: 8, borderRadius: 8, marginTop: 3, marginBottom: 3 },
+  eventMarkerPositive: { backgroundColor: "rgba(47,230,107,0.86)" },
+  eventMarkerNegative: { backgroundColor: "rgba(255,77,97,0.86)" },
+  eventBody: { flex: 1, gap: 5 },
+  eventTopLine: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  eventDate: { color: "#FFFFFF", fontSize: 14, fontWeight: "900" },
+  eventDelta: { fontSize: 14, fontWeight: "900" },
+  eventText: { color: "rgba(255,255,255,0.82)", fontSize: 13, fontWeight: "800", lineHeight: 18 },
+  eventNote: { color: "rgba(255,255,255,0.48)", fontSize: 12, fontWeight: "700", lineHeight: 17 },
   historyRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, paddingVertical: 8, borderBottomWidth: 1, borderColor: "rgba(255,255,255,0.06)" },
   historyLabel: { color: "#FFFFFF", fontSize: 15, fontWeight: "900" },
   historyRight: { alignItems: "flex-end" },
