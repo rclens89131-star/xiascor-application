@@ -9,6 +9,12 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
+    "start:dev": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$env:EXPO_PUBLIC_APP_ENV='development'; npx expo start\"",
+    "start:preview": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$env:EXPO_PUBLIC_APP_ENV='preview'; npx expo start\"",
+    "build:preview:ios": "npx eas-cli build -p ios --profile preview",
+    "build:preview:android": "npx eas-cli build -p android --profile preview",
+    "build:prod:ios": "npx eas-cli build -p ios --profile production",
+    "build:prod:android": "npx eas-cli build -p android --profile production",
     "guard:start:lan": "node ./scripts/ensure-project-root.js && expo start --lan",
     "guard:export:web": "node ./scripts/ensure-project-root.js && expo export --platform web",
     "guard:tsc": "node ./scripts/ensure-project-root.js && tsc --noEmit"
