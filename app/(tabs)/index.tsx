@@ -4,6 +4,7 @@
 /* XS_DIRECTOR_REPORT_V1 */
 /* XS_AI_MARKET_OPPORTUNITIES_V1 */
 /* XS_BOARD_OBJECTIVES_V1 */
+/* XS_HOME_AUDIT_FIX_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -19,33 +20,17 @@ const DEVICE_ID_KEY = "XS_DEVICE_ID_V1";
 const JWT_DEVICE_ID_KEY = "XS_JWT_DEVICE_ID_V1";
 const OAUTH_DEVICE_ID_KEY = "xs_device_id";
 const CLUB_VALUE_HISTORY_KEY = "club_value_history";
+const XS_HOME_AUDIT_FIX_CLOUD_BASE_V1 = "https://xiascor-backend-tssdy62zqa-ez.a.run.app";
 
-const MORNING_ALERTS = [
-  { icon: "trending-up", tone: "green", text: "Ryan Cherki est en forme sur les derniers matchs." },
-  { icon: "checkmark-circle", tone: "green", text: "Openda devrait être titulaire cette Game Week." },
-  { icon: "warning", tone: "gold", text: "Florian Thauvin reste incertain, minutes à surveiller." },
-  { icon: "calendar", tone: "red", text: "2 joueurs sont encore sans compétition éligible." },
-];
-
-const NEWS = [
-  "Cherki prend de la valeur",
-  "Nouveau match ajouté au calendrier",
-  "3 joueurs en risque de rotation",
-  "Champion Limited jouable",
-];
-
-const GOALS = [
-  { label: "Atteindre 50 cartes", done: true },
-  { label: "Jouer Champion Limited", done: true },
-  { label: "Dépasser 3000 € de valeur", done: false },
-  { label: "Entrer dans le Top 1000 Xiascor", done: false },
-];
-
-const GEMS = [
-  { name: "Ryan Cherki", meta: "Score IA 86 · 14 €" },
-  { name: "Ainsley Maitland-Niles", meta: "Potentiel +50% · 4 €" },
-  { name: "Abdukodir Khusanov", meta: "Défenseur premium · à surveiller" },
-];
+type HomeAlertItem = { icon: string; tone: "green" | "gold" | "red"; text: string };
+type HomeGoalItem = { label: string; done: boolean };
+type HomeTrainingSummary = {
+  averageForm: number | null;
+  inForm: number | null;
+  neutral: number | null;
+  declining: number | null;
+  counted: number;
+};
 
 type ClubMetrics = {
   clubValue: number | null;
@@ -56,6 +41,7 @@ type ClubMetrics = {
   evolutionText?: string | null;
   pricedCards?: number | null;
   coveragePct?: number | null;
+  historyCount?: number | null;
 };
 
 type DirectorReportPayload = {
@@ -193,6 +179,50 @@ function formatSignedEuro(value: number): string {
   return `${sign}${rounded.toLocaleString("fr-FR")} €`;
 }
 
+async function xsHomeAuditFetchJsonV1<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const response = await fetch(`${XS_HOME_AUDIT_FIX_CLOUD_BASE_V1}${path.startsWith("/") ? "" : "/"}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+  });
+  const text = await response.text();
+  let data: any = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+  if (!response.ok) {
+    const msg = typeof data === "string" ? data : (data?.error || data?.message || `HTTP ${response.status}`);
+    throw new Error(msg);
+  }
+  return data as T;
+}
+
+async function xsHomeAuditClubFetchV1<T>(
+  path: string,
+  options: RequestInit = {},
+  isUsable: (payload: any) => boolean = (payload) => !!payload && payload.ok !== false
+): Promise<T> {
+  let primary: any = null;
+  try {
+    primary = await apiFetch<T>(path, options);
+    if (isUsable(primary)) return primary as T;
+  } catch {}
+  try {
+    const cloud = await xsHomeAuditFetchJsonV1<T>(path, options);
+    if (isUsable(cloud)) return cloud;
+  } catch {}
+  if (primary !== null) return primary as T;
+  throw new Error("club_endpoint_unavailable");
+}
+
+function xsHomeAuditHistoryUsableV1(payload: any): boolean {
+  return payload && payload.ok !== false && Array.isArray(payload.items) && payload.items.length > 1;
+}
+
+function xsHomeAuditMetricsUsableV1(payload: any): boolean {
+  return payload && payload.ok !== false && metricNumber(payload.clubValueEur) !== null && metricNumber(payload.cardCount) !== null;
+}
+
 async function readClubValueHistoryV1(): Promise<ClubValueHistorySnapshot[]> {
   try {
     const raw = await AsyncStorage.getItem(CLUB_VALUE_HISTORY_KEY);
@@ -261,7 +291,11 @@ async function readClubValueBackendHistoryV1(deviceId: string | null): Promise<C
   try {
     const qs = new URLSearchParams();
     if (deviceId) qs.set("deviceId", deviceId);
-    const payload = await apiFetch<any>(`/club/value-history${qs.toString() ? `?${qs.toString()}` : ""}`);
+    const payload = await xsHomeAuditClubFetchV1<any>(
+      `/club/value-history${qs.toString() ? `?${qs.toString()}` : ""}`,
+      {},
+      xsHomeAuditHistoryUsableV1
+    );
     const items = Array.isArray(payload?.items) ? payload.items : [];
     return items
       .map(normalizeClubValueBackendHistoryItemV1)
@@ -271,11 +305,13 @@ async function readClubValueBackendHistoryV1(deviceId: string | null): Promise<C
   }
 }
 
-function getClubEvolutionTextV1(history: ClubValueHistorySnapshot[], currentValue: number | null): string {
-  if (currentValue === null || !history.length) return "0 €";
+function getClubEvolutionTextV1(history: ClubValueHistorySnapshot[], _currentValue: number | null): string {
+  if (!history.length) return "0 €";
   const firstValue = history[0]?.clubValueEur;
+  const lastValue = history[history.length - 1]?.clubValueEur;
   if (!Number.isFinite(firstValue)) return "0 €";
-  return formatSignedEuro(currentValue - firstValue);
+  if (!Number.isFinite(lastValue)) return "0 €";
+  return formatSignedEuro(lastValue - firstValue);
 }
 
 function normalizeHomeTextV1(value: unknown): string {
@@ -404,12 +440,46 @@ function extractClubMetricsV1(payload: any): ClubMetrics {
   return { clubValue, squadCount, weeklyDelta };
 }
 
+function getHomeCardPerformanceValueV1(card: any, key: "l5" | "l15"): number | null {
+  return firstMetricNumber(
+    card?.[key],
+    card?.averages?.[key],
+    card?.stats?.[key],
+    card?.performance?.[key],
+    card?.card_data?.[key]
+  );
+}
+
+function extractHomeTrainingSummaryV1(payload: any): HomeTrainingSummary {
+  const cards = Array.isArray(payload?.cards) ? payload.cards : [];
+  const l5Values = cards
+    .map((card: any) => getHomeCardPerformanceValueV1(card, "l5"))
+    .filter((value: number | null): value is number => value !== null && Number.isFinite(value));
+  const trendRows = cards
+    .map((card: any) => {
+      const l5 = getHomeCardPerformanceValueV1(card, "l5");
+      const l15 = getHomeCardPerformanceValueV1(card, "l15");
+      return l5 === null || l15 === null ? null : l5 - l15;
+    })
+    .filter((value: number | null): value is number => value !== null && Number.isFinite(value));
+  const averageForm = l5Values.length
+    ? Math.round(l5Values.reduce((sum, value) => sum + value, 0) / l5Values.length)
+    : null;
+  return {
+    averageForm,
+    inForm: trendRows.length ? trendRows.filter((value) => value >= 5).length : null,
+    neutral: trendRows.length ? trendRows.filter((value) => value > -5 && value < 5).length : null,
+    declining: trendRows.length ? trendRows.filter((value) => value <= -5).length : null,
+    counted: l5Values.length,
+  };
+}
+
 async function fetchHomeClubMetricsEndpointV1(deviceId: string): Promise<ClubMetrics | null> {
   // XS_HOME_CLUB_METRICS_ENDPOINT_V1: President Home reads the dedicated club value endpoint.
   try {
     const qs = new URLSearchParams();
     qs.set("deviceId", deviceId);
-    const payload = await apiFetch<any>(`/club/metrics?${qs.toString()}`);
+    const payload = await xsHomeAuditClubFetchV1<any>(`/club/metrics?${qs.toString()}`, {}, xsHomeAuditMetricsUsableV1);
     if (!payload || payload.ok === false) return null;
     let history = await readClubValueBackendHistoryV1(deviceId);
     if (!history.length) history = await upsertClubValueSnapshotV1(payload);
@@ -426,6 +496,7 @@ async function fetchHomeClubMetricsEndpointV1(deviceId: string): Promise<ClubMet
       evolutionText: getClubEvolutionTextV1(history, clubValue),
       pricedCards,
       coveragePct,
+      historyCount: history.length,
     };
   } catch {
     return null;
@@ -437,7 +508,11 @@ async function fetchHomeDirectorReportV1(deviceId: string): Promise<DirectorRepo
   try {
     const qs = new URLSearchParams();
     qs.set("deviceId", deviceId);
-    const payload = await apiFetch<DirectorReportPayload>(`/club/director-report?${qs.toString()}`);
+    const payload = await xsHomeAuditClubFetchV1<DirectorReportPayload>(
+      `/club/director-report?${qs.toString()}`,
+      {},
+      (value) => value && value.ok !== false && Boolean(value.clubValueText)
+    );
     return payload && payload.ok !== false ? payload : null;
   } catch {
     return null;
@@ -460,7 +535,11 @@ async function fetchHomeBoardObjectivesV1(deviceId: string): Promise<BoardObject
   try {
     const qs = new URLSearchParams();
     qs.set("deviceId", deviceId);
-    const payload = await apiFetch<BoardObjectivesPayload>(`/club/board-objectives?${qs.toString()}`);
+    const payload = await xsHomeAuditClubFetchV1<BoardObjectivesPayload>(
+      `/club/board-objectives?${qs.toString()}`,
+      {},
+      (value) => value && value.ok !== false && Boolean(value.clubValueText)
+    );
     return payload && payload.ok !== false ? payload : null;
   } catch {
     return null;
@@ -504,7 +583,37 @@ function StatPill({ label, value, onPress }: { label: string; value: string; onP
   );
 }
 
-function AlertLine({ item }: { item: (typeof MORNING_ALERTS)[number] }) {
+function buildHomeMorningAlertsV1(metrics: ClubMetrics, report: DirectorReportPayload | null, gameWeek: HomeGameWeekSummary): HomeAlertItem[] {
+  const items: HomeAlertItem[] = [];
+  if (report?.summary) items.push({ icon: "analytics", tone: "green", text: report.summary });
+  if (report?.variationText && report.variationText !== "Donnée indisponible") items.push({ icon: "trending-up", tone: "green", text: `Évolution du club : ${report.variationText}.` });
+  if (metrics.coveragePct !== null && metrics.coveragePct !== undefined) items.push({ icon: "shield-checkmark", tone: "green", text: `Couverture marché : ${metrics.coveragePct}%.` });
+  if (report?.watchPlayer?.playerName) items.push({ icon: "eye", tone: "gold", text: `Carte à surveiller : ${report.watchPlayer.playerName}.` });
+  if (gameWeek.label !== "Données indisponibles") items.push({ icon: "calendar", tone: gameWeek.state === "prête" ? "green" : "gold", text: `${gameWeek.label} ${gameWeek.rarity} : ${gameWeek.state}.` });
+  return items.slice(0, 4);
+}
+
+function buildHomeNewsV1(metrics: ClubMetrics, report: DirectorReportPayload | null, gameWeek: HomeGameWeekSummary, opportunities: MarketOpportunity[]): string[] {
+  const news: string[] = [];
+  if (metrics.historyCount && metrics.historyCount > 1) news.push(`${metrics.historyCount} snapshots de valeur disponibles`);
+  if (metrics.pricedCards !== null && metrics.pricedCards !== undefined && metrics.squadCount) news.push(`${metrics.pricedCards}/${metrics.squadCount} cartes valorisées`);
+  if (report?.variationText && report.variationText !== "Donnée indisponible") news.push(`Évolution historique : ${report.variationText}`);
+  if (gameWeek.label !== "Données indisponibles") news.push(`${gameWeek.label} ${gameWeek.rarity} : ${gameWeek.eligibleCount ?? "—"} carte(s) éligible(s)`);
+  if (opportunities.length) news.push(`${opportunities.length} opportunité(s) mercato avec données fiables`);
+  return news.slice(0, 4);
+}
+
+function buildHomeGoalsV1(metrics: ClubMetrics, board: BoardObjectivesPayload | null, gameWeek: HomeGameWeekSummary): HomeGoalItem[] {
+  const target = board?.targetValueText || "prochain palier";
+  return [
+    { label: `Atteindre ${target} de valeur`, done: Boolean(board?.progressPct !== null && board?.progressPct !== undefined && board.progressPct >= 100) },
+    { label: metrics.squadCount === null ? "Effectif à connecter" : `Effectif : ${metrics.squadCount} cartes`, done: Boolean(metrics.squadCount !== null && metrics.squadCount >= 50) },
+    { label: metrics.squadCount ? `Valoriser ${metrics.squadCount} cartes` : "Valorisation à connecter", done: Boolean(metrics.squadCount && metrics.pricedCards === metrics.squadCount) },
+    { label: gameWeek.label === "Données indisponibles" ? "Game Week à connecter" : `${gameWeek.label} ${gameWeek.rarity}`, done: gameWeek.state === "prête" },
+  ];
+}
+
+function AlertLine({ item }: { item: HomeAlertItem }) {
   const color = item.tone === "green" ? "#2FE66B" : item.tone === "gold" ? "#FFD43B" : "#FF3148";
   return (
     <View style={styles.alertLine}>
@@ -523,6 +632,7 @@ function boardStatusLabelV1(status?: string | null): string {
 
 export default function HomeScreen() {
   const [clubMetrics, setClubMetrics] = useState<ClubMetrics>({ clubValue: null, squadCount: null, weeklyDelta: null });
+  const [trainingSummary, setTrainingSummary] = useState<HomeTrainingSummary>({ averageForm: null, inForm: null, neutral: null, declining: null, counted: 0 });
   const [directorReport, setDirectorReport] = useState<DirectorReportPayload | null>(null);
   const [directorLoading, setDirectorLoading] = useState(false);
   const [marketOpportunities, setMarketOpportunities] = useState<MarketOpportunity[]>([]);
@@ -547,10 +657,12 @@ export default function HomeScreen() {
         const payload = await myCardsList(deviceId, 80);
         if (!mounted) return;
         setClubMetrics(endpointMetrics || extractClubMetricsV1(payload));
+        setTrainingSummary(extractHomeTrainingSummaryV1(payload));
         setGameWeekSummary(extractHomeGameWeekSummaryV1(payload));
       } catch {
         if (mounted) {
           setClubMetrics({ clubValue: null, squadCount: null, weeklyDelta: null });
+          setTrainingSummary({ averageForm: null, inForm: null, neutral: null, declining: null, counted: 0 });
           setGameWeekSummary({
             label: "Données indisponibles",
             rarity: "—",
@@ -633,12 +745,16 @@ export default function HomeScreen() {
       { label: "Valeur du club", value: clubMetrics.clubValueText || formatEuro(clubMetrics.clubValue) },
       { label: "Effectif", value: clubMetrics.squadCount === null ? "—" : `${clubMetrics.squadCount} joueurs` },
       { label: "Évolution du club", value: clubMetrics.evolutionText || "0 €" },
-      { label: "Réputation", value: "Niv. 7" },
+      { label: "Réputation", value: "À connecter" },
     ],
     [clubMetrics]
   );
   const gameWeekProgress = Math.min(100, Math.round((((gameWeekSummary.eligibleCount ?? 0) || 0) / 5) * 100));
   const boardProgress = Math.max(0, Math.min(100, Math.round(Number(boardObjectives?.progressPct ?? 0))));
+  const morningAlerts = useMemo(() => buildHomeMorningAlertsV1(clubMetrics, directorReport, gameWeekSummary), [clubMetrics, directorReport, gameWeekSummary]);
+  const clubNews = useMemo(() => buildHomeNewsV1(clubMetrics, directorReport, gameWeekSummary, marketOpportunities), [clubMetrics, directorReport, gameWeekSummary, marketOpportunities]);
+  const seasonGoals = useMemo(() => buildHomeGoalsV1(clubMetrics, boardObjectives, gameWeekSummary), [clubMetrics, boardObjectives, gameWeekSummary]);
+  const topMarketOpportunity = marketOpportunities[0] || null;
 
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={styles.screen}>
@@ -690,9 +806,9 @@ export default function HomeScreen() {
           <Text style={styles.briefHello}>Bonjour Président !</Text>
           <Text style={styles.briefSubtitle}>Rapport de votre Directeur Sportif IA</Text>
           <View style={styles.alertStack}>
-            {MORNING_ALERTS.map((item) => (
+            {morningAlerts.length ? morningAlerts.map((item) => (
               <AlertLine key={item.text} item={item} />
-            ))}
+            )) : <Text style={styles.muted}>Données du rapport indisponibles pour le moment.</Text>}
           </View>
         </SectionCard>
 
@@ -818,18 +934,18 @@ export default function HomeScreen() {
 
           <SectionCard style={styles.flexCard}>
             <SectionTitle icon="briefcase" title="Rapport du Directeur Sportif" />
-            <Text style={styles.bigMetric}>Ryan Cherki</Text>
-            <Text style={styles.muted}>Recrue recommandée</Text>
+            <Text style={styles.bigMetric}>{topMarketOpportunity?.playerName || "Donnée indisponible"}</Text>
+            <Text style={styles.muted}>{topMarketOpportunity ? "Opportunité mercato fiable" : "Recrue recommandée à connecter"}</Text>
             <View style={styles.scoutLine}>
               <Text style={styles.scoutLabel}>Prix actuel</Text>
-              <Text style={styles.scoutValue}>14 €</Text>
+              <Text style={styles.scoutValue}>{topMarketOpportunity?.priceText || "Prix indisponible"}</Text>
             </View>
             <View style={styles.scoutLine}>
               <Text style={styles.scoutLabel}>Valeur estimée</Text>
-              <Text style={styles.scoutValueGreen}>19 €</Text>
+              <Text style={styles.scoutValueGreen}>{topMarketOpportunity?.estimatedValueText || "Prix indisponible"}</Text>
             </View>
             <View style={styles.decisionRow}>
-              <Text style={styles.buyBadge}>Acheter</Text>
+              <Text style={styles.buyBadge}>{topMarketOpportunity ? "Surveiller" : "À connecter"}</Text>
               <Pressable onPress={() => router.push("/(tabs)/market")} style={({ pressed }) => [styles.watchButton, pressed && styles.pressed]}>
                 <Text style={styles.watchText}>Surveiller</Text>
               </Pressable>
@@ -840,18 +956,18 @@ export default function HomeScreen() {
         <View style={styles.twoCols}>
           <SectionCard style={styles.flexCard}>
             <SectionTitle icon="newspaper" title="Actualités du club" />
-            {NEWS.map((item) => (
+            {clubNews.length ? clubNews.map((item) => (
               <View key={item} style={styles.newsLine}>
                 <View style={styles.redDot} />
                 <Text style={styles.newsText}>{item}</Text>
                 <Ionicons name="chevron-forward" size={15} color="rgba(255,255,255,0.45)" />
               </View>
-            ))}
+            )) : <Text style={styles.muted}>Aucune actualité fiable à afficher.</Text>}
           </SectionCard>
 
           <SectionCard style={styles.flexCard}>
             <SectionTitle icon="flag" title="Objectifs saison" />
-            {GOALS.map((goal) => (
+            {seasonGoals.map((goal) => (
               <View key={goal.label} style={styles.goalLine}>
                 <Ionicons name={goal.done ? "checkmark-circle" : "ellipse-outline"} size={18} color={goal.done ? "#2FE66B" : "rgba(255,255,255,0.38)"} />
                 <Text style={styles.goalText}>{goal.label}</Text>
@@ -864,23 +980,23 @@ export default function HomeScreen() {
           <SectionCard style={styles.flexCard}>
             <SectionTitle icon="trophy" title="Palmarès" />
             <View style={styles.trophyGrid}>
-              <StatPill label="GW jouées" value="14" />
-              <StatPill label="Podiums" value="3" />
-              <StatPill label="Victoires" value="1" />
-              <StatPill label="Record" value="392" />
+              <StatPill label="GW jouées" value="À connecter" />
+              <StatPill label="Podiums" value="À connecter" />
+              <StatPill label="Victoires" value="À connecter" />
+              <StatPill label="Record" value="À connecter" />
             </View>
           </SectionCard>
 
           <SectionCard style={styles.flexCard}>
             <SectionTitle icon="barbell" title="Centre d'entraînement" />
             <View style={styles.trainingMain}>
-              <Text style={styles.trainingScore}>68%</Text>
-              <Text style={styles.muted}>Forme moyenne</Text>
+              <Text style={styles.trainingScore}>{trainingSummary.averageForm === null ? "—" : `${trainingSummary.averageForm}%`}</Text>
+              <Text style={styles.muted}>{trainingSummary.counted ? `Forme moyenne L5 (${trainingSummary.counted} joueurs)` : "Forme moyenne à connecter"}</Text>
             </View>
             <View style={styles.trainingRow}>
-              <Text style={styles.good}>12 en forme</Text>
-              <Text style={styles.neutral}>28 neutres</Text>
-              <Text style={styles.bad}>11 en baisse</Text>
+              <Text style={styles.good}>{trainingSummary.inForm === null ? "—" : trainingSummary.inForm} en forme</Text>
+              <Text style={styles.neutral}>{trainingSummary.neutral === null ? "—" : trainingSummary.neutral} neutres</Text>
+              <Text style={styles.bad}>{trainingSummary.declining === null ? "—" : trainingSummary.declining} en baisse</Text>
             </View>
           </SectionCard>
         </View>
@@ -924,18 +1040,20 @@ export default function HomeScreen() {
 
         <SectionCard>
           <SectionTitle icon="diamond" title="Pépites détectées" action="Marché" />
-          {GEMS.map((gem) => (
-            <View key={gem.name} style={styles.gemLine}>
+          {marketOpportunities.length ? marketOpportunities.slice(0, 3).map((gem) => (
+            <View key={gem.playerSlug || gem.playerName || "gem"} style={styles.gemLine}>
               <View style={styles.gemAvatar}>
-                <Text style={styles.gemInitial}>{gem.name.charAt(0)}</Text>
+                <Text style={styles.gemInitial}>{(gem.playerName || "?").charAt(0)}</Text>
               </View>
               <View style={styles.gemTextBlock}>
-                <Text style={styles.gemName}>{gem.name}</Text>
-                <Text style={styles.gemMeta}>{gem.meta}</Text>
+                <Text style={styles.gemName}>{gem.playerName || "Donnée indisponible"}</Text>
+                <Text style={styles.gemMeta}>
+                  Potentiel {gem.potentialPct === null || gem.potentialPct === undefined ? "—" : `+${Math.round(gem.potentialPct)}%`} · {gem.priceText || "Prix indisponible"}
+                </Text>
               </View>
               <Ionicons name="analytics" size={20} color="#FF3148" />
             </View>
-          ))}
+          )) : <Text style={styles.muted}>Aucune pépite fiable à afficher.</Text>}
         </SectionCard>
       </ScrollView>
     </SafeAreaView>

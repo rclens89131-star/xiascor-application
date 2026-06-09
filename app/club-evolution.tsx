@@ -1,5 +1,6 @@
 /* XS_HOME_CLUB_EVOLUTION_HISTORY_V1 */
 /* XS_GAMEWEEK_REWARDS_ACCOUNTING_V1 */
+/* XS_HOME_AUDIT_FIX_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -14,6 +15,7 @@ const DEVICE_ID_KEY = "XS_DEVICE_ID_V1";
 const JWT_DEVICE_ID_KEY = "XS_JWT_DEVICE_ID_V1";
 const OAUTH_DEVICE_ID_KEY = "xs_device_id";
 const CLUB_VALUE_HISTORY_KEY = "club_value_history";
+const XS_HOME_AUDIT_FIX_CLOUD_BASE_V1 = "https://xiascor-backend-tssdy62zqa-ez.a.run.app";
 
 type ClubValueHistorySnapshot = {
   id: string;
@@ -99,6 +101,46 @@ function formatSnapshotDate(value: string): string {
   return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
 }
 
+async function xsEvolutionAuditFetchJsonV1<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const response = await fetch(`${XS_HOME_AUDIT_FIX_CLOUD_BASE_V1}${path.startsWith("/") ? "" : "/"}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+  });
+  const text = await response.text();
+  let data: any = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+  if (!response.ok) {
+    const msg = typeof data === "string" ? data : (data?.error || data?.message || `HTTP ${response.status}`);
+    throw new Error(msg);
+  }
+  return data as T;
+}
+
+async function xsEvolutionAuditClubFetchV1<T>(
+  path: string,
+  options: RequestInit = {},
+  isUsable: (payload: any) => boolean = (payload) => !!payload && payload.ok !== false
+): Promise<T> {
+  let primary: any = null;
+  try {
+    primary = await apiFetch<T>(path, options);
+    if (isUsable(primary)) return primary as T;
+  } catch {}
+  try {
+    const cloud = await xsEvolutionAuditFetchJsonV1<T>(path, options);
+    if (isUsable(cloud)) return cloud;
+  } catch {}
+  if (primary !== null) return primary as T;
+  throw new Error("club_endpoint_unavailable");
+}
+
+function xsEvolutionHistoryPayloadUsableV1(payload: any): boolean {
+  return payload && payload.ok !== false && Array.isArray(payload.items) && payload.items.length > 1;
+}
+
 async function readHistoryV1(): Promise<ClubValueHistorySnapshot[]> {
   try {
     const raw = await AsyncStorage.getItem(CLUB_VALUE_HISTORY_KEY);
@@ -133,7 +175,11 @@ async function upsertCurrentSnapshotV1(): Promise<ClubValueHistorySnapshot[]> {
   const deviceId = await readDeviceIdV1();
   const qs = new URLSearchParams();
   if (deviceId) qs.set("deviceId", deviceId);
-  const payload = await apiFetch<any>(`/club/value-detail${qs.toString() ? `?${qs.toString()}` : ""}`);
+  const payload = await xsEvolutionAuditClubFetchV1<any>(
+    `/club/value-detail${qs.toString() ? `?${qs.toString()}` : ""}`,
+    {},
+    (value) => value && value.ok !== false && metricNumber(value.clubValueEur) !== null
+  );
   const value = metricNumber(payload?.clubValueEur);
   const current = await readHistoryV1();
   if (value === null) return current;
@@ -170,7 +216,11 @@ async function upsertCurrentSnapshotV1(): Promise<ClubValueHistorySnapshot[]> {
 async function readBackendHistoryV1(deviceId: string | null): Promise<ClubValueHistorySnapshot[]> {
   const qs = new URLSearchParams();
   if (deviceId) qs.set("deviceId", deviceId);
-  const payload = await apiFetch<any>(`/club/value-history${qs.toString() ? `?${qs.toString()}` : ""}`);
+  const payload = await xsEvolutionAuditClubFetchV1<any>(
+    `/club/value-history${qs.toString() ? `?${qs.toString()}` : ""}`,
+    {},
+    xsEvolutionHistoryPayloadUsableV1
+  );
   const items = Array.isArray(payload?.items) ? payload.items : [];
   return items
     .map(normalizeBackendHistoryItemV1)
@@ -180,13 +230,13 @@ async function readBackendHistoryV1(deviceId: string | null): Promise<ClubValueH
 async function createBackendSnapshotV1(deviceId: string | null): Promise<void> {
   const qs = new URLSearchParams();
   if (deviceId) qs.set("deviceId", deviceId);
-  await apiFetch<any>(`/club/value-history/snapshot${qs.toString() ? `?${qs.toString()}` : ""}`, { method: "POST" });
+  await xsEvolutionAuditClubFetchV1<any>(`/club/value-history/snapshot${qs.toString() ? `?${qs.toString()}` : ""}`, { method: "POST" });
 }
 
 async function readRewardEventsV1(deviceId: string | null): Promise<ClubRewardHistoryItem[]> {
   const qs = new URLSearchParams();
   if (deviceId) qs.set("deviceId", deviceId);
-  const payload = await apiFetch<any>(`/club/rewards-history${qs.toString() ? `?${qs.toString()}` : ""}`);
+  const payload = await xsEvolutionAuditClubFetchV1<any>(`/club/rewards-history${qs.toString() ? `?${qs.toString()}` : ""}`);
   const items = Array.isArray(payload?.items) ? payload.items : [];
   return items.map((item: any) => ({
     id: item?.id ? String(item.id) : null,
@@ -203,32 +253,74 @@ async function readRewardEventsV1(deviceId: string | null): Promise<ClubRewardHi
   }));
 }
 
-function ChartBars({ history }: { history: ClubValueHistorySnapshot[] }) {
+function ChartLine({ history }: { history: ClubValueHistorySnapshot[] }) {
+  const [selectedIndex, setSelectedIndex] = useState(Math.max(0, history.length - 1));
   const values = history.map((item) => item.clubValueEur);
-  const min = Math.min(...values, 0);
+  const min = Math.min(...values);
   const max = Math.max(...values, 1);
   const range = Math.max(1, max - min);
+  const plotWidth = 300;
+  const plotHeight = 168;
+  const pad = 18;
+  const step = history.length > 1 ? (plotWidth - pad * 2) / (history.length - 1) : 0;
+  const points = history.map((item, index) => ({
+    item,
+    x: pad + step * index,
+    y: pad + (1 - ((item.clubValueEur - min) / range)) * (plotHeight - pad * 2),
+  }));
+  const selected = points[selectedIndex] || points[points.length - 1] || null;
   return (
     <View style={styles.chart}>
       <View style={styles.chartGrid} />
-      <View style={styles.chartRows}>
-        {history.map((item, index) => {
-          const height = 18 + ((item.clubValueEur - min) / range) * 118;
-          const previous = index > 0 ? history[index - 1].clubValueEur : item.clubValueEur;
-          const positive = item.clubValueEur >= previous;
+      <View style={styles.lineHeader}>
+        <View>
+          <Text style={styles.chartValueLarge}>{selected ? (selected.item.clubValueText || formatEuro(selected.item.clubValueEur)) : "—"}</Text>
+          <Text style={styles.chartLabel}>{selected ? (selected.item.label || formatSnapshotDate(selected.item.createdAt)) : "—"}</Text>
+        </View>
+        <Text style={styles.cardAction}>club_value_history</Text>
+      </View>
+      <View style={[styles.linePlot, { width: plotWidth, height: plotHeight }]}>
+        {points.slice(1).map((point, index) => {
+          const previous = points[index];
+          const dx = point.x - previous.x;
+          const dy = point.y - previous.y;
+          const length = Math.sqrt(dx * dx + dy * dy);
+          const angle = `${Math.atan2(dy, dx)}rad`;
           return (
-            <View key={`${item.id}-${index}`} style={styles.chartColumn}>
-              <Text style={styles.chartValue}>{formatEuro(item.clubValueEur)}</Text>
-              <View style={styles.barTrack}>
-                <LinearGradient
-                  colors={positive ? ["#FF3148", "#7A111D"] : ["#46A0FF", "#1B335F"]}
-                  style={[styles.bar, { height }]}
-                />
-              </View>
-              <Text style={styles.chartLabel}>{item.label || formatSnapshotDate(item.createdAt)}</Text>
-            </View>
+            <LinearGradient
+              key={`segment-${point.item.id}-${index}`}
+              colors={["#FF3148", "#FF6A3D"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={[
+                styles.lineSegment,
+                {
+                  left: previous.x,
+                  top: previous.y,
+                  width: length,
+                  transform: [{ rotate: angle }],
+                },
+              ]}
+            />
           );
         })}
+        {points.map((point, index) => (
+          <Pressable
+            key={`point-${point.item.id}-${index}`}
+            accessibilityRole="button"
+            onPress={() => setSelectedIndex(index)}
+            style={[
+              styles.linePoint,
+              index === selectedIndex && styles.linePointSelected,
+              { left: point.x - 6, top: point.y - 6 },
+            ]}
+          />
+        ))}
+      </View>
+      <View style={styles.lineLabels}>
+        {history.map((item, index) => (
+          <Text key={`label-${item.id}-${index}`} style={styles.chartLabel}>{item.label || formatSnapshotDate(item.createdAt)}</Text>
+        ))}
       </View>
     </View>
   );
@@ -346,7 +438,7 @@ export default function ClubEvolutionScreen() {
               <Text style={styles.muted}>Chargement de l'historique...</Text>
             </View>
           ) : history.length > 1 ? (
-            <ChartBars history={history} />
+            <ChartLine history={history} />
           ) : history.length === 1 ? (
             <View style={styles.loadingBox}>
               <Ionicons name="trending-up" size={28} color="#FF3148" />
@@ -472,6 +564,13 @@ const styles = StyleSheet.create({
   reportText: { color: "rgba(255,255,255,0.78)", fontSize: 14, fontWeight: "700", lineHeight: 21 },
   chart: { minHeight: 230, borderRadius: 14, overflow: "hidden", backgroundColor: "rgba(0,0,0,0.30)", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" },
   chartGrid: { ...StyleSheet.absoluteFillObject, borderTopWidth: 1, borderBottomWidth: 1, borderColor: "rgba(255,255,255,0.06)" },
+  lineHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12, padding: 12, paddingBottom: 2 },
+  chartValueLarge: { color: "#FFFFFF", fontSize: 24, fontWeight: "900" },
+  linePlot: { alignSelf: "center", marginTop: 4, position: "relative" },
+  lineSegment: { height: 4, borderRadius: 999, position: "absolute" },
+  linePoint: { width: 12, height: 12, borderRadius: 6, position: "absolute", backgroundColor: "#FF3148", borderWidth: 2, borderColor: "#140407" },
+  linePointSelected: { backgroundColor: "#FFFFFF", borderColor: "#FF3148", transform: [{ scale: 1.2 }] },
+  lineLabels: { flexDirection: "row", justifyContent: "space-between", gap: 6, paddingHorizontal: 12, paddingBottom: 12 },
   chartRows: { flex: 1, flexDirection: "row", alignItems: "flex-end", gap: 8, padding: 12 },
   chartColumn: { flex: 1, alignItems: "center", gap: 6, minWidth: 54 },
   chartValue: { color: "rgba(255,255,255,0.72)", fontSize: 10, fontWeight: "800" },
