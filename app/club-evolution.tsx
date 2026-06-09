@@ -3,6 +3,7 @@
 /* XS_HOME_AUDIT_FIX_V1 */
 /* XS_CLUB_EVOLUTION_DATE_AXIS_V1 */
 /* XS_CLUB_EVOLUTION_EVENTS_V1 */
+/* XS_SORARE_TRANSACTIONS_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -52,6 +53,15 @@ type ClubRewardHistoryItem = {
   rewardCardPlayerName?: string | null;
   rewardCardValueText?: string | null;
   createdAt?: string | null;
+};
+
+type ClubTransactionHistoryItem = {
+  id?: string | null;
+  transactionType?: string | null;
+  playerName?: string | null;
+  cardSlug?: string | null;
+  amountText?: string | null;
+  transactionDate?: string | null;
 };
 
 type ClubEvolutionValueEvent = {
@@ -347,6 +357,22 @@ async function readRewardEventsV1(deviceId: string | null): Promise<ClubRewardHi
   }));
 }
 
+async function readTransactionEventsV1(deviceId: string | null): Promise<ClubTransactionHistoryItem[]> {
+  const qs = new URLSearchParams();
+  if (deviceId) qs.set("deviceId", deviceId);
+  qs.set("limit", "20");
+  const payload = await xsEvolutionAuditClubFetchV1<any>(`/club/transactions-history?${qs.toString()}`);
+  const items = Array.isArray(payload?.items) ? payload.items : [];
+  return items.map((item: any) => ({
+    id: item?.id ? String(item.id) : null,
+    transactionType: item?.transactionType ? String(item.transactionType) : null,
+    playerName: item?.playerName ? String(item.playerName) : null,
+    cardSlug: item?.cardSlug ? String(item.cardSlug) : null,
+    amountText: item?.amountText ? String(item.amountText) : null,
+    transactionDate: item?.transactionDate ? String(item.transactionDate) : null,
+  }));
+}
+
 function ChartLine({ history }: { history: ClubValueHistorySnapshot[] }) {
   const [selectedIndex, setSelectedIndex] = useState(Math.max(0, history.length - 1));
   const includeTime = xsClubEvolutionHasRepeatedDayV1(history);
@@ -449,9 +475,21 @@ function rewardEventValueV1(item: ClubRewardHistoryItem): string {
   return "À connecter";
 }
 
+function transactionEventTitleV1(item: ClubTransactionHistoryItem): string {
+  const name = item.playerName || item.cardSlug || "Carte Sorare";
+  return item.transactionType === "sell" ? `Vente ${name}` : `Achat ${name}`;
+}
+
+function transactionEventValueV1(item: ClubTransactionHistoryItem): string {
+  const value = item.amountText || "À connecter";
+  if (value === "À connecter") return value;
+  return item.transactionType === "sell" ? `+${value}` : `-${value}`;
+}
+
 export default function ClubEvolutionScreen() {
   const [history, setHistory] = useState<ClubValueHistorySnapshot[]>([]);
   const [rewardEvents, setRewardEvents] = useState<ClubRewardHistoryItem[]>([]);
+  const [transactionEvents, setTransactionEvents] = useState<ClubTransactionHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -459,15 +497,18 @@ export default function ClubEvolutionScreen() {
       setLoading(true);
       const deviceId = await readDeviceIdV1();
       const rewards = await readRewardEventsV1(deviceId).catch(() => []);
+      const transactions = await readTransactionEventsV1(deviceId).catch(() => []);
       let next = await readBackendHistoryV1(deviceId);
       if (!next.length) {
         await createBackendSnapshotV1(deviceId);
         next = await readBackendHistoryV1(deviceId);
       }
       setRewardEvents(rewards);
+      setTransactionEvents(transactions);
       setHistory(next.length ? next : await upsertCurrentSnapshotV1());
     } catch {
       setRewardEvents([]);
+      setTransactionEvents([]);
       setHistory(await readHistoryV1());
     } finally {
       setLoading(false);
@@ -626,16 +667,27 @@ export default function ClubEvolutionScreen() {
             <Text style={styles.cardTitle}>Événements financiers</Text>
             <Ionicons name="trophy" size={18} color="#FF3148" />
           </View>
-          {rewardEvents.length ? (
-            rewardEvents.slice(0, 8).map((item, index) => (
-              <View key={`${item.id || item.gameWeekLabel || "reward"}-${index}`} style={styles.historyRow}>
-                <View>
-                  <Text style={styles.historyLabel}>{rewardEventTitleV1(item)}</Text>
-                  <Text style={styles.muted}>{item.competition || item.division || item.rewardType || formatSnapshotDate(item.createdAt || "")}</Text>
+          {transactionEvents.length || rewardEvents.length ? (
+            <>
+              {transactionEvents.slice(0, 8).map((item, index) => (
+                <View key={`${item.id || item.cardSlug || "transaction"}-${index}`} style={styles.historyRow}>
+                  <View>
+                    <Text style={styles.historyLabel}>{transactionEventTitleV1(item)}</Text>
+                    <Text style={styles.muted}>{item.transactionDate ? new Date(item.transactionDate).toLocaleDateString("fr-FR") : "Transaction Sorare"}</Text>
+                  </View>
+                  <Text style={item.transactionType === "sell" ? styles.positive : styles.negative}>{transactionEventValueV1(item)}</Text>
                 </View>
-                <Text style={styles.historyValue}>{rewardEventValueV1(item)}</Text>
-              </View>
-            ))
+              ))}
+              {rewardEvents.slice(0, 8).map((item, index) => (
+                <View key={`${item.id || item.gameWeekLabel || "reward"}-${index}`} style={styles.historyRow}>
+                  <View>
+                    <Text style={styles.historyLabel}>{rewardEventTitleV1(item)}</Text>
+                    <Text style={styles.muted}>{item.competition || item.division || item.rewardType || formatSnapshotDate(item.createdAt || "")}</Text>
+                  </View>
+                  <Text style={styles.historyValue}>{rewardEventValueV1(item)}</Text>
+                </View>
+              ))}
+            </>
           ) : (
             <Text style={styles.muted}>Aucun événement financier connecté.</Text>
           )}

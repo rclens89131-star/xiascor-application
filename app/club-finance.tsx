@@ -1,6 +1,7 @@
 /* XS_FINANCIAL_CENTER_V1 */
 /* XS_FINANCIAL_CENTER_V2_V1 */
 /* XS_GAMEWEEK_REWARDS_ACCOUNTING_V1 */
+/* XS_SORARE_TRANSACTIONS_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -45,6 +46,11 @@ type ClubFinancialSummary = {
   estimatedProfitText?: string | null;
   roiPct?: number | null;
   roiText?: string | null;
+  transactionCount?: number | null;
+  buyCount?: number | null;
+  sellCount?: number | null;
+  realizedProfitText?: string | null;
+  realizedRoiText?: string | null;
   pricedCards?: number | null;
   cardCount?: number | null;
   coveragePct?: number | null;
@@ -73,6 +79,27 @@ type ClubRewardsSummary = {
   cardRewardValueText?: string | null;
   rewardCount?: number | null;
   items?: ClubRewardItem[];
+};
+
+type ClubTransactionItem = {
+  id?: string | null;
+  transactionType?: string | null;
+  playerName?: string | null;
+  cardSlug?: string | null;
+  amountText?: string | null;
+  transactionDate?: string | null;
+};
+
+type ClubTransactionsSummary = {
+  ok?: boolean;
+  transactionCount?: number | null;
+  buyCount?: number | null;
+  sellCount?: number | null;
+  investedText?: string | null;
+  soldText?: string | null;
+  realizedProfitText?: string | null;
+  realizedRoiText?: string | null;
+  items?: ClubTransactionItem[];
 };
 
 async function readClubFinanceDeviceIdV1(): Promise<string | null> {
@@ -106,6 +133,17 @@ function rewardEventValueV1(item: ClubRewardItem): string {
   return "À connecter";
 }
 
+function transactionTitleV1(item: ClubTransactionItem): string {
+  const player = cleanFinanceTextV1(item.playerName || item.cardSlug, "Carte Sorare");
+  return item.transactionType === "sell" ? `Vente ${player}` : `Achat ${player}`;
+}
+
+function transactionValueV1(item: ClubTransactionItem): string {
+  const value = financePendingTextV2(item.amountText);
+  if (value === "À connecter") return value;
+  return item.transactionType === "sell" ? `+${value}` : `-${value}`;
+}
+
 function MetricTile({ label, value, tone }: { label: string; value: string; tone?: "red" | "green" }) {
   return (
     <View style={styles.metricTile}>
@@ -118,6 +156,7 @@ function MetricTile({ label, value, tone }: { label: string; value: string; tone
 export default function ClubFinanceScreen() {
   const [payload, setPayload] = useState<ClubFinancialSummary | null>(null);
   const [rewardsPayload, setRewardsPayload] = useState<ClubRewardsSummary | null>(null);
+  const [transactionsPayload, setTransactionsPayload] = useState<ClubTransactionsSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -132,12 +171,15 @@ export default function ClubFinanceScreen() {
         result = await apiFetch<ClubFinancialSummary>(`/club/financial-summary${qs.toString() ? `?${qs.toString()}` : ""}`);
       }
       const rewardsResult = await apiFetch<ClubRewardsSummary>(`/club/rewards-summary${qs.toString() ? `?${qs.toString()}` : ""}`).catch(() => null);
+      const transactionsResult = await apiFetch<ClubTransactionsSummary>(`/club/transactions-summary${qs.toString() ? `?${qs.toString()}` : ""}`).catch(() => null);
       setPayload(result && result.ok !== false ? result : null);
       setRewardsPayload(rewardsResult && rewardsResult.ok !== false ? rewardsResult : null);
+      setTransactionsPayload(transactionsResult && transactionsResult.ok !== false ? transactionsResult : null);
       setError(null);
     } catch (err) {
       setPayload(null);
       setRewardsPayload(null);
+      setTransactionsPayload(null);
       setError(String(err instanceof Error ? err.message : err || "Données indisponibles"));
     } finally {
       setLoading(false);
@@ -156,16 +198,22 @@ export default function ClubFinanceScreen() {
     const totalAssets = cleanFinanceTextV1(payload?.totalAssetsText, "À connecter");
     const hasFullFinance = payload?.totalAssetsEur !== null && payload?.totalAssetsEur !== undefined;
     const rewardsText = financePendingTextV2(payload?.totalRewardsText ?? rewardsPayload?.totalRewardText);
+    const investedText = financePendingTextV2(payload?.investedText ?? transactionsPayload?.investedText);
+    const soldText = financePendingTextV2(payload?.soldText ?? transactionsPayload?.soldText);
     if (hasFullFinance) {
-      return `Votre club vaut actuellement ${value}. Le patrimoine total est estimé à ${totalAssets}. Récompenses Game Week : ${rewardsText}. Couverture marché : ${coverage}.`;
+      return `Votre club vaut actuellement ${value}. Le patrimoine total est estimé à ${totalAssets}. Investi : ${investedText}. Revente : ${soldText}. Récompenses Game Week : ${rewardsText}. Couverture marché : ${coverage}.`;
     }
     const rewardSentence = rewardsText === "À connecter"
       ? "Les récompenses Game Week ne sont pas encore connectées."
       : `Le club a généré ${rewardsText} de récompenses Game Week.`;
-    return `Votre club vaut actuellement ${value}. ${priced} / ${total} carte(s) sont valorisée(s). ${rewardSentence} Données insuffisantes pour calcul complet du profit et du ROI.`;
-  }, [payload, rewardsPayload]);
+    const transactionSentence = investedText === "À connecter" && soldText === "À connecter"
+      ? "Les achats et ventes Sorare ne sont pas encore connectés."
+      : `Investi : ${investedText}. Revente : ${soldText}.`;
+    return `Votre club vaut actuellement ${value}. ${priced} / ${total} carte(s) sont valorisée(s). ${transactionSentence} ${rewardSentence} Données insuffisantes pour calcul complet du profit et du ROI.`;
+  }, [payload, rewardsPayload, transactionsPayload]);
 
   const rewardItems = useMemo(() => Array.isArray(rewardsPayload?.items) ? rewardsPayload.items.slice(0, 5) : [], [rewardsPayload]);
+  const transactionItems = useMemo(() => Array.isArray(transactionsPayload?.items) ? transactionsPayload.items.slice(0, 5) : [], [transactionsPayload]);
 
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={styles.screen}>
@@ -206,16 +254,43 @@ export default function ClubFinanceScreen() {
         ) : (
           <>
             <View style={styles.metricGrid}>
-              <MetricTile label="💰 Capital investi" value={financePendingTextV2(payload?.investedText ?? payload?.totalInvestedText)} />
-              <MetricTile label="💵 Revenus ventes" value={financePendingTextV2(payload?.soldText ?? payload?.totalSoldText)} />
+              <MetricTile label="💸 Total investi" value={financePendingTextV2(payload?.investedText ?? transactionsPayload?.investedText ?? payload?.totalInvestedText)} />
+              <MetricTile label="💰 Total revendu" value={financePendingTextV2(payload?.soldText ?? transactionsPayload?.soldText ?? payload?.totalSoldText)} />
               <MetricTile label="🏆 Récompenses Game Week" value={financePendingTextV2(payload?.totalRewardsText ?? rewardsPayload?.totalRewardText)} />
               <MetricTile label="💎 Récompenses ETH" value={financePendingTextV2(payload?.rewardEthText)} />
               <MetricTile label="🎁 Cartes gagnées" value={financePendingTextV2(payload?.rewardCardsValueText)} />
               <MetricTile label="🏦 Patrimoine total" value={financePendingTextV2(payload?.totalAssetsText)} />
-              <MetricTile label="📈 Profit" value={financePendingTextV2(payload?.profitText ?? payload?.estimatedProfitText)} />
-              <MetricTile label="🚀 ROI" value={financePendingTextV2(payload?.roiText)} />
+              <MetricTile label="📈 Profit estimé" value={financePendingTextV2(payload?.profitText ?? payload?.estimatedProfitText)} />
+              <MetricTile label="🚀 ROI estimé" value={financePendingTextV2(payload?.roiText)} />
+              <MetricTile label="📌 Profit réalisé" value={financePendingTextV2(payload?.realizedProfitText ?? transactionsPayload?.realizedProfitText)} />
+              <MetricTile label="🎯 ROI réalisé" value={financePendingTextV2(payload?.realizedRoiText ?? transactionsPayload?.realizedRoiText)} />
               <MetricTile label="Couverture marché" value={payload?.coveragePct === null || payload?.coveragePct === undefined ? "—" : `${payload.coveragePct}%`} tone="green" />
               <MetricTile label="Cartes valorisées" value={`${payload?.pricedCards ?? "—"} / ${payload?.cardCount ?? "—"}`} />
+            </View>
+
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <View style={styles.cardTitleRow}>
+                  <Ionicons name="swap-horizontal" size={18} color="#FF3148" />
+                  <Text style={styles.cardTitle}>Achats / Ventes Sorare</Text>
+                </View>
+                <Text style={styles.cardAction}>{transactionsPayload?.transactionCount ?? payload?.transactionCount ?? 0} flux</Text>
+              </View>
+              {transactionItems.length ? (
+                <View style={styles.rewardList}>
+                  {transactionItems.map((item, index) => (
+                    <View key={`${item.id || item.cardSlug || "transaction"}-${index}`} style={styles.futureRow}>
+                      <View>
+                        <Text style={styles.futureLabel}>{transactionTitleV1(item)}</Text>
+                        <Text style={styles.flowHint}>{item.transactionDate ? new Date(item.transactionDate).toLocaleDateString("fr-FR") : "Transaction Sorare"}</Text>
+                      </View>
+                      <Text style={item.transactionType === "sell" ? styles.greenText : styles.redText}>{transactionValueV1(item)}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <Text style={styles.flowHint}>Achats et ventes Sorare à connecter.</Text>
+              )}
             </View>
 
             <View style={styles.card}>
