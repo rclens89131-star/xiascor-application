@@ -6,6 +6,7 @@
 /* XS_SORARE_TRANSACTIONS_V1 */
 /* XS_CLUB_EVOLUTION_TRADING_CHART_V1 */
 /* XS_CLUB_EVOLUTION_TRANSACTIONS_OVERLAY_V1 */
+/* XS_CLUB_EVOLUTION_RANGE_GRAPH_FIX_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -208,22 +209,35 @@ function xsClubEvolutionSourceLabelV1(source?: string | null): string {
 
 function xsClubEvolutionFilterHistoryByPeriodV1(
   history: ClubValueHistorySnapshot[],
-  periodKey: ClubEvolutionPeriodKey
-): { items: ClubValueHistorySnapshot[]; fallbackUsed: boolean } {
-  if (!history.length || periodKey === "all") return { items: history, fallbackUsed: false };
+  periodKey: ClubEvolutionPeriodKey,
+  events: ClubFinancialTimelineEvent[] = []
+): { items: ClubValueHistorySnapshot[]; fallbackUsed: boolean; noSnapshotsInRange: boolean; sameAsFullRange: boolean } {
+  if (!history.length || periodKey === "all") {
+    return { items: history, fallbackUsed: false, noSnapshotsInRange: false, sameAsFullRange: periodKey !== "all" && history.length > 0 };
+  }
   const period = XS_CLUB_EVOLUTION_PERIODS_V1.find((item) => item.key === periodKey);
-  if (!period?.days) return { items: history, fallbackUsed: false };
+  if (!period?.days) return { items: history, fallbackUsed: false, noSnapshotsInRange: false, sameAsFullRange: false };
 
-  const lastDate = xsClubEvolutionSnapshotDateV1(history[history.length - 1]);
-  if (!lastDate) return { items: history, fallbackUsed: false };
+  const cutoff = xsClubEvolutionPeriodCutoffV1(history, events, periodKey);
+  if (!cutoff) return { items: history, fallbackUsed: false, noSnapshotsInRange: false, sameAsFullRange: false };
 
-  const cutoff = new Date(lastDate.getTime() - period.days * 24 * 60 * 60 * 1000);
   const filtered = history.filter((item) => {
     const date = xsClubEvolutionSnapshotDateV1(item);
     return !!date && date.getTime() >= cutoff.getTime();
   });
 
-  return filtered.length ? { items: filtered, fallbackUsed: false } : { items: history.slice(-1), fallbackUsed: true };
+  if (filtered.length) {
+    return {
+      items: filtered,
+      fallbackUsed: false,
+      noSnapshotsInRange: false,
+      sameAsFullRange: filtered.length === history.length,
+    };
+  }
+  if (events.some((event) => event.dateMs >= cutoff.getTime())) {
+    return { items: [], fallbackUsed: false, noSnapshotsInRange: true, sameAsFullRange: false };
+  }
+  return { items: history.slice(-1), fallbackUsed: true, noSnapshotsInRange: false, sameAsFullRange: false };
 }
 
 function xsClubEvolutionDateFromStringV1(value?: string | null): Date | null {
@@ -740,15 +754,15 @@ export default function ClubEvolutionScreen() {
     load();
   }, [load]);
 
-  const periodWindow = useMemo(
-    () => xsClubEvolutionFilterHistoryByPeriodV1(history, selectedPeriod),
-    [history, selectedPeriod]
-  );
-  const periodHistory = periodWindow.items;
   const financialTimelineEvents = useMemo(
     () => xsClubEvolutionBuildFinancialEventsV1(transactionEvents, rewardEvents),
     [rewardEvents, transactionEvents]
   );
+  const periodWindow = useMemo(
+    () => xsClubEvolutionFilterHistoryByPeriodV1(history, selectedPeriod, financialTimelineEvents),
+    [financialTimelineEvents, history, selectedPeriod]
+  );
+  const periodHistory = periodWindow.items;
   const periodFinancialEvents = useMemo(
     () => xsClubEvolutionFilterFinancialEventsByPeriodV1(financialTimelineEvents, history, selectedPeriod),
     [financialTimelineEvents, history, selectedPeriod]
@@ -865,6 +879,8 @@ export default function ClubEvolutionScreen() {
               />
               {periodWindow.fallbackUsed ? (
                 <Text style={styles.chartHint}>Pas encore assez d'historique sur cette période. Dernier point connu affiché.</Text>
+              ) : periodWindow.sameAsFullRange && selectedPeriod !== "all" ? (
+                <Text style={styles.chartHint}>Même valeur affichée : seulement {periodHistory.length} snapshot(s) de valeur disponibles dans cette période.</Text>
               ) : history.length === 1 ? (
                 <Text style={styles.chartHint}>L'historique commence aujourd'hui. La courbe gagnera en précision après plusieurs snapshots.</Text>
               ) : null}
@@ -915,6 +931,11 @@ export default function ClubEvolutionScreen() {
                 </View>
               ) : null}
             </>
+          ) : periodWindow.noSnapshotsInRange && periodFinancialEvents.length ? (
+            <View style={styles.loadingBox}>
+              <Text style={styles.mutedCenter}>Aucun snapshot de valeur sur cette période. Événements Sorare disponibles ci-dessous.</Text>
+              <Text style={styles.chartHint}>Valeur marché : snapshots Xiascor. Achats/ventes/rewards : historique Sorare disponible.</Text>
+            </View>
           ) : (
             <View style={styles.loadingBox}>
               <Text style={styles.muted}>Aucun historique disponible</Text>
