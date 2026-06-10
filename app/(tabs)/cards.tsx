@@ -433,30 +433,7 @@ const cardWithL5Bars = useMemo(
   }),
   [card, xsL5MiniFinal, officialL5, officialL10]
 );
-if (typeof __DEV__ !== "undefined" && __DEV__ && playerSlugKey) {
-  console.log("[XS_PRIMARY_SCORE_L10_V1]", {
-    screen: "my-cards-tile",
-    slug: playerSlugKey,
-    displayedPrimaryScore: officialL10 ?? officialL5 ?? (typeof (card as any)?.l5 === "number" ? (card as any).l5 : null),
-    displayedL5: officialL5 ?? null,
-    displayedL10: officialL10 ?? null,
-    displayedL15: cachedPerf?.averages?.l15 ?? cachedPerf?.l15 ?? null,
-    displayedL40: cachedPerf?.averages?.l40 ?? cachedPerf?.l40 ?? null,
-    sourceUsed: officialL10 == null ? "fallback_l5_or_card" : "official_perf_averages_l10",
-    fallbackUsed: officialL10 == null,
-    sourceFields: {
-      officialL5,
-      officialL10,
-      cardL5: (card as any)?.l5,
-      cardL10: (card as any)?.l10 ?? (card as any)?.L10,
-      cardAveragesL5: (card as any)?.averages?.l5,
-      cardAveragesL10: (card as any)?.averages?.l10,
-      hasCachedPerf: Boolean(cachedPerf),
-      l5BarsCount: xsL5MiniFinal.length,
-    },
-    backendAverages: cachedPerf?.averages || null,
-  });
-}
+/* XS_APP_CLEANUP_PERF_SAFE_V1: removed per-tile performance parity console logging from the render path. */
 
   return (
         <Pressable
@@ -826,6 +803,11 @@ const itemWidth = Math.floor((width - H_PADDING * 2 - GAP) / 2);
             data={items}
             extraData={{ xsL5Cache, xsPerfCache }} /* XS_MYCARDS_L5_CACHE_TILE_INJECTION_V1 XS_FRONT_PERFORMANCE_PARITY_PROBE_V1 */
             keyExtractor={(item) => cardKey(item)}
+            initialNumToRender={6}
+            maxToRenderPerBatch={6}
+            updateCellsBatchingPeriod={60}
+            windowSize={7}
+            removeClippedSubviews
             contentContainerStyle={{ paddingHorizontal: XS_MYCARDS_PAD, paddingBottom: 120 }}
             columnWrapperStyle={{ justifyContent: "center", gap: XS_MYCARDS_GAP }}
             numColumns={2}

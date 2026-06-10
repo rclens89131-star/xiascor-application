@@ -434,9 +434,7 @@ function RecruterFaceImageV1({
   imageKind?: "headshot" | "fullBody";
 }) {
   const imageSource = useMemo(() => ({ uri: uri || PLAYER_PLACEHOLDER }), [uri]);
-  if (typeof __DEV__ !== "undefined" && __DEV__ && uri) {
-    console.log("[XS_RECRUTER_PLAYER_IMAGE_CONTAIN_V1]", { variant, imageKind, uri });
-  }
+  /* XS_APP_CLEANUP_PERF_SAFE_V1: keep image rendering silent in list/card render paths. */
   return (
     <View style={{ width: size.width, height: size.height, borderRadius: radius, overflow: "hidden", backgroundColor: "#050509", alignItems: "center", justifyContent: "center" }}>
       <Image
