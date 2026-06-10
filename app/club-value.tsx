@@ -14,6 +14,7 @@ import { apiFetch } from "../src/api";
 const DEVICE_ID_KEY = "XS_DEVICE_ID_V1";
 const JWT_DEVICE_ID_KEY = "XS_JWT_DEVICE_ID_V1";
 const OAUTH_DEVICE_ID_KEY = "xs_device_id";
+const XS_CLUB_VALUE_EMPTY_FIX_CLOUD_BASE_V1 = "https://xiascor-backend-tssdy62zqa-ez.a.run.app";
 
 type ClubValueCard = {
   playerName?: string | null;
@@ -95,6 +96,44 @@ function formatClubValueDateV1(value: unknown): string {
   return date.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
+function isUsableClubValuePayloadV1(value: any): boolean {
+  // XS_CLUB_VALUE_EMPTY_FIX_V1: local backend can answer ok:true with postgres_unavailable and empty counters.
+  if (!value || value.ok === false || value.source === "postgres_unavailable") return false;
+  if (typeof value.cardCount === "number" && value.cardCount <= 0) return false;
+  return true;
+}
+
+async function clubValueCloudFetchV1<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const url = `${XS_CLUB_VALUE_EMPTY_FIX_CLOUD_BASE_V1}${path.startsWith("/") ? "" : "/"}${path}`;
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+  });
+  const text = await response.text();
+  let data: any = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+  if (!response.ok) {
+    const message = typeof data === "string" ? data : (data?.error || data?.message || `HTTP ${response.status}`);
+    throw new Error(message);
+  }
+  return data as T;
+}
+
+async function clubValueFetchV1<T>(
+  path: string,
+  options: RequestInit = {},
+  isUsable?: (value: T) => boolean
+): Promise<T> {
+  try {
+    const primary = await apiFetch<T>(path, options);
+    if (!isUsable || isUsable(primary)) return primary;
+  } catch {}
+  return clubValueCloudFetchV1<T>(path, options);
+}
+
 export default function ClubValueScreen() {
   const [payload, setPayload] = useState<ClubValuePayload | null>(null);
   const [refreshStatus, setRefreshStatus] = useState<ClubValueRefreshPayload | null>(null);
@@ -109,8 +148,16 @@ export default function ClubValueScreen() {
       const deviceId = await readClubValueDeviceIdV1();
       const qs = new URLSearchParams();
       if (deviceId) qs.set("deviceId", deviceId);
-      const result = await apiFetch<ClubValuePayload>(`/club/value-detail${qs.toString() ? `?${qs.toString()}` : ""}`);
-      const status = await apiFetch<ClubValueRefreshPayload>(`/club/value-refresh-status${qs.toString() ? `?${qs.toString()}` : ""}`).catch(() => null);
+      const result = await clubValueFetchV1<ClubValuePayload>(
+        `/club/value-detail${qs.toString() ? `?${qs.toString()}` : ""}`,
+        {},
+        isUsableClubValuePayloadV1
+      );
+      const status = await clubValueFetchV1<ClubValueRefreshPayload>(
+        `/club/value-refresh-status${qs.toString() ? `?${qs.toString()}` : ""}`,
+        {},
+        isUsableClubValuePayloadV1
+      ).catch(() => null);
       setPayload(result && result.ok !== false ? result : null);
       setRefreshStatus(status && status.ok !== false ? status : null);
       setError(null);
@@ -135,7 +182,10 @@ export default function ClubValueScreen() {
       const qs = new URLSearchParams();
       if (deviceId) qs.set("deviceId", deviceId);
       qs.set("limitPlayers", "5");
-      const result = await apiFetch<ClubValueRefreshPayload>(`/club/value-refresh-all?${qs.toString()}`, { method: "POST" });
+      const result = await clubValueFetchV1<ClubValueRefreshPayload>(
+        `/club/value-refresh-all?${qs.toString()}`,
+        { method: "POST" }
+      );
       setRefreshStatus(result && result.ok !== false ? result : null);
       if (result?.rateLimited) {
         setStatusMessage("Sorare limite temporairement les demandes. Xiascor reprendra automatiquement plus tard.");
