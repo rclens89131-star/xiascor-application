@@ -311,16 +311,29 @@ function xsScoreToBarLevel(score: number): 0|1|2|3|4 {
   if(score >= 25) return 1;
   return 0;
 }
+function xsNormalizeRuntimeL5MiniValuesV1(values: any): Array<number | null> {
+  // XS_MYCARDS_L5_RUNTIME_FIX_V1: reject isolated aggregate scores such as [0].
+  if (!Array.isArray(values) || values.length === 0) return [];
+  const normalized = values
+    .map((row: any) => {
+      const n = xsHistoryScoreValueV1(row);
+      return Number.isFinite(n) ? xsClamp(Number(n), 0, 100) : null;
+    })
+    .filter((score: number | null): score is number => score !== null)
+    .slice(0, 5);
+  return normalized.length >= 5 || normalized.length >= 2 ? normalized : [];
+}
 function xsL5BarsFromCard(card: any): Array<number | null> {
   // XS_MYCARDS_L5_TILE_POSTGRES_SHAPE_V1: mini L5 = real scores only, displayed oldest -> newest by SorareCardTile.
   const sources = [
     { value: card?.recentScores, newestFirst: true },
+    { value: card?.l5Scores, newestFirst: false },
+    { value: card?.history?.items, newestFirst: true },
     { value: card?.historyChart, newestFirst: true },
     { value: card?.history, newestFirst: true },
     { value: card?.scores, newestFirst: true },
     { value: card?.lastScores, newestFirst: true },
     { value: card?.lastFiveScores, newestFirst: false },
-    { value: card?.l5Scores, newestFirst: false },
     { value: card?.stats?.lastFive, newestFirst: false },
     { value: card?.gameScores, newestFirst: true },
     { value: card?.scoreHistory, newestFirst: true },
@@ -362,24 +375,12 @@ function xsL5BarsFromCard(card: any): Array<number | null> {
             ? rows.slice(0, 5).reverse().map((row: any) => row.score)
             : rows.slice(-5).map((row: any) => row.score));
 
-      if (last5.length > 0) return last5;
+      const validLast5 = xsNormalizeRuntimeL5MiniValuesV1(last5);
+      if (validLast5.length > 0) return validLast5;
     }
   }
 
-  // Fallback honnête: dernier score réel uniquement, jamais une moyenne L5 déguisée en match.
-  const one =
-    card?.lastGameScore ??
-    card?.lastScore ??
-    card?.gameScore ??
-    card?.latestScore ??
-    card?.player?.lastGameScore ??
-    card?.anyPlayer?.lastGameScore ??
-    null;
-
-  const oneNum = toNum(one);
-  if (oneNum !== null) return [oneNum];
-
-  // Très important: on ne duplique plus artificiellement le L5 moyen.
+  // Très important: un score isolé (même réel) n'est pas un mini historique L5.
   return [];
 }
 /* XS_L5_MINICHART_TILE_V1_END */
@@ -408,7 +409,7 @@ const serial     = (card?.serialNumber != null) ? "#" + String(card.serialNumber
 const bonusPct = xsCardBonusPctV1(card);
 const xsL5Mini0 = xsL5BarsFromCard(card as any); /* XS_L5_MINICHART_TILE_RENDER_V1_PASS */
 const playerSlugKey = String((card as any)?.playerSlug || (card as any)?.player?.slug || (card as any)?.anyPlayer?.slug || "").trim();
-const cachedL5 = playerSlugKey && Array.isArray((l5Cache as any)[playerSlugKey]) ? (l5Cache as any)[playerSlugKey] : null; // XS_MYCARDS_L5_CACHE_TILE_INJECTION_V1
+const cachedL5 = playerSlugKey && Array.isArray((l5Cache as any)[playerSlugKey]) ? xsNormalizeRuntimeL5MiniValuesV1((l5Cache as any)[playerSlugKey]) : []; // XS_MYCARDS_L5_CACHE_TILE_INJECTION_V1
 const cachedPerf = playerSlugKey ? (perfCache as any)[playerSlugKey] : null; // XS_FRONT_PERFORMANCE_PARITY_PROBE_V1
 const officialL5 =
   (typeof cachedPerf?.averages?.l5 === "number" && Number.isFinite(cachedPerf.averages.l5))
@@ -421,7 +422,7 @@ const officialL10 =
 const xsL5MiniFinal =
   (xsL5Mini0 && xsL5Mini0.length)
     ? xsL5Mini0
-    : (cachedL5 || []);
+    : cachedL5;
 const cardWithL5Bars = useMemo(
   () => ({
     ...(card as any),
