@@ -133,36 +133,52 @@ function xsNormalizeL5MiniChartOrderV1(
   return rows.slice(-5).map((row) => row.score);
 }
 
+function xsNormalizeL5ArrayV1(
+  value: any,
+  order: "newest-first" | "oldest-first" | "auto" = "auto",
+  requireComplete = false
+): Array<number | null> {
+  // XS_MYCARDS_L5_MINI_DISPLAY_FIX_V1: mini L5 must only come from real match-score arrays.
+  if (!Array.isArray(value) || value.length === 0) return [];
+  const values = xsNormalizeL5MiniChartOrderV1(value, order).slice(0, 5);
+  const numericCount = values.filter((score) => typeof score === "number" && Number.isFinite(score)).length;
+  if (!values.length) return [];
+  if (requireComplete) return values.length >= 5 && numericCount >= 2 ? values : [];
+  if (values.length >= 5) return values;
+  return numericCount >= 2 ? values : [];
+}
+
 function xsGetL5ScoresV1(card: any): Array<number | null> {
   const sources = [
-    { value: card?.averagesDebug?.l5Scores, order: "newest-first" as const }, /* XS_OFFICIAL_SORARE_AVERAGES_V1 */
     { value: card?.l5Bars, order: "oldest-first" as const }, /* XS_MYCARDS_L5BARS_ORDER_FINAL_V1 */
     { value: card?.recentScores, order: "newest-first" as const },
+    { value: card?.l5Scores, order: "auto" as const },
+    { value: card?.history?.items, order: "newest-first" as const },
     { value: card?.so5Scores, order: "newest-first" as const },
     { value: card?.historyChart, order: "newest-first" as const },
     { value: card?.history, order: "newest-first" as const },
     { value: card?.scores, order: "newest-first" as const },
     { value: card?.gameScores, order: "newest-first" as const },
     { value: card?.scoreHistory, order: "newest-first" as const },
-    { value: card?.player?.recentScores, order: "newest-first" as const },
-    { value: card?.anyPlayer?.recentScores, order: "newest-first" as const },
-    { value: card?.l5Scores, order: "auto" as const },
     { value: card?.lastFiveScores, order: "auto" as const },
+    { value: card?.player?.recentScores, order: "newest-first" as const },
     { value: card?.player?.l5Scores, order: "auto" as const },
     { value: card?.player?.lastFiveScores, order: "auto" as const },
+    { value: card?.anyPlayer?.recentScores, order: "newest-first" as const },
     { value: card?.anyPlayer?.l5Scores, order: "auto" as const },
     { value: card?.anyPlayer?.lastFiveScores, order: "auto" as const },
   ];
 
   for (const source of sources) {
-    if (!Array.isArray(source.value) || source.value.length === 0) continue;
-    const values = xsNormalizeL5MiniChartOrderV1(source.value, source.order);
+    const values = xsNormalizeL5ArrayV1(source.value, source.order);
     if (values.length) return values;
   }
 
-  // XS_MYCARDS_L5_TILE_POSTGRES_SHAPE_V1: do not display an aggregate L5 as if it were a match score.
-  const one = xsPickNumFromRowV1(card?.lastScore ?? card?.lastGameScore ?? card?.latestScore ?? card?.score ?? card?.totalScore ?? card?.scoreSorare);
-  return one === null ? [] : [one];
+  const averagesDebug = xsNormalizeL5ArrayV1(card?.averagesDebug?.l5Scores, "newest-first", true); /* XS_OFFICIAL_SORARE_AVERAGES_V1 */
+  if (averagesDebug.length) return averagesDebug;
+
+  // XS_MYCARDS_L5_TILE_POSTGRES_SHAPE_V1: do not display an aggregate score as a fake match history.
+  return [];
 }
 
 function xsGetCardImageV1(card: any): string {
