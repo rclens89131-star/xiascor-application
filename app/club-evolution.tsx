@@ -14,6 +14,7 @@
 /* XS_CLUB_EVOLUTION_BALANCED_X_SPACING_SAFE_FIX_V1 */
 /* XS_CLUB_EVOLUTION_SHARED_FILTER_CHART_SAFE_FIX_V1 */
 /* XS_CLUB_EVOLUTION_CHART_COMPONENT_V1 */
+/* XS_CLUB_EVOLUTION_PERIOD_ANCHOR_SAFE_FIX_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -123,10 +124,21 @@ type ClubEvolutionChartGapSegmentV1 = ClubEvolutionChartSegmentV1 & {
 
 type ClubEvolutionChartPropsV1 = {
   snapshots: ClubValueHistorySnapshot[];
+  anchorSnapshot: ClubValueHistorySnapshot | null;
   events: ClubFinancialTimelineEvent[];
   selectedPoint: ClubValueHistorySnapshot | null;
   onSelectedPointChange: (item: ClubValueHistorySnapshot) => void;
   range: ClubEvolutionPeriodKey;
+};
+
+type ClubEvolutionPeriodWindowV1 = {
+  items: ClubValueHistorySnapshot[];
+  inRangeItems: ClubValueHistorySnapshot[];
+  anchorItem: ClubValueHistorySnapshot | null;
+  cutoff: number | null;
+  fallbackUsed: boolean;
+  noSnapshotsInRange: boolean;
+  sameAsFullRange: boolean;
 };
 
 const XS_CLUB_EVOLUTION_PERIODS_V1: Array<{ key: ClubEvolutionPeriodKey; label: string; days: number | null }> = [
@@ -308,37 +320,96 @@ function xsClubEvolutionIncompleteInitializationCountV1(
   }).length;
 }
 
-function xsClubEvolutionFilterHistoryByPeriodV1(
+function xsClubEvolutionFilterHistoryByPeriodWithAnchorV1(
   history: ClubValueHistorySnapshot[],
   periodKey: ClubEvolutionPeriodKey,
   events: ClubFinancialTimelineEvent[] = []
-): { items: ClubValueHistorySnapshot[]; fallbackUsed: boolean; noSnapshotsInRange: boolean; sameAsFullRange: boolean } {
+): ClubEvolutionPeriodWindowV1 {
+  const sortedHistory = xsClubEvolutionChartHistoryV1(history);
   if (!history.length || periodKey === "all") {
-    return { items: history, fallbackUsed: false, noSnapshotsInRange: false, sameAsFullRange: periodKey !== "all" && history.length > 0 };
-  }
-  const period = XS_CLUB_EVOLUTION_PERIODS_V1.find((item) => item.key === periodKey);
-  if (!period?.days) return { items: history, fallbackUsed: false, noSnapshotsInRange: false, sameAsFullRange: false };
-
-  const cutoff = xsClubEvolutionPeriodCutoffV1(history, [], periodKey);
-  if (!cutoff) return { items: history, fallbackUsed: false, noSnapshotsInRange: false, sameAsFullRange: false };
-
-  const filtered = history.filter((item) => {
-    const date = xsClubEvolutionSnapshotDateV1(item);
-    return !!date && date.getTime() >= cutoff.getTime();
-  });
-
-  if (filtered.length) {
     return {
-      items: filtered,
+      items: sortedHistory,
+      inRangeItems: sortedHistory,
+      anchorItem: null,
+      cutoff: null,
       fallbackUsed: false,
       noSnapshotsInRange: false,
-      sameAsFullRange: filtered.length === history.length,
+      sameAsFullRange: periodKey !== "all" && sortedHistory.length > 0,
     };
   }
-  if (events.some((event) => event.dateMs >= cutoff.getTime())) {
-    return { items: [], fallbackUsed: false, noSnapshotsInRange: true, sameAsFullRange: false };
+  const period = XS_CLUB_EVOLUTION_PERIODS_V1.find((item) => item.key === periodKey);
+  if (!period?.days) {
+    return {
+      items: sortedHistory,
+      inRangeItems: sortedHistory,
+      anchorItem: null,
+      cutoff: null,
+      fallbackUsed: false,
+      noSnapshotsInRange: false,
+      sameAsFullRange: false,
+    };
   }
-  return { items: [], fallbackUsed: false, noSnapshotsInRange: false, sameAsFullRange: false };
+
+  const cutoffDate = xsClubEvolutionPeriodCutoffV1(sortedHistory, [], periodKey);
+  if (!cutoffDate) {
+    return {
+      items: sortedHistory,
+      inRangeItems: sortedHistory,
+      anchorItem: null,
+      cutoff: null,
+      fallbackUsed: false,
+      noSnapshotsInRange: false,
+      sameAsFullRange: false,
+    };
+  }
+  const cutoff = cutoffDate.getTime();
+
+  const inRangeItems = sortedHistory.filter((item) => {
+    const date = xsClubEvolutionSnapshotDateV1(item);
+    return !!date && date.getTime() >= cutoff;
+  });
+  const anchorItem = sortedHistory
+    .filter((item) => {
+      const date = xsClubEvolutionSnapshotDateV1(item);
+      return !!date && date.getTime() < cutoff;
+    })
+    .slice(-1)[0] || null;
+  const anchorKey = anchorItem ? xsClubEvolutionSnapshotKeyV1(anchorItem) : null;
+  const items = anchorItem && !inRangeItems.some((item) => xsClubEvolutionSnapshotKeyV1(item) === anchorKey)
+    ? [anchorItem].concat(inRangeItems)
+    : inRangeItems;
+
+  if (items.length) {
+    return {
+      items,
+      inRangeItems,
+      anchorItem,
+      cutoff,
+      fallbackUsed: false,
+      noSnapshotsInRange: !inRangeItems.length,
+      sameAsFullRange: !anchorItem && inRangeItems.length === sortedHistory.length,
+    };
+  }
+  if (events.some((event) => event.dateMs >= cutoff)) {
+    return {
+      items: [],
+      inRangeItems: [],
+      anchorItem: null,
+      cutoff,
+      fallbackUsed: false,
+      noSnapshotsInRange: true,
+      sameAsFullRange: false,
+    };
+  }
+  return {
+    items: [],
+    inRangeItems: [],
+    anchorItem: null,
+    cutoff,
+    fallbackUsed: false,
+    noSnapshotsInRange: false,
+    sameAsFullRange: false,
+  };
 }
 
 function xsClubEvolutionDateFromStringV1(value?: string | null): Date | null {
@@ -817,6 +888,7 @@ async function readTransactionEventsV1(deviceId: string | null): Promise<ClubTra
 
 function ClubEvolutionChart({
   snapshots,
+  anchorSnapshot,
   events,
   selectedPoint,
   onSelectedPointChange,
@@ -825,6 +897,7 @@ function ClubEvolutionChart({
   const [measuredWidth, setMeasuredWidth] = useState(320);
   const chartHistory = useMemo(() => xsClubEvolutionChartHistoryV1(snapshots), [snapshots]);
   const selectedKey = selectedPoint ? xsClubEvolutionSnapshotKeyV1(selectedPoint) : null;
+  const anchorKey = anchorSnapshot ? xsClubEvolutionSnapshotKeyV1(anchorSnapshot) : null;
   const rangeLabel = XS_CLUB_EVOLUTION_PERIODS_V1.find((period) => period.key === range)?.label || "TOUT";
   const includeTime = xsClubEvolutionHasRepeatedDayV1(chartHistory);
   const labelIndexes = xsClubEvolutionAxisLabelIndexesV1(chartHistory.length);
@@ -843,6 +916,7 @@ function ClubEvolutionChart({
     : -1;
   const selectedIndex = selectedIndexFromKey >= 0 ? selectedIndexFromKey : Math.max(0, points.length - 1);
   const selected = points[selectedIndex] || points[points.length - 1] || null;
+  const anchorPoint = anchorKey ? points.find((point) => point.key === anchorKey) || null : null;
   const axisLabelPoints = Array.from(labelIndexes)
     .sort((a, b) => a - b)
     .map((index) => points[index])
@@ -989,6 +1063,20 @@ function ClubEvolutionChart({
               <Text style={styles.chartGapText}>{gap.label}</Text>
             </View>
           ))}
+          {anchorPoint ? (
+            <View
+              pointerEvents="none"
+              style={[
+                styles.chartAnchorBadge,
+                {
+                  left: xsClampFinancialChartV1(anchorPoint.x - 46, 4, Math.max(4, plotWidth - 92)),
+                  top: xsClampFinancialChartV1(anchorPoint.y - 32, 6, Math.max(6, plotHeight - 56)),
+                },
+              ]}
+            >
+              <Text style={styles.chartAnchorText}>Avant période</Text>
+            </View>
+          ) : null}
           {selected ? <View pointerEvents="none" style={[styles.chartCursor, { left: selected.x }]} /> : null}
           {financialDots.map(({ event, index, x, lane }) => (
             <View
@@ -1009,6 +1097,7 @@ function ClubEvolutionChart({
               onPress={() => onSelectedPointChange(point.item)}
               style={[
                 styles.linePoint,
+                anchorKey === point.key && styles.linePointAnchor,
                 index === selectedIndex && styles.linePointSelected,
                 { left: point.x - 4, top: point.y - 4 },
               ]}
@@ -1219,10 +1308,14 @@ export default function ClubEvolutionScreen() {
   const firstCompleteSnapshot = completeValueHistory[0] || null;
   const firstCompleteDateLabel = firstCompleteSnapshot ? xsClubEvolutionFullDateLabelV1(firstCompleteSnapshot) : null;
   const periodWindow = useMemo(
-    () => xsClubEvolutionFilterHistoryByPeriodV1(completeValueHistory, selectedPeriod, financialTimelineEvents),
+    () => xsClubEvolutionFilterHistoryByPeriodWithAnchorV1(completeValueHistory, selectedPeriod, financialTimelineEvents),
     [completeValueHistory, financialTimelineEvents, selectedPeriod]
   );
   const periodHistory = periodWindow.items;
+  const periodAnchor = periodWindow.anchorItem;
+  const variationScopeLabel = periodAnchor && selectedPeriod !== "all"
+    ? "depuis la dernière référence avant période"
+    : "sur la période affichée";
   const periodFinancialEvents = useMemo(
     () => xsClubEvolutionFilterFinancialEventsByPeriodV1(financialTimelineEvents, completeValueHistory, selectedPeriod),
     [completeValueHistory, financialTimelineEvents, selectedPeriod]
@@ -1273,8 +1366,8 @@ export default function ClubEvolutionScreen() {
     const priced = summary.last?.pricedCards ?? 0;
     const coverageText = summary.coverage === null ? "indisponible" : `${summary.coverage}%`;
     const remainingText = summary.remainingCards === null ? "Les cartes restantes sont à analyser." : `${summary.remainingCards} carte(s) restent à analyser.`;
-    return `La valeur du club a évolué de ${variationText} sur la période affichée. ${priced} carte(s) sont valorisées. La couverture marché atteint ${coverageText}. ${remainingText}`;
-  }, [summary]);
+    return `La valeur du club a évolué de ${variationText} ${variationScopeLabel}. ${priced} carte(s) sont valorisées. La couverture marché atteint ${coverageText}. ${remainingText}`;
+  }, [summary, variationScopeLabel]);
 
   const topMovers = useMemo(() => {
     const best = summary.last?.bestCardSlug && summary.last.bestCardGainEur !== null && summary.last.bestCardGainEur !== undefined
@@ -1303,7 +1396,7 @@ export default function ClubEvolutionScreen() {
           <Text style={styles.heroLabel}>Valeur actuelle</Text>
           <Text style={styles.heroValue}>{summary.last?.clubValueText || formatEuro(summary.last?.clubValueEur ?? null)}</Text>
           <Text style={[styles.heroDelta, summary.variation >= 0 ? styles.positive : styles.negative]}>
-            {formatSignedEuro(summary.variation)} sur la période affichée
+            {formatSignedEuro(summary.variation)} {variationScopeLabel}
           </Text>
         </LinearGradient>
 
@@ -1336,15 +1429,18 @@ export default function ClubEvolutionScreen() {
             <>
               <ClubEvolutionChart
                 snapshots={periodHistory}
+                anchorSnapshot={periodAnchor}
                 events={groupedPeriodFinancialEvents}
                 selectedPoint={activeSelectedSnapshot}
                 onSelectedPointChange={setSelectedSnapshot}
                 range={selectedPeriod}
               />
-              {periodWindow.noSnapshotsInRange && periodFinancialEvents.length ? (
-                <Text style={styles.chartHint}>Aucun snapshot financier complet sur cette période. Événements Sorare disponibles ci-dessous.</Text>
+              {periodWindow.noSnapshotsInRange ? (
+                <Text style={styles.chartHint}>Aucun snapshot financier complet dans cette période. Référence précédente affichée pour contexte.</Text>
               ) : !periodHistory.length ? (
                 <Text style={styles.chartHint}>Aucun historique financier complet disponible.</Text>
+              ) : periodAnchor && selectedPeriod !== "all" ? (
+                <Text style={styles.chartHint}>Le point “Avant période” sert de référence et n’appartient pas à la période sélectionnée.</Text>
               ) : periodWindow.fallbackUsed ? (
                 <Text style={styles.chartHint}>{"Pas encore assez d'historique sur cette période. Dernier point connu affiché."}</Text>
               ) : periodWindow.sameAsFullRange && selectedPeriod !== "all" ? (
@@ -1574,11 +1670,14 @@ const styles = StyleSheet.create({
   chartGapSegment: { height: 0, position: "absolute", borderTopWidth: 2, borderStyle: "dashed", borderColor: "rgba(255,255,255,0.28)" },
   chartGapMarker: { position: "absolute", bottom: 34, width: 44, minHeight: 18, alignItems: "center", justifyContent: "center", borderRadius: 999, backgroundColor: "rgba(8,8,12,0.86)", borderWidth: 1, borderColor: "rgba(255,255,255,0.16)" },
   chartGapText: { color: "rgba(255,255,255,0.52)", fontSize: 10, fontWeight: "900", letterSpacing: 0 },
+  chartAnchorBadge: { position: "absolute", width: 92, minHeight: 18, alignItems: "center", justifyContent: "center", borderRadius: 999, backgroundColor: "rgba(255,255,255,0.08)", borderWidth: 1, borderColor: "rgba(255,255,255,0.16)" },
+  chartAnchorText: { color: "rgba(255,255,255,0.68)", fontSize: 9, fontWeight: "900", letterSpacing: 0 },
   chartCursor: { position: "absolute", top: 24, bottom: 32, width: 1, backgroundColor: "rgba(255,255,255,0.34)" },
   chartAxisValue: { position: "absolute", right: 8, color: "rgba(255,255,255,0.56)", fontSize: 10, fontWeight: "900", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999, backgroundColor: "rgba(5,6,9,0.70)", overflow: "hidden" },
   chartAxisValueMuted: { color: "rgba(255,255,255,0.32)" },
   lineSegment: { height: 3, borderRadius: 999, position: "absolute" },
   linePoint: { width: 8, height: 8, borderRadius: 4, position: "absolute", backgroundColor: "#FF3148", borderWidth: 1.5, borderColor: "#140407", shadowColor: "#FF3148", shadowOpacity: 0.22, shadowRadius: 4, elevation: 2 },
+  linePointAnchor: { backgroundColor: "#0D0E12", borderColor: "rgba(255,255,255,0.72)" },
   linePointSelected: { backgroundColor: "#FFFFFF", borderColor: "#FF3148", transform: [{ scale: 1.72 }], shadowOpacity: 0.82, shadowRadius: 10, elevation: 4 },
   financialDot: { width: 6, height: 6, borderRadius: 3, position: "absolute", borderWidth: 1, borderColor: "rgba(255,255,255,0.86)", shadowColor: "#000000", shadowOpacity: 0.24, shadowRadius: 3, elevation: 2 },
   financialDotBuy: { backgroundColor: "#FF4D61" },
