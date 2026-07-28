@@ -13,6 +13,7 @@
 /* XS_CLUB_EVOLUTION_GRAPH_REDESIGN_SAFE_V1 */
 /* XS_CLUB_EVOLUTION_BALANCED_X_SPACING_SAFE_FIX_V1 */
 /* XS_CLUB_EVOLUTION_SHARED_FILTER_CHART_SAFE_FIX_V1 */
+/* XS_CLUB_EVOLUTION_CHART_COMPONENT_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -118,6 +119,14 @@ type ClubEvolutionChartGapSegmentV1 = ClubEvolutionChartSegmentV1 & {
   id: string;
   x: number;
   label: string;
+};
+
+type ClubEvolutionChartPropsV1 = {
+  snapshots: ClubValueHistorySnapshot[];
+  events: ClubFinancialTimelineEvent[];
+  selectedPoint: ClubValueHistorySnapshot | null;
+  onSelectedPointChange: (item: ClubValueHistorySnapshot) => void;
+  range: ClubEvolutionPeriodKey;
 };
 
 const XS_CLUB_EVOLUTION_PERIODS_V1: Array<{ key: ClubEvolutionPeriodKey; label: string; days: number | null }> = [
@@ -806,19 +815,17 @@ async function readTransactionEventsV1(deviceId: string | null): Promise<ClubTra
   }));
 }
 
-function ChartLine({
-  history,
-  financialEvents,
-  selectedKey,
-  onSelect,
-}: {
-  history: ClubValueHistorySnapshot[];
-  financialEvents: ClubFinancialTimelineEvent[];
-  selectedKey: string | null;
-  onSelect: (item: ClubValueHistorySnapshot) => void;
-}) {
+function ClubEvolutionChart({
+  snapshots,
+  events,
+  selectedPoint,
+  onSelectedPointChange,
+  range,
+}: ClubEvolutionChartPropsV1) {
   const [measuredWidth, setMeasuredWidth] = useState(320);
-  const chartHistory = useMemo(() => xsClubEvolutionChartHistoryV1(history), [history]);
+  const chartHistory = useMemo(() => xsClubEvolutionChartHistoryV1(snapshots), [snapshots]);
+  const selectedKey = selectedPoint ? xsClubEvolutionSnapshotKeyV1(selectedPoint) : null;
+  const rangeLabel = XS_CLUB_EVOLUTION_PERIODS_V1.find((period) => period.key === range)?.label || "TOUT";
   const includeTime = xsClubEvolutionHasRepeatedDayV1(chartHistory);
   const labelIndexes = xsClubEvolutionAxisLabelIndexesV1(chartHistory.length);
   const plotWidth = Math.max(260, measuredWidth);
@@ -840,7 +847,7 @@ function ChartLine({
     .sort((a, b) => a - b)
     .map((index) => points[index])
     .filter((point): point is ClubEvolutionChartPointV1 => !!point);
-  const financialDots = financialEvents
+  const financialDots = events
     .filter((event) => {
       if (!Number.isFinite(event.dateMs)) return false;
       if (!points.length || minTime === maxTime) return true;
@@ -864,8 +871,8 @@ function ChartLine({
   }, [measuredWidth]);
   const selectNearestPoint = useCallback((x: number) => {
     const point = xsClubEvolutionNearestChartPointV1(points, x);
-    if (point) onSelect(point.item);
-  }, [onSelect, points]);
+    if (point) onSelectedPointChange(point.item);
+  }, [onSelectedPointChange, points]);
   const panResponder = useMemo(
     () => PanResponder.create({
       onStartShouldSetPanResponder: () => false,
@@ -879,7 +886,7 @@ function ChartLine({
 
   if (!points.length) {
     return (
-      <View style={styles.chart}>
+      <View style={styles.chart} accessibilityLabel={`Graphique évolution du club ${rangeLabel}`}>
         <View style={styles.loadingBox}>
           <Text style={styles.muted}>Aucune valeur exploitable pour la courbe.</Text>
         </View>
@@ -888,7 +895,7 @@ function ChartLine({
   }
 
   return (
-    <View style={styles.chart}>
+    <View style={styles.chart} accessibilityLabel={`Graphique évolution du club ${rangeLabel}`}>
       <LinearGradient
         pointerEvents="none"
         colors={["rgba(255,49,72,0.12)", "rgba(255,49,72,0.035)", "rgba(0,0,0,0.02)"]}
@@ -999,7 +1006,7 @@ function ChartLine({
               key={`point-${point.item.id}-${index}`}
               accessibilityRole="button"
               hitSlop={12}
-              onPress={() => onSelect(point.item)}
+              onPress={() => onSelectedPointChange(point.item)}
               style={[
                 styles.linePoint,
                 index === selectedIndex && styles.linePointSelected,
@@ -1236,7 +1243,6 @@ export default function ClubEvolutionScreen() {
   )
     ? selectedSnapshot
     : defaultSelectedSnapshot;
-  const activeSelectedKey = activeSelectedSnapshot ? xsClubEvolutionSnapshotKeyV1(activeSelectedSnapshot) : null;
   const selectedPointDelta = useMemo(
     () => xsClubEvolutionDeltaForSelectedPointV1(periodHistory, activeSelectedSnapshot),
     [activeSelectedSnapshot, periodHistory]
@@ -1326,15 +1332,20 @@ export default function ClubEvolutionScreen() {
               <ActivityIndicator color="#FF3148" />
               <Text style={styles.muted}>{"Chargement de l'historique..."}</Text>
             </View>
-          ) : periodHistory.length ? (
+          ) : (
             <>
-              <ChartLine
-                history={periodHistory}
-                financialEvents={groupedPeriodFinancialEvents}
-                selectedKey={activeSelectedKey}
-                onSelect={setSelectedSnapshot}
+              <ClubEvolutionChart
+                snapshots={periodHistory}
+                events={groupedPeriodFinancialEvents}
+                selectedPoint={activeSelectedSnapshot}
+                onSelectedPointChange={setSelectedSnapshot}
+                range={selectedPeriod}
               />
-              {periodWindow.fallbackUsed ? (
+              {periodWindow.noSnapshotsInRange && periodFinancialEvents.length ? (
+                <Text style={styles.chartHint}>Aucun snapshot financier complet sur cette période. Événements Sorare disponibles ci-dessous.</Text>
+              ) : !periodHistory.length ? (
+                <Text style={styles.chartHint}>Aucun historique financier complet disponible.</Text>
+              ) : periodWindow.fallbackUsed ? (
                 <Text style={styles.chartHint}>{"Pas encore assez d'historique sur cette période. Dernier point connu affiché."}</Text>
               ) : periodWindow.sameAsFullRange && selectedPeriod !== "all" ? (
                 <Text style={styles.chartHint}>
@@ -1351,36 +1362,38 @@ export default function ClubEvolutionScreen() {
                 <Text style={styles.chartHint}>{"Les premiers snapshots correspondent à l'initialisation de la couverture marché et sont exclus de la performance."}</Text>
               ) : null}
               <Text style={styles.chartHint}>Valeur marché : snapshots Xiascor. Achats/ventes/rewards : historique Sorare disponible.</Text>
-              <View style={styles.financialTimelineBox}>
-                <View style={styles.financialTimelineHeader}>
-                  <Text style={styles.financialTimelineTitle}>Timeline Sorare</Text>
-                  <Text style={styles.financialTimelineCount}>{periodFinancialEvents.length} événement(s)</Text>
+              {periodHistory.length || periodFinancialEvents.length ? (
+                <View style={styles.financialTimelineBox}>
+                  <View style={styles.financialTimelineHeader}>
+                    <Text style={styles.financialTimelineTitle}>Timeline Sorare</Text>
+                    <Text style={styles.financialTimelineCount}>{periodFinancialEvents.length} événement(s)</Text>
+                  </View>
+                  {groupedPeriodFinancialEvents.length ? (
+                    groupedPeriodFinancialEvents.slice(0, 6).map((event) => (
+                      <View key={`chart-event-${event.id}`} style={styles.financialTimelineRow}>
+                        <View style={[
+                          styles.financialTimelineIcon,
+                          event.kind === "buy" ? styles.financialDotBuy : event.kind === "sell" ? styles.financialDotSell : styles.financialDotReward,
+                        ]}>
+                          <Ionicons
+                            name={event.kind === "buy" ? "arrow-down" : event.kind === "sell" ? "arrow-up" : "trophy"}
+                            size={12}
+                            color="#FFFFFF"
+                          />
+                        </View>
+                        <View style={styles.financialTimelineBody}>
+                          <Text style={styles.financialTimelineDate}>{xsClubEvolutionTimelineDateLabelV1(event.date)}</Text>
+                          <Text style={styles.financialTimelineName} numberOfLines={1}>{event.title}</Text>
+                          <Text style={styles.muted}>{xsClubEvolutionFinancialEventDetailV1(event)}</Text>
+                        </View>
+                        <Text style={event.positive ? styles.positive : styles.negative}>{event.value}</Text>
+                      </View>
+                    ))
+                  ) : (
+                    <Text style={styles.muted}>Aucun achat, vente ou reward Sorare sur cette période.</Text>
+                  )}
                 </View>
-                {groupedPeriodFinancialEvents.length ? (
-                  groupedPeriodFinancialEvents.slice(0, 6).map((event) => (
-                    <View key={`chart-event-${event.id}`} style={styles.financialTimelineRow}>
-                      <View style={[
-                        styles.financialTimelineIcon,
-                        event.kind === "buy" ? styles.financialDotBuy : event.kind === "sell" ? styles.financialDotSell : styles.financialDotReward,
-                      ]}>
-                        <Ionicons
-                          name={event.kind === "buy" ? "arrow-down" : event.kind === "sell" ? "arrow-up" : "trophy"}
-                          size={12}
-                          color="#FFFFFF"
-                        />
-                      </View>
-                      <View style={styles.financialTimelineBody}>
-                        <Text style={styles.financialTimelineDate}>{xsClubEvolutionTimelineDateLabelV1(event.date)}</Text>
-                        <Text style={styles.financialTimelineName} numberOfLines={1}>{event.title}</Text>
-                        <Text style={styles.muted}>{xsClubEvolutionFinancialEventDetailV1(event)}</Text>
-                      </View>
-                      <Text style={event.positive ? styles.positive : styles.negative}>{event.value}</Text>
-                    </View>
-                  ))
-                ) : (
-                  <Text style={styles.muted}>Aucun achat, vente ou reward Sorare sur cette période.</Text>
-                )}
-              </View>
+              ) : null}
               {activeSelectedSnapshot ? (
                 <View style={styles.selectedPointCard}>
                   <View style={styles.selectedPointLeft}>
@@ -1397,15 +1410,6 @@ export default function ClubEvolutionScreen() {
                 </View>
               ) : null}
             </>
-          ) : periodWindow.noSnapshotsInRange && periodFinancialEvents.length ? (
-            <View style={styles.loadingBox}>
-              <Text style={styles.mutedCenter}>Aucun snapshot financier complet sur cette période. Événements Sorare disponibles ci-dessous.</Text>
-              <Text style={styles.chartHint}>Valeur marché : snapshots Xiascor. Achats/ventes/rewards : historique Sorare disponible.</Text>
-            </View>
-          ) : (
-            <View style={styles.loadingBox}>
-              <Text style={styles.muted}>Aucun historique financier complet disponible</Text>
-            </View>
           )}
         </View>
 
