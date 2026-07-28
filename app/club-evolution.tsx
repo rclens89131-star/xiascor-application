@@ -10,6 +10,7 @@
 /* XS_CLUB_EVOLUTION_FINANCIAL_CHART_V1 */
 /* XS_CLUB_EVOLUTION_GRAPH_TIMELINE_SAFE_FIX_V1 */
 /* XS_CLUB_EVOLUTION_COMPLETE_VALUE_HISTORY_SAFE_FIX_V1 */
+/* XS_CLUB_EVOLUTION_GRAPH_REDESIGN_SAFE_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -558,13 +559,20 @@ function xsClubEvolutionConnectedSegmentsV1(points: ClubEvolutionChartPointV1[])
   return segments;
 }
 
-function xsClubEvolutionGapMarkersV1(points: ClubEvolutionChartPointV1[]): Array<{ id: string; x: number }> {
-  const gaps: Array<{ id: string; x: number }> = [];
+function xsClubEvolutionGapMarkersV1(points: ClubEvolutionChartPointV1[]): Array<{ id: string; x: number; label: string }> {
+  const gaps: Array<{ id: string; x: number; label: string }> = [];
   for (let index = 1; index < points.length; index += 1) {
     const previous = points[index - 1];
     const next = points[index];
     if (!xsClubEvolutionShouldConnectChartPointsV1(previous, next)) {
-      gaps.push({ id: `${previous.key}-${next.key}`, x: (previous.x + next.x) / 2 });
+      const gapDays = previous.dateMs && next.dateMs
+        ? Math.max(1, Math.round(Math.abs(next.dateMs - previous.dateMs) / (24 * 60 * 60 * 1000)))
+        : null;
+      gaps.push({
+        id: `${previous.key}-${next.key}`,
+        x: (previous.x + next.x) / 2,
+        label: gapDays ? `${gapDays} j` : "Pause",
+      });
     }
   }
   return gaps;
@@ -763,12 +771,13 @@ function ChartLine({
   const includeTime = xsClubEvolutionHasRepeatedDayV1(chartHistory);
   const labelIndexes = xsClubEvolutionAxisLabelIndexesV1(chartHistory.length);
   const plotWidth = Math.max(260, measuredWidth);
-  const plotHeight = 190;
-  const pad = 24;
+  const plotHeight = 220;
+  const pad = 30;
   const { points, min, max, minTime, maxTime } = useMemo(
     () => xsClubEvolutionBuildChartPointsV1(chartHistory, plotWidth, plotHeight, pad),
     [chartHistory, plotWidth]
   );
+  const mid = (min + max) / 2;
   const connectedSegments = useMemo(() => xsClubEvolutionConnectedSegmentsV1(points), [points]);
   const gapMarkers = useMemo(() => xsClubEvolutionGapMarkersV1(points), [points]);
   const selectedIndexFromKey = selectedKey
@@ -829,18 +838,31 @@ function ChartLine({
 
   return (
     <View style={styles.chart}>
+      <LinearGradient
+        pointerEvents="none"
+        colors={["rgba(255,49,72,0.12)", "rgba(255,49,72,0.035)", "rgba(0,0,0,0.02)"]}
+        locations={[0, 0.44, 1]}
+        style={styles.chartBackdrop}
+      />
       <View style={styles.chartGrid} />
       <View style={styles.lineHeader}>
         <View>
           <Text style={styles.chartValueLarge}>{selected ? (selected.item.clubValueText || formatEuro(selected.item.clubValueEur)) : "—"}</Text>
           <Text style={styles.chartLabel}>{selected ? xsClubEvolutionDateLabelV1(selected.item, true) : "—"}</Text>
         </View>
-        <Text style={styles.cardAction}>Valeur du club</Text>
+        <View style={styles.chartMetaPill}>
+          <Text style={styles.chartMetaText}>Valeur du club</Text>
+          <Text style={styles.chartMetaSubText}>Min {formatEuro(min)} · Max {formatEuro(max)}</Text>
+        </View>
       </View>
       <View style={styles.linePlotOuter} onLayout={onPlotLayout}>
         <View style={[styles.linePlot, { height: plotHeight }]} {...panResponder.panHandlers}>
           <View pointerEvents="none" style={styles.chartGlow} />
+          <View pointerEvents="none" style={[styles.chartHorizontalLine, { top: pad }]} />
+          <View pointerEvents="none" style={[styles.chartHorizontalLine, styles.chartHorizontalLineSoft, { top: plotHeight / 2 }]} />
+          <View pointerEvents="none" style={[styles.chartHorizontalLine, { top: plotHeight - pad }]} />
           <Text pointerEvents="none" style={[styles.chartAxisValue, { top: pad - 12 }]}>{formatEuro(max)}</Text>
+          <Text pointerEvents="none" style={[styles.chartAxisValue, styles.chartAxisValueMuted, { top: plotHeight / 2 - 9 }]}>{formatEuro(mid)}</Text>
           <Text pointerEvents="none" style={[styles.chartAxisValue, { top: plotHeight - pad - 6 }]}>{formatEuro(min)}</Text>
           {connectedSegments.map(({ previous, next }, index) => {
             const width = Math.max(2, next.x - previous.x + 2);
@@ -849,8 +871,8 @@ function ChartLine({
               <LinearGradient
                 key={`area-${index}-${previous.key}-${next.key}`}
                 pointerEvents="none"
-                colors={["rgba(255,49,72,0.26)", "rgba(255,49,72,0.08)", "rgba(255,49,72,0)"]}
-                locations={[0, 0.48, 1]}
+                colors={["rgba(255,49,72,0.18)", "rgba(255,49,72,0.055)", "rgba(255,49,72,0)"]}
+                locations={[0, 0.52, 1]}
                 style={[
                   styles.chartAreaColumn,
                   {
@@ -873,7 +895,7 @@ function ChartLine({
               <LinearGradient
                 key={`curve-segment-${index}-${previous.key}-${next.key}`}
                 pointerEvents="none"
-                colors={["#FF273E", "#FF5B4B"]}
+                colors={["#FF6273", "#FF223D"]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={[
@@ -889,8 +911,8 @@ function ChartLine({
             );
           })}
           {gapMarkers.map((gap) => (
-            <View key={`gap-${gap.id}`} pointerEvents="none" style={[styles.chartGapMarker, { left: gap.x - 16 }]}>
-              <Text style={styles.chartGapText}>•••</Text>
+            <View key={`gap-${gap.id}`} pointerEvents="none" style={[styles.chartGapMarker, { left: gap.x - 22 }]}>
+              <Text style={styles.chartGapText}>{gap.label}</Text>
             </View>
           ))}
           {selected ? <View pointerEvents="none" style={[styles.chartCursor, { left: selected.x }]} /> : null}
@@ -914,7 +936,7 @@ function ChartLine({
               style={[
                 styles.linePoint,
                 index === selectedIndex && styles.linePointSelected,
-                { left: point.x - 6, top: point.y - 6 },
+                { left: point.x - 4, top: point.y - 4 },
               ]}
             />
           ))}
@@ -1463,22 +1485,29 @@ const styles = StyleSheet.create({
   periodButtonText: { color: "rgba(255,255,255,0.58)", fontSize: 12, fontWeight: "900" },
   periodButtonTextActive: { color: "#FFFFFF" },
   reportText: { color: "rgba(255,255,255,0.78)", fontSize: 14, fontWeight: "700", lineHeight: 21 },
-  chart: { minHeight: 280, borderRadius: 14, overflow: "hidden", backgroundColor: "rgba(0,0,0,0.30)", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" },
-  chartGrid: { ...StyleSheet.absoluteFillObject, borderTopWidth: 1, borderBottomWidth: 1, borderColor: "rgba(255,255,255,0.06)" },
-  lineHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12, padding: 12, paddingBottom: 2 },
-  chartValueLarge: { color: "#FFFFFF", fontSize: 24, fontWeight: "900" },
-  linePlotOuter: { width: "100%", paddingHorizontal: 12, paddingBottom: 12 },
-  linePlot: { marginTop: 4, position: "relative", width: "100%" },
-  chartGlow: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(255,49,72,0.035)", borderRadius: 12 },
-  chartAreaColumn: { position: "absolute", borderTopLeftRadius: 999, borderTopRightRadius: 999 },
-  chartCurveSegment: { height: 3.5, borderRadius: 999, position: "absolute", shadowColor: "#FF3148", shadowOpacity: 0.42, shadowRadius: 7, elevation: 2 },
-  chartGapMarker: { position: "absolute", bottom: 20, width: 32, minHeight: 16, alignItems: "center", justifyContent: "center", borderRadius: 999, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: 1, borderColor: "rgba(255,255,255,0.10)" },
-  chartGapText: { color: "rgba(255,255,255,0.36)", fontSize: 11, fontWeight: "900", letterSpacing: 0 },
-  chartCursor: { position: "absolute", top: 14, bottom: 22, width: 1, backgroundColor: "rgba(255,255,255,0.28)" },
-  chartAxisValue: { position: "absolute", right: 4, color: "rgba(255,255,255,0.35)", fontSize: 10, fontWeight: "900" },
+  chart: { minHeight: 338, borderRadius: 16, overflow: "hidden", backgroundColor: "rgba(5,6,9,0.92)", borderWidth: 1, borderColor: "rgba(255,49,72,0.18)" },
+  chartBackdrop: { ...StyleSheet.absoluteFillObject },
+  chartGrid: { ...StyleSheet.absoluteFillObject, borderTopWidth: 1, borderBottomWidth: 1, borderColor: "rgba(255,255,255,0.045)" },
+  lineHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12, padding: 16, paddingBottom: 4 },
+  chartValueLarge: { color: "#FFFFFF", fontSize: 28, fontWeight: "900" },
+  chartMetaPill: { alignItems: "flex-end", gap: 3, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 10, backgroundColor: "rgba(255,255,255,0.045)", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" },
+  chartMetaText: { color: "rgba(255,255,255,0.72)", fontSize: 11, fontWeight: "900", textTransform: "uppercase" },
+  chartMetaSubText: { color: "rgba(255,255,255,0.42)", fontSize: 10, fontWeight: "800" },
+  linePlotOuter: { width: "100%", paddingHorizontal: 16, paddingBottom: 14 },
+  linePlot: { marginTop: 8, position: "relative", width: "100%", overflow: "hidden", borderRadius: 14, backgroundColor: "rgba(2,3,6,0.42)" },
+  chartGlow: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(255,49,72,0.025)", borderRadius: 14 },
+  chartHorizontalLine: { position: "absolute", left: 0, right: 0, height: 1, backgroundColor: "rgba(255,255,255,0.075)" },
+  chartHorizontalLineSoft: { backgroundColor: "rgba(255,255,255,0.045)" },
+  chartAreaColumn: { position: "absolute", borderTopLeftRadius: 999, borderTopRightRadius: 999, opacity: 0.92 },
+  chartCurveSegment: { height: 2.8, borderRadius: 999, position: "absolute", shadowColor: "#FF3148", shadowOpacity: 0.54, shadowRadius: 8, elevation: 2 },
+  chartGapMarker: { position: "absolute", bottom: 34, width: 44, minHeight: 18, alignItems: "center", justifyContent: "center", borderRadius: 999, backgroundColor: "rgba(8,8,12,0.86)", borderWidth: 1, borderColor: "rgba(255,255,255,0.16)" },
+  chartGapText: { color: "rgba(255,255,255,0.52)", fontSize: 10, fontWeight: "900", letterSpacing: 0 },
+  chartCursor: { position: "absolute", top: 24, bottom: 32, width: 1, backgroundColor: "rgba(255,255,255,0.34)" },
+  chartAxisValue: { position: "absolute", right: 8, color: "rgba(255,255,255,0.56)", fontSize: 10, fontWeight: "900", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999, backgroundColor: "rgba(5,6,9,0.70)", overflow: "hidden" },
+  chartAxisValueMuted: { color: "rgba(255,255,255,0.32)" },
   lineSegment: { height: 3, borderRadius: 999, position: "absolute" },
-  linePoint: { width: 12, height: 12, borderRadius: 6, position: "absolute", backgroundColor: "#FF3148", borderWidth: 2, borderColor: "#140407", shadowColor: "#FF3148", shadowOpacity: 0.3, shadowRadius: 5, elevation: 2 },
-  linePointSelected: { backgroundColor: "#FFFFFF", borderColor: "#FF3148", transform: [{ scale: 1.32 }], shadowOpacity: 0.76, shadowRadius: 9, elevation: 4 },
+  linePoint: { width: 8, height: 8, borderRadius: 4, position: "absolute", backgroundColor: "#FF3148", borderWidth: 1.5, borderColor: "#140407", shadowColor: "#FF3148", shadowOpacity: 0.22, shadowRadius: 4, elevation: 2 },
+  linePointSelected: { backgroundColor: "#FFFFFF", borderColor: "#FF3148", transform: [{ scale: 1.72 }], shadowOpacity: 0.82, shadowRadius: 10, elevation: 4 },
   financialDot: { width: 6, height: 6, borderRadius: 3, position: "absolute", borderWidth: 1, borderColor: "rgba(255,255,255,0.86)", shadowColor: "#000000", shadowOpacity: 0.24, shadowRadius: 3, elevation: 2 },
   financialDotBuy: { backgroundColor: "#FF4D61" },
   financialDotSell: { backgroundColor: "#2FE66B" },
