@@ -100,7 +100,10 @@ type ClubValueHistorySnapshot = {
   clubValueEur: number;
   clubValueText: string;
   pricedCards?: number | null;
+  unpricedCards?: number | null;
   cardCount?: number | null;
+  coveragePct?: number | null;
+  source?: string | null;
   totalInvestedEur?: number | null;
   totalSoldEur?: number | null;
   estimatedProfitEur?: number | null;
@@ -127,7 +130,10 @@ function normalizeClubValueBackendHistoryItemV1(item: any): ClubValueHistorySnap
     clubValueEur: metricNumber(item?.clubValueEur) ?? 0,
     clubValueText: String(item?.clubValueText || ""),
     pricedCards: metricNumber(item?.pricedCards),
+    unpricedCards: metricNumber(item?.unpricedCards ?? item?.unpriced_cards),
     cardCount: metricNumber(item?.cardCount),
+    coveragePct: metricNumber(item?.coveragePct ?? item?.coverage_pct),
+    source: item?.source ? String(item.source) : null,
     totalInvestedEur: metricNumber(item?.totalInvestedEur ?? item?.cashSpentEur),
     totalSoldEur: metricNumber(item?.totalSoldEur ?? item?.cashReceivedEur),
     estimatedProfitEur: metricNumber(item?.estimatedProfitEur ?? item?.profitLossEur),
@@ -165,13 +171,6 @@ function firstMetricNumber(...values: unknown[]): number | null {
 function formatEuro(value: number | null): string {
   if (value === null) return "—";
   return `${Math.round(value).toLocaleString("fr-FR")} €`;
-}
-
-function formatWeeklyDelta(value: number | null): string {
-  if (value === null) return "Données indisponibles";
-  const rounded = Math.round(value);
-  const sign = rounded > 0 ? "+" : "";
-  return `${sign}${rounded.toLocaleString("fr-FR")} €`;
 }
 
 function formatSignedEuro(value: number): string {
@@ -237,7 +236,10 @@ async function readClubValueHistoryV1(): Promise<ClubValueHistorySnapshot[]> {
             clubValueEur: metricNumber(item?.clubValueEur) ?? 0,
             clubValueText: String(item?.clubValueText || ""),
             pricedCards: metricNumber(item?.pricedCards),
+            unpricedCards: metricNumber(item?.unpricedCards),
             cardCount: metricNumber(item?.cardCount),
+            coveragePct: metricNumber(item?.coveragePct),
+            source: item?.source ? String(item.source) : null,
             totalInvestedEur: metricNumber(item?.totalInvestedEur),
             totalSoldEur: metricNumber(item?.totalSoldEur),
             estimatedProfitEur: metricNumber(item?.estimatedProfitEur),
@@ -268,7 +270,10 @@ async function upsertClubValueSnapshotV1(payload: any): Promise<ClubValueHistory
     clubValueEur: Math.round(value * 100) / 100,
     clubValueText: typeof payload?.clubValueText === "string" ? payload.clubValueText : formatEuro(value),
     pricedCards: metricNumber(payload?.pricedCards),
+    unpricedCards: metricNumber(payload?.unpricedCards),
     cardCount: metricNumber(payload?.cardCount),
+    coveragePct: metricNumber(payload?.coveragePct),
+    source: "local_snapshot",
     totalInvestedEur: metricNumber(payload?.totalInvestedEur),
     totalSoldEur: metricNumber(payload?.totalSoldEur),
     estimatedProfitEur: metricNumber(payload?.estimatedProfitEur),
@@ -307,12 +312,46 @@ async function readClubValueBackendHistoryV1(deviceId: string | null): Promise<C
 }
 
 function getClubEvolutionTextV1(history: ClubValueHistorySnapshot[], _currentValue: number | null): string {
-  if (!history.length) return "0 €";
-  const firstValue = history[0]?.clubValueEur;
-  const lastValue = history[history.length - 1]?.clubValueEur;
+  const completeHistory = xsHomeClubEvolutionCompleteHistoryV1(history);
+  if (completeHistory.length < 2) return "0 €";
+  const firstValue = completeHistory[0]?.clubValueEur;
+  const lastValue = completeHistory[completeHistory.length - 1]?.clubValueEur;
   if (!Number.isFinite(firstValue)) return "0 €";
   if (!Number.isFinite(lastValue)) return "0 €";
   return formatSignedEuro(lastValue - firstValue);
+}
+
+function xsHomeClubEvolutionDateMsV1(item: ClubValueHistorySnapshot): number {
+  const time = item.createdAt ? new Date(item.createdAt).getTime() : NaN;
+  return Number.isFinite(time) ? time : Number.MAX_SAFE_INTEGER;
+}
+
+function xsHomeClubEvolutionFiniteMetricV1(value?: number | null): number | null {
+  return value !== null && value !== undefined && Number.isFinite(value) ? value : null;
+}
+
+function xsHomeClubEvolutionSnapshotCompleteV1(item: ClubValueHistorySnapshot): boolean {
+  // XS_HOME_CLUB_EVOLUTION_SOURCE_UNIFICATION_V1: same completeness rule as app/club-evolution.tsx.
+  const unpricedCards = xsHomeClubEvolutionFiniteMetricV1(item.unpricedCards);
+  if (unpricedCards !== null) return unpricedCards <= 0;
+
+  const pricedCards = xsHomeClubEvolutionFiniteMetricV1(item.pricedCards);
+  const cardCount = xsHomeClubEvolutionFiniteMetricV1(item.cardCount);
+  if (pricedCards !== null && cardCount !== null && cardCount > 0) return pricedCards >= cardCount;
+
+  const coveragePct = xsHomeClubEvolutionFiniteMetricV1(item.coveragePct);
+  if (coveragePct !== null) return coveragePct >= 100;
+
+  return false;
+}
+
+function xsHomeClubEvolutionCompleteHistoryV1(history: ClubValueHistorySnapshot[]): ClubValueHistorySnapshot[] {
+  return history
+    .map((item, index) => ({ item, index, value: xsHomeClubEvolutionFiniteMetricV1(item.clubValueEur), time: xsHomeClubEvolutionDateMsV1(item) }))
+    .filter(({ value }) => value !== null)
+    .sort((a, b) => (a.time === b.time ? a.index - b.index : a.time - b.time))
+    .map(({ item }) => item)
+    .filter(xsHomeClubEvolutionSnapshotCompleteV1);
 }
 
 function normalizeHomeTextV1(value: unknown): string {
@@ -898,7 +937,7 @@ export default function HomeScreen() {
               </View>
               <View style={styles.financeTextBlock}>
                 <Text style={styles.bigMetric}>{clubMetrics.clubValueText || formatEuro(clubMetrics.clubValue)}</Text>
-                <Text style={styles.muted}>Valeur du club suivie comme portefeuille d'investissement.</Text>
+                <Text style={styles.muted}>{"Valeur du club suivie comme portefeuille d'investissement."}</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.72)" />
             </View>
@@ -1045,7 +1084,7 @@ export default function HomeScreen() {
               <Text style={styles.marketOpportunityEmptyTitle}>
                 {marketOpportunitiesLoading ? "Analyse du marché en cours..." : "Aucune opportunité fiable aujourd'hui"}
               </Text>
-              <Text style={styles.marketOpportunityEmptyText}>Xiascor n'affiche que les joueurs avec prix et performances réelles.</Text>
+              <Text style={styles.marketOpportunityEmptyText}>{"Xiascor n'affiche que les joueurs avec prix et performances réelles."}</Text>
             </View>
           )}
         </SectionCard>
