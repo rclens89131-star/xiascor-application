@@ -12,6 +12,7 @@
 /* XS_CLUB_EVOLUTION_COMPLETE_VALUE_HISTORY_SAFE_FIX_V1 */
 /* XS_CLUB_EVOLUTION_GRAPH_REDESIGN_SAFE_V1 */
 /* XS_CLUB_EVOLUTION_BALANCED_X_SPACING_SAFE_FIX_V1 */
+/* XS_CLUB_EVOLUTION_SHARED_FILTER_CHART_SAFE_FIX_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -106,6 +107,17 @@ type ClubEvolutionChartPointV1 = {
   y: number;
   dateMs: number | null;
   index: number;
+};
+
+type ClubEvolutionChartSegmentV1 = {
+  previous: ClubEvolutionChartPointV1;
+  next: ClubEvolutionChartPointV1;
+};
+
+type ClubEvolutionChartGapSegmentV1 = ClubEvolutionChartSegmentV1 & {
+  id: string;
+  x: number;
+  label: string;
 };
 
 const XS_CLUB_EVOLUTION_PERIODS_V1: Array<{ key: ClubEvolutionPeriodKey; label: string; days: number | null }> = [
@@ -574,8 +586,8 @@ function xsClubEvolutionShouldConnectChartPointsV1(previous: ClubEvolutionChartP
   return gapMs <= XS_CLUB_EVOLUTION_GRAPH_GAP_DAYS_V1 * 24 * 60 * 60 * 1000;
 }
 
-function xsClubEvolutionConnectedSegmentsV1(points: ClubEvolutionChartPointV1[]): Array<{ previous: ClubEvolutionChartPointV1; next: ClubEvolutionChartPointV1 }> {
-  const segments: Array<{ previous: ClubEvolutionChartPointV1; next: ClubEvolutionChartPointV1 }> = [];
+function xsClubEvolutionConnectedSegmentsV1(points: ClubEvolutionChartPointV1[]): ClubEvolutionChartSegmentV1[] {
+  const segments: ClubEvolutionChartSegmentV1[] = [];
   for (let index = 1; index < points.length; index += 1) {
     const previous = points[index - 1];
     const next = points[index];
@@ -584,8 +596,8 @@ function xsClubEvolutionConnectedSegmentsV1(points: ClubEvolutionChartPointV1[])
   return segments;
 }
 
-function xsClubEvolutionGapMarkersV1(points: ClubEvolutionChartPointV1[]): Array<{ id: string; x: number; label: string }> {
-  const gaps: Array<{ id: string; x: number; label: string }> = [];
+function xsClubEvolutionGapSegmentsV1(points: ClubEvolutionChartPointV1[]): ClubEvolutionChartGapSegmentV1[] {
+  const gaps: ClubEvolutionChartGapSegmentV1[] = [];
   for (let index = 1; index < points.length; index += 1) {
     const previous = points[index - 1];
     const next = points[index];
@@ -595,12 +607,26 @@ function xsClubEvolutionGapMarkersV1(points: ClubEvolutionChartPointV1[]): Array
         : null;
       gaps.push({
         id: `${previous.key}-${next.key}`,
+        previous,
+        next,
         x: (previous.x + next.x) / 2,
         label: gapDays ? `${gapDays} j` : "Pause",
       });
     }
   }
   return gaps;
+}
+
+function xsClubEvolutionSegmentGeometryV1(previous: ClubEvolutionChartPointV1, next: ClubEvolutionChartPointV1) {
+  const dx = next.x - previous.x;
+  const dy = next.y - previous.y;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  return {
+    length,
+    left: (previous.x + next.x) / 2 - length / 2,
+    top: (previous.y + next.y) / 2,
+    angle: `${Math.atan2(dy, dx)}rad`,
+  };
 }
 
 async function xsEvolutionAuditFetchJsonV1<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -804,7 +830,7 @@ function ChartLine({
   );
   const mid = (min + max) / 2;
   const connectedSegments = useMemo(() => xsClubEvolutionConnectedSegmentsV1(points), [points]);
-  const gapMarkers = useMemo(() => xsClubEvolutionGapMarkersV1(points), [points]);
+  const gapSegments = useMemo(() => xsClubEvolutionGapSegmentsV1(points), [points]);
   const selectedIndexFromKey = selectedKey
     ? points.findIndex((point) => point.key === selectedKey)
     : -1;
@@ -911,11 +937,8 @@ function ChartLine({
             );
           })}
           {connectedSegments.map(({ previous, next }, index) => {
-            const dx = next.x - previous.x;
-            const dy = next.y - previous.y;
-            const length = Math.sqrt(dx * dx + dy * dy);
-            if (length < 0.5) return null;
-            const angle = `${Math.atan2(dy, dx)}rad`;
+            const segment = xsClubEvolutionSegmentGeometryV1(previous, next);
+            if (segment.length < 0.5) return null;
             return (
               <LinearGradient
                 key={`curve-segment-${index}-${previous.key}-${next.key}`}
@@ -926,16 +949,35 @@ function ChartLine({
                 style={[
                   styles.chartCurveSegment,
                   {
-                    left: previous.x,
-                    top: previous.y - 1.5,
-                    width: length,
-                    transform: [{ rotate: angle }],
+                    left: segment.left,
+                    top: segment.top - 1.4,
+                    width: segment.length,
+                    transform: [{ rotate: segment.angle }],
                   },
                 ]}
               />
             );
           })}
-          {gapMarkers.map((gap) => (
+          {gapSegments.map((gap) => {
+            const segment = xsClubEvolutionSegmentGeometryV1(gap.previous, gap.next);
+            if (segment.length < 0.5) return null;
+            return (
+              <View
+                key={`gap-line-${gap.id}`}
+                pointerEvents="none"
+                style={[
+                  styles.chartGapSegment,
+                  {
+                    left: segment.left,
+                    top: segment.top - 1,
+                    width: segment.length,
+                    transform: [{ rotate: segment.angle }],
+                  },
+                ]}
+              />
+            );
+          })}
+          {gapSegments.map((gap) => (
             <View key={`gap-${gap.id}`} pointerEvents="none" style={[styles.chartGapMarker, { left: gap.x - 22 }]}>
               <Text style={styles.chartGapText}>{gap.label}</Text>
             </View>
@@ -1525,6 +1567,7 @@ const styles = StyleSheet.create({
   chartHorizontalLineSoft: { backgroundColor: "rgba(255,255,255,0.045)" },
   chartAreaColumn: { position: "absolute", borderTopLeftRadius: 999, borderTopRightRadius: 999, opacity: 0.92 },
   chartCurveSegment: { height: 2.8, borderRadius: 999, position: "absolute", shadowColor: "#FF3148", shadowOpacity: 0.54, shadowRadius: 8, elevation: 2 },
+  chartGapSegment: { height: 0, position: "absolute", borderTopWidth: 2, borderStyle: "dashed", borderColor: "rgba(255,255,255,0.28)" },
   chartGapMarker: { position: "absolute", bottom: 34, width: 44, minHeight: 18, alignItems: "center", justifyContent: "center", borderRadius: 999, backgroundColor: "rgba(8,8,12,0.86)", borderWidth: 1, borderColor: "rgba(255,255,255,0.16)" },
   chartGapText: { color: "rgba(255,255,255,0.52)", fontSize: 10, fontWeight: "900", letterSpacing: 0 },
   chartCursor: { position: "absolute", top: 24, bottom: 32, width: 1, backgroundColor: "rgba(255,255,255,0.34)" },
