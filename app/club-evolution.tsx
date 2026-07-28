@@ -7,12 +7,13 @@
 /* XS_CLUB_EVOLUTION_TRADING_CHART_V1 */
 /* XS_CLUB_EVOLUTION_TRANSACTIONS_OVERLAY_V1 */
 /* XS_CLUB_EVOLUTION_RANGE_GRAPH_FIX_V1 */
+/* XS_CLUB_EVOLUTION_FINANCIAL_CHART_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, LayoutChangeEvent, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { apiFetch } from "../src/api";
@@ -89,6 +90,15 @@ type ClubEvolutionValueEvent = {
 
 type ClubEvolutionPeriodKey = "7d" | "30d" | "3m" | "6m" | "1y" | "all";
 
+type ClubEvolutionChartPointV1 = {
+  item: ClubValueHistorySnapshot;
+  key: string;
+  x: number;
+  y: number;
+  dateMs: number | null;
+  index: number;
+};
+
 const XS_CLUB_EVOLUTION_PERIODS_V1: Array<{ key: ClubEvolutionPeriodKey; label: string; days: number | null }> = [
   { key: "7d", label: "7J", days: 7 },
   { key: "30d", label: "30J", days: 30 },
@@ -97,6 +107,8 @@ const XS_CLUB_EVOLUTION_PERIODS_V1: Array<{ key: ClubEvolutionPeriodKey; label: 
   { key: "1y", label: "1A", days: 365 },
   { key: "all", label: "TOUT", days: null },
 ];
+
+const XS_CLUB_EVOLUTION_MAX_CHART_SNAPSHOTS_V1 = 90;
 
 function normalizeBackendHistoryItemV1(item: any): ClubValueHistorySnapshot {
   return {
@@ -346,6 +358,156 @@ function xsClubEvolutionAxisLabelIndexesV1(length: number): Set<number> {
   return new Set([0, Math.floor((length - 1) / 2), length - 1]);
 }
 
+function xsClampFinancialChartV1(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function xsClubEvolutionChartHistoryV1(history: ClubValueHistorySnapshot[]): ClubValueHistorySnapshot[] {
+  const clean = history
+    .map((item, index) => ({
+      item,
+      index,
+      date: xsClubEvolutionSnapshotDateV1(item),
+      value: metricNumber(item.clubValueEur),
+    }))
+    .filter(({ value }) => value !== null && Number.isFinite(value))
+    .sort((a, b) => {
+      const aTime = a.date?.getTime();
+      const bTime = b.date?.getTime();
+      const aHasDate = Number.isFinite(aTime);
+      const bHasDate = Number.isFinite(bTime);
+      if (aHasDate && bHasDate && aTime !== bTime) return (aTime as number) - (bTime as number);
+      if (aHasDate && !bHasDate) return -1;
+      if (!aHasDate && bHasDate) return 1;
+      return a.index - b.index;
+    })
+    .map(({ item }) => item);
+
+  if (clean.length <= XS_CLUB_EVOLUTION_MAX_CHART_SNAPSHOTS_V1) return clean;
+
+  const first = clean[0];
+  const last = clean[clean.length - 1];
+  const firstDate = xsClubEvolutionSnapshotDateV1(first);
+  const lastDate = xsClubEvolutionSnapshotDateV1(last);
+  const timeSpan = firstDate && lastDate ? lastDate.getTime() - firstDate.getTime() : 0;
+  if (!firstDate || !lastDate || timeSpan <= 0) {
+    const step = Math.ceil(clean.length / XS_CLUB_EVOLUTION_MAX_CHART_SNAPSHOTS_V1);
+    return clean.filter((_, index) => index === 0 || index === clean.length - 1 || index % step === 0);
+  }
+
+  const bucketMs = timeSpan / Math.max(1, XS_CLUB_EVOLUTION_MAX_CHART_SNAPSHOTS_V1 - 2);
+  const bucketed = new Map<number, ClubValueHistorySnapshot>();
+  const significant = new Set<string>();
+  clean.slice(1, -1).forEach((item, index) => {
+    const date = xsClubEvolutionSnapshotDateV1(item);
+    if (!date) return;
+    const bucket = Math.floor((date.getTime() - firstDate.getTime()) / Math.max(1, bucketMs));
+    bucketed.set(bucket, item);
+    const previous = clean[index];
+    const previousValue = previous?.clubValueEur ?? item.clubValueEur;
+    const delta = Math.abs(item.clubValueEur - previousValue);
+    const base = Math.max(1, Math.abs(previousValue));
+    if (delta >= 5 || delta / base >= 0.03) significant.add(xsClubEvolutionSnapshotKeyV1(item));
+  });
+
+  const merged = [first]
+    .concat(Array.from(bucketed.values()))
+    .concat(clean.filter((item) => significant.has(xsClubEvolutionSnapshotKeyV1(item))))
+    .concat(last);
+  const byKey = new Map<string, ClubValueHistorySnapshot>();
+  merged.forEach((item) => byKey.set(xsClubEvolutionSnapshotKeyV1(item), item));
+  return Array.from(byKey.values()).sort((a, b) => {
+    const aTime = xsClubEvolutionSnapshotDateV1(a)?.getTime() ?? 0;
+    const bTime = xsClubEvolutionSnapshotDateV1(b)?.getTime() ?? 0;
+    return aTime - bTime;
+  });
+}
+
+function xsClubEvolutionBuildChartPointsV1(
+  history: ClubValueHistorySnapshot[],
+  plotWidth: number,
+  plotHeight: number,
+  pad: number
+): { points: ClubEvolutionChartPointV1[]; min: number; max: number; minTime: number; maxTime: number } {
+  const values = history.map((item) => item.clubValueEur).filter((value) => Number.isFinite(value));
+  const min = values.length ? Math.min(...values) : 0;
+  const max = values.length ? Math.max(...values, 1) : 1;
+  const valueRange = Math.max(1, max - min);
+  const dated = history.map((item) => xsClubEvolutionSnapshotDateV1(item)?.getTime() ?? null);
+  const validTimes = dated.filter((time): time is number => Number.isFinite(time));
+  const minTime = validTimes.length ? Math.min(...validTimes) : 0;
+  const maxTime = validTimes.length ? Math.max(...validTimes) : minTime;
+  const timeRange = Math.max(1, maxTime - minTime);
+  const canUseTimeScale = validTimes.length >= 2 && maxTime > minTime;
+  const xMin = pad;
+  const xMax = Math.max(pad, plotWidth - pad);
+  const innerWidth = Math.max(1, xMax - xMin);
+
+  const points = history.map((item, index) => {
+    const dateMs = dated[index];
+    const fallbackX = history.length <= 1 ? plotWidth / 2 : xMin + (innerWidth / (history.length - 1)) * index;
+    const rawX = canUseTimeScale && dateMs !== null
+      ? xMin + ((dateMs - minTime) / timeRange) * innerWidth
+      : fallbackX;
+    const y = pad + (1 - ((item.clubValueEur - min) / valueRange)) * (plotHeight - pad * 2);
+    return {
+      item,
+      key: xsClubEvolutionSnapshotKeyV1(item),
+      x: xsClampFinancialChartV1(rawX, xMin, xMax),
+      y: xsClampFinancialChartV1(y, pad, plotHeight - pad),
+      dateMs,
+      index,
+    };
+  });
+
+  return { points, min, max, minTime, maxTime };
+}
+
+function xsClubEvolutionBuildSmoothCurveV1(points: ClubEvolutionChartPointV1[]): Array<{ x: number; y: number }> {
+  if (points.length <= 1) return points.map((point) => ({ x: point.x, y: point.y }));
+  const sorted = points.slice().sort((a, b) => a.x - b.x || a.index - b.index);
+  const slopes = sorted.map((point, index) => {
+    const previous = sorted[index - 1];
+    const next = sorted[index + 1];
+    if (!previous && next) return (next.y - point.y) / Math.max(1, next.x - point.x);
+    if (previous && !next) return (point.y - previous.y) / Math.max(1, point.x - previous.x);
+    if (!previous || !next) return 0;
+    const left = (point.y - previous.y) / Math.max(1, point.x - previous.x);
+    const right = (next.y - point.y) / Math.max(1, next.x - point.x);
+    if (left * right <= 0) return 0;
+    const magnitude = Math.min(Math.abs(left), Math.abs(right));
+    return Math.sign(left + right) * magnitude;
+  });
+
+  const curve: Array<{ x: number; y: number }> = [{ x: sorted[0].x, y: sorted[0].y }];
+  for (let index = 0; index < sorted.length - 1; index += 1) {
+    const start = sorted[index];
+    const end = sorted[index + 1];
+    const dx = Math.max(1, end.x - start.x);
+    const samples = Math.max(2, Math.min(14, Math.ceil(dx / 14)));
+    for (let step = 1; step <= samples; step += 1) {
+      const t = step / samples;
+      const t2 = t * t;
+      const t3 = t2 * t;
+      const h00 = 2 * t3 - 3 * t2 + 1;
+      const h10 = t3 - 2 * t2 + t;
+      const h01 = -2 * t3 + 3 * t2;
+      const h11 = t3 - t2;
+      const rawY = h00 * start.y + h10 * dx * slopes[index] + h01 * end.y + h11 * dx * slopes[index + 1];
+      curve.push({
+        x: start.x + dx * t,
+        y: xsClampFinancialChartV1(rawY, Math.min(start.y, end.y), Math.max(start.y, end.y)),
+      });
+    }
+  }
+  return curve;
+}
+
+function xsClubEvolutionNearestChartPointV1(points: ClubEvolutionChartPointV1[], x: number): ClubEvolutionChartPointV1 | null {
+  if (!points.length || !Number.isFinite(x)) return null;
+  return points.reduce((best, point) => (Math.abs(point.x - x) < Math.abs(best.x - x) ? point : best), points[0]);
+}
+
 async function xsEvolutionAuditFetchJsonV1<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`${XS_HOME_AUDIT_FIX_CLOUD_BASE_V1}${path.startsWith("/") ? "" : "/"}${path}`, {
     ...options,
@@ -532,47 +694,74 @@ function ChartLine({
   selectedKey: string | null;
   onSelect: (item: ClubValueHistorySnapshot) => void;
 }) {
-  const includeTime = xsClubEvolutionHasRepeatedDayV1(history);
-  const labelIndexes = xsClubEvolutionAxisLabelIndexesV1(history.length);
-  const values = history.map((item) => item.clubValueEur);
-  const min = Math.min(...values);
-  const max = Math.max(...values, 1);
-  const range = Math.max(1, max - min);
-  const plotWidth = 300;
-  const plotHeight = 168;
-  const pad = 18;
-  const snapshotTimes = history
-    .map(xsClubEvolutionSnapshotDateV1)
-    .map((date) => date?.getTime() ?? null)
-    .filter((time): time is number => Number.isFinite(time));
-  const eventTimes = financialEvents.map((event) => event.dateMs).filter((time) => Number.isFinite(time));
-  const allTimes = snapshotTimes.concat(eventTimes).sort((a, b) => a - b);
-  const minTime = allTimes[0] ?? 0;
-  const maxTime = allTimes[allTimes.length - 1] ?? minTime;
-  const timeRange = Math.max(1, maxTime - minTime);
-  const timeToX = (time: number | null, index: number) => {
-    if (Number.isFinite(time)) return pad + (((time as number) - minTime) / timeRange) * (plotWidth - pad * 2);
-    if (history.length <= 1) return plotWidth / 2;
-    return pad + ((plotWidth - pad * 2) / (history.length - 1)) * index;
-  };
-  const points = history.map((item, index) => ({
-    item,
-    x: timeToX(xsClubEvolutionSnapshotDateV1(item)?.getTime() ?? null, index),
-    y: pad + (1 - ((item.clubValueEur - min) / range)) * (plotHeight - pad * 2),
-  }));
-  const financialDots = financialEvents
-    .filter((event) => event.dateMs >= minTime && event.dateMs <= maxTime)
-    .slice(0, 40)
-    .map((event, index) => ({
-      event,
-      index,
-      x: timeToX(event.dateMs, index),
-    }));
+  const [measuredWidth, setMeasuredWidth] = useState(320);
+  const chartHistory = useMemo(() => xsClubEvolutionChartHistoryV1(history), [history]);
+  const includeTime = xsClubEvolutionHasRepeatedDayV1(chartHistory);
+  const labelIndexes = xsClubEvolutionAxisLabelIndexesV1(chartHistory.length);
+  const plotWidth = Math.max(260, measuredWidth);
+  const plotHeight = 190;
+  const pad = 24;
+  const { points, min, max, minTime, maxTime } = useMemo(
+    () => xsClubEvolutionBuildChartPointsV1(chartHistory, plotWidth, plotHeight, pad),
+    [chartHistory, plotWidth]
+  );
+  const curvePoints = useMemo(() => xsClubEvolutionBuildSmoothCurveV1(points), [points]);
   const selectedIndexFromKey = selectedKey
-    ? points.findIndex((point) => xsClubEvolutionSnapshotKeyV1(point.item) === selectedKey)
+    ? points.findIndex((point) => point.key === selectedKey)
     : -1;
   const selectedIndex = selectedIndexFromKey >= 0 ? selectedIndexFromKey : Math.max(0, points.length - 1);
   const selected = points[selectedIndex] || points[points.length - 1] || null;
+  const axisLabelPoints = Array.from(labelIndexes)
+    .sort((a, b) => a - b)
+    .map((index) => points[index])
+    .filter((point): point is ClubEvolutionChartPointV1 => !!point);
+  const financialDots = financialEvents
+    .filter((event) => {
+      if (!Number.isFinite(event.dateMs)) return false;
+      if (!points.length || minTime === maxTime) return true;
+      return event.dateMs >= minTime && event.dateMs <= maxTime;
+    })
+    .slice(0, 40)
+    .map((event, index) => {
+      const x = points.length && minTime !== maxTime
+        ? pad + ((event.dateMs - minTime) / Math.max(1, maxTime - minTime)) * (plotWidth - pad * 2)
+        : points[index % Math.max(1, points.length)]?.x ?? plotWidth / 2;
+      return {
+        event,
+        index,
+        x: xsClampFinancialChartV1(x, pad, plotWidth - pad),
+        lane: index % 3,
+      };
+    });
+  const onPlotLayout = useCallback((event: LayoutChangeEvent) => {
+    const width = Math.round(event.nativeEvent.layout.width);
+    if (width > 0 && Math.abs(width - measuredWidth) > 2) setMeasuredWidth(width);
+  }, [measuredWidth]);
+  const selectNearestPoint = useCallback((x: number) => {
+    const point = xsClubEvolutionNearestChartPointV1(points, x);
+    if (point) onSelect(point.item);
+  }, [onSelect, points]);
+  const panResponder = useMemo(
+    () => PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.35,
+      onPanResponderGrant: (event) => selectNearestPoint(event.nativeEvent.locationX),
+      onPanResponderMove: (event) => selectNearestPoint(event.nativeEvent.locationX),
+      onPanResponderTerminationRequest: () => true,
+    }),
+    [selectNearestPoint]
+  );
+
+  if (!points.length) {
+    return (
+      <View style={styles.chart}>
+        <View style={styles.loadingBox}>
+          <Text style={styles.muted}>Aucune valeur exploitable pour la courbe.</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.chart}>
       <View style={styles.chartGrid} />
@@ -583,64 +772,96 @@ function ChartLine({
         </View>
         <Text style={styles.cardAction}>Valeur du club</Text>
       </View>
-      <View style={[styles.linePlot, { width: plotWidth, height: plotHeight }]}>
-        {points.slice(1).map((point, index) => {
-          const previous = points[index];
-          const dx = point.x - previous.x;
-          const dy = point.y - previous.y;
-          const length = Math.sqrt(dx * dx + dy * dy);
-          const angle = `${Math.atan2(dy, dx)}rad`;
-          return (
-            <LinearGradient
-              key={`segment-${point.item.id}-${index}`}
-              colors={["#FF3148", "#FF6A3D"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
+      <View style={styles.linePlotOuter} onLayout={onPlotLayout}>
+        <View style={[styles.linePlot, { height: plotHeight }]} {...panResponder.panHandlers}>
+          <View pointerEvents="none" style={styles.chartGlow} />
+          <Text pointerEvents="none" style={[styles.chartAxisValue, { top: pad - 12 }]}>{formatEuro(max)}</Text>
+          <Text pointerEvents="none" style={[styles.chartAxisValue, { top: plotHeight - pad - 6 }]}>{formatEuro(min)}</Text>
+          {curvePoints.map((point, index) => {
+            const next = curvePoints[index + 1];
+            const width = next ? Math.max(2, next.x - point.x + 2) : 3;
+            const height = Math.max(1, plotHeight - pad - point.y);
+            return (
+              <LinearGradient
+                key={`area-${index}-${Math.round(point.x)}-${Math.round(point.y)}`}
+                pointerEvents="none"
+                colors={["rgba(255,49,72,0.26)", "rgba(255,49,72,0.08)", "rgba(255,49,72,0)"]}
+                locations={[0, 0.48, 1]}
+                style={[
+                  styles.chartAreaColumn,
+                  {
+                    left: point.x,
+                    top: point.y,
+                    width,
+                    height,
+                  },
+                ]}
+              />
+            );
+          })}
+          {curvePoints.slice(1).map((point, index) => {
+            const previous = curvePoints[index];
+            const dx = point.x - previous.x;
+            const dy = point.y - previous.y;
+            const length = Math.sqrt(dx * dx + dy * dy);
+            if (length < 0.5) return null;
+            const angle = `${Math.atan2(dy, dx)}rad`;
+            return (
+              <LinearGradient
+                key={`curve-segment-${index}-${Math.round(point.x)}-${Math.round(point.y)}`}
+                pointerEvents="none"
+                colors={["#FF273E", "#FF5B4B"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={[
+                  styles.chartCurveSegment,
+                  {
+                    left: previous.x,
+                    top: previous.y - 1.5,
+                    width: length,
+                    transform: [{ rotate: angle }],
+                  },
+                ]}
+              />
+            );
+          })}
+          {selected ? <View pointerEvents="none" style={[styles.chartCursor, { left: selected.x }]} /> : null}
+          {financialDots.map(({ event, index, x, lane }) => (
+            <View
+              key={`financial-dot-${event.id}-${index}`}
+              pointerEvents="none"
               style={[
-                styles.lineSegment,
-                {
-                  left: previous.x,
-                  top: previous.y,
-                  width: length,
-                  transform: [{ rotate: angle }],
-                },
+                styles.financialDot,
+                event.kind === "buy" ? styles.financialDotBuy : event.kind === "sell" ? styles.financialDotSell : styles.financialDotReward,
+                { left: x - 4, top: plotHeight - 27 - lane * 10 },
               ]}
             />
-          );
-        })}
-        {points.map((point, index) => (
-          <Pressable
-            key={`point-${point.item.id}-${index}`}
-            accessibilityRole="button"
-            onPress={() => onSelect(point.item)}
-            style={[
-              styles.linePoint,
-              index === selectedIndex && styles.linePointSelected,
-              { left: point.x - 6, top: point.y - 6 },
-            ]}
-          />
-        ))}
-        {financialDots.map(({ event, index, x }) => (
-          <View
-            key={`financial-dot-${event.id}-${index}`}
-            style={[
-              styles.financialDot,
-              event.kind === "buy" ? styles.financialDotBuy : event.kind === "sell" ? styles.financialDotSell : styles.financialDotReward,
-              { left: x - 4, top: plotHeight - 24 },
-            ]}
-          />
-        ))}
-      </View>
-      <View style={styles.lineLabels}>
-        {Array.from(labelIndexes).sort((a, b) => a - b).map((index) => {
-          const item = history[index];
-          if (!item) return null;
-          return (
-            <Text key={`label-${item.id}-${index}`} style={styles.chartLabel} numberOfLines={1}>
-              {xsClubEvolutionDateLabelV1(item, includeTime)}
+          ))}
+          {points.map((point, index) => (
+            <Pressable
+              key={`point-${point.item.id}-${index}`}
+              accessibilityRole="button"
+              hitSlop={12}
+              onPress={() => onSelect(point.item)}
+              style={[
+                styles.linePoint,
+                index === selectedIndex && styles.linePointSelected,
+                { left: point.x - 6, top: point.y - 6 },
+              ]}
+            />
+          ))}
+        </View>
+        <View style={[styles.lineLabels, { height: 24 }]}>
+          {axisLabelPoints.map((point, index) => (
+            <Text
+              key={`label-${point.item.id}-${index}`}
+              style={[styles.chartLabel, styles.chartAxisLabel, { left: xsClampFinancialChartV1(point.x - 40, 0, Math.max(0, plotWidth - 80)) }]}
+              numberOfLines={1}
+            >
+              {xsClubEvolutionDateLabelV1(point.item, includeTime)}
             </Text>
-          );
-        })}
+          ))}
+        </View>
       </View>
     </View>
   );
@@ -867,7 +1088,7 @@ export default function ClubEvolutionScreen() {
           {loading ? (
             <View style={styles.loadingBox}>
               <ActivityIndicator color="#FF3148" />
-              <Text style={styles.muted}>Chargement de l'historique...</Text>
+              <Text style={styles.muted}>{"Chargement de l'historique..."}</Text>
             </View>
           ) : periodHistory.length ? (
             <>
@@ -878,11 +1099,11 @@ export default function ClubEvolutionScreen() {
                 onSelect={setSelectedSnapshot}
               />
               {periodWindow.fallbackUsed ? (
-                <Text style={styles.chartHint}>Pas encore assez d'historique sur cette période. Dernier point connu affiché.</Text>
+                <Text style={styles.chartHint}>{"Pas encore assez d'historique sur cette période. Dernier point connu affiché."}</Text>
               ) : periodWindow.sameAsFullRange && selectedPeriod !== "all" ? (
                 <Text style={styles.chartHint}>Même valeur affichée : seulement {periodHistory.length} snapshot(s) de valeur disponibles dans cette période.</Text>
               ) : history.length === 1 ? (
-                <Text style={styles.chartHint}>L'historique commence aujourd'hui. La courbe gagnera en précision après plusieurs snapshots.</Text>
+                <Text style={styles.chartHint}>{"L'historique commence aujourd'hui. La courbe gagnera en précision après plusieurs snapshots."}</Text>
               ) : null}
               <Text style={styles.chartHint}>Valeur marché : snapshots Xiascor. Achats/ventes/rewards : historique Sorare disponible.</Text>
               <View style={styles.financialTimelineBox}>
@@ -1086,19 +1307,26 @@ const styles = StyleSheet.create({
   periodButtonText: { color: "rgba(255,255,255,0.58)", fontSize: 12, fontWeight: "900" },
   periodButtonTextActive: { color: "#FFFFFF" },
   reportText: { color: "rgba(255,255,255,0.78)", fontSize: 14, fontWeight: "700", lineHeight: 21 },
-  chart: { minHeight: 230, borderRadius: 14, overflow: "hidden", backgroundColor: "rgba(0,0,0,0.30)", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" },
+  chart: { minHeight: 280, borderRadius: 14, overflow: "hidden", backgroundColor: "rgba(0,0,0,0.30)", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" },
   chartGrid: { ...StyleSheet.absoluteFillObject, borderTopWidth: 1, borderBottomWidth: 1, borderColor: "rgba(255,255,255,0.06)" },
   lineHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12, padding: 12, paddingBottom: 2 },
   chartValueLarge: { color: "#FFFFFF", fontSize: 24, fontWeight: "900" },
-  linePlot: { alignSelf: "center", marginTop: 4, position: "relative" },
+  linePlotOuter: { width: "100%", paddingHorizontal: 12, paddingBottom: 12 },
+  linePlot: { marginTop: 4, position: "relative", width: "100%" },
+  chartGlow: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(255,49,72,0.035)", borderRadius: 12 },
+  chartAreaColumn: { position: "absolute", borderTopLeftRadius: 999, borderTopRightRadius: 999 },
+  chartCurveSegment: { height: 3.5, borderRadius: 999, position: "absolute", shadowColor: "#FF3148", shadowOpacity: 0.42, shadowRadius: 7, elevation: 2 },
+  chartCursor: { position: "absolute", top: 14, bottom: 22, width: 1, backgroundColor: "rgba(255,255,255,0.28)" },
+  chartAxisValue: { position: "absolute", right: 4, color: "rgba(255,255,255,0.35)", fontSize: 10, fontWeight: "900" },
   lineSegment: { height: 3, borderRadius: 999, position: "absolute" },
-  linePoint: { width: 11, height: 11, borderRadius: 6, position: "absolute", backgroundColor: "#FF3148", borderWidth: 2, borderColor: "#140407" },
-  linePointSelected: { backgroundColor: "#FFFFFF", borderColor: "#FF3148", transform: [{ scale: 1.2 }] },
-  financialDot: { width: 8, height: 8, borderRadius: 4, position: "absolute", borderWidth: 1, borderColor: "rgba(255,255,255,0.78)" },
+  linePoint: { width: 12, height: 12, borderRadius: 6, position: "absolute", backgroundColor: "#FF3148", borderWidth: 2, borderColor: "#140407", shadowColor: "#FF3148", shadowOpacity: 0.3, shadowRadius: 5, elevation: 2 },
+  linePointSelected: { backgroundColor: "#FFFFFF", borderColor: "#FF3148", transform: [{ scale: 1.32 }], shadowOpacity: 0.76, shadowRadius: 9, elevation: 4 },
+  financialDot: { width: 8, height: 8, borderRadius: 4, position: "absolute", borderWidth: 1, borderColor: "rgba(255,255,255,0.78)", shadowColor: "#000000", shadowOpacity: 0.24, shadowRadius: 3, elevation: 2 },
   financialDotBuy: { backgroundColor: "#FF4D61" },
   financialDotSell: { backgroundColor: "#2FE66B" },
   financialDotReward: { backgroundColor: "#F7B733" },
-  lineLabels: { flexDirection: "row", justifyContent: "space-between", gap: 6, paddingHorizontal: 12, paddingBottom: 12 },
+  lineLabels: { position: "relative", marginTop: 4 },
+  chartAxisLabel: { position: "absolute", width: 80, textAlign: "center" },
   chartRows: { flex: 1, flexDirection: "row", alignItems: "flex-end", gap: 8, padding: 12 },
   chartColumn: { flex: 1, alignItems: "center", gap: 6, minWidth: 54 },
   chartValue: { color: "rgba(255,255,255,0.72)", fontSize: 10, fontWeight: "800" },
