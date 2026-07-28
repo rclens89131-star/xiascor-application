@@ -8,6 +8,7 @@
 /* XS_CLUB_EVOLUTION_TRANSACTIONS_OVERLAY_V1 */
 /* XS_CLUB_EVOLUTION_RANGE_GRAPH_FIX_V1 */
 /* XS_CLUB_EVOLUTION_FINANCIAL_CHART_V1 */
+/* XS_CLUB_EVOLUTION_GRAPH_TIMELINE_SAFE_FIX_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -51,6 +52,7 @@ type ClubRewardHistoryItem = {
   competition?: string | null;
   division?: string | null;
   rewardType?: string | null;
+  rewardTotalEur?: number | null;
   rewardTotalText?: string | null;
   rewardCashText?: string | null;
   rewardEthText?: string | null;
@@ -64,6 +66,7 @@ type ClubTransactionHistoryItem = {
   transactionType?: string | null;
   playerName?: string | null;
   cardSlug?: string | null;
+  amountEur?: number | null;
   amountText?: string | null;
   transactionDate?: string | null;
 };
@@ -77,6 +80,9 @@ type ClubFinancialTimelineEvent = {
   value: string;
   detail: string;
   positive: boolean;
+  amountEur?: number | null;
+  count?: number;
+  members?: ClubFinancialTimelineEvent[];
 };
 
 type ClubEvolutionValueEvent = {
@@ -109,6 +115,7 @@ const XS_CLUB_EVOLUTION_PERIODS_V1: Array<{ key: ClubEvolutionPeriodKey; label: 
 ];
 
 const XS_CLUB_EVOLUTION_MAX_CHART_SNAPSHOTS_V1 = 90;
+const XS_CLUB_EVOLUTION_GRAPH_GAP_DAYS_V1 = 14;
 
 function normalizeBackendHistoryItemV1(item: any): ClubValueHistorySnapshot {
   return {
@@ -157,6 +164,22 @@ function formatSignedEuro(value: number): string {
   const rounded = Math.round(value);
   const sign = rounded > 0 ? "+" : "";
   return `${sign}${rounded.toLocaleString("fr-FR")} €`;
+}
+
+function formatPreciseEuroV1(value: number): string {
+  if (!Number.isFinite(value)) return "—";
+  const rounded = Math.round(value * 100) / 100;
+  const hasCents = Math.abs(rounded - Math.round(rounded)) > 0.001;
+  return `${rounded.toLocaleString("fr-FR", {
+    minimumFractionDigits: hasCents ? 2 : 0,
+    maximumFractionDigits: 2,
+  })} €`;
+}
+
+function formatSignedPreciseEuroV1(value: number): string {
+  if (!Number.isFinite(value)) return "—";
+  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+  return `${sign}${formatPreciseEuroV1(Math.abs(value))}`;
 }
 
 function formatSnapshotDate(value: string): string {
@@ -230,7 +253,7 @@ function xsClubEvolutionFilterHistoryByPeriodV1(
   const period = XS_CLUB_EVOLUTION_PERIODS_V1.find((item) => item.key === periodKey);
   if (!period?.days) return { items: history, fallbackUsed: false, noSnapshotsInRange: false, sameAsFullRange: false };
 
-  const cutoff = xsClubEvolutionPeriodCutoffV1(history, events, periodKey);
+  const cutoff = xsClubEvolutionPeriodCutoffV1(history, [], periodKey);
   if (!cutoff) return { items: history, fallbackUsed: false, noSnapshotsInRange: false, sameAsFullRange: false };
 
   const filtered = history.filter((item) => {
@@ -249,7 +272,7 @@ function xsClubEvolutionFilterHistoryByPeriodV1(
   if (events.some((event) => event.dateMs >= cutoff.getTime())) {
     return { items: [], fallbackUsed: false, noSnapshotsInRange: true, sameAsFullRange: false };
   }
-  return { items: history.slice(-1), fallbackUsed: true, noSnapshotsInRange: false, sameAsFullRange: false };
+  return { items: [], fallbackUsed: false, noSnapshotsInRange: false, sameAsFullRange: false };
 }
 
 function xsClubEvolutionDateFromStringV1(value?: string | null): Date | null {
@@ -430,8 +453,12 @@ function xsClubEvolutionBuildChartPointsV1(
   pad: number
 ): { points: ClubEvolutionChartPointV1[]; min: number; max: number; minTime: number; maxTime: number } {
   const values = history.map((item) => item.clubValueEur).filter((value) => Number.isFinite(value));
-  const min = values.length ? Math.min(...values) : 0;
-  const max = values.length ? Math.max(...values, 1) : 1;
+  const rawMin = values.length ? Math.min(...values) : 0;
+  const rawMax = values.length ? Math.max(...values, 1) : 1;
+  const rawRange = rawMax - rawMin;
+  const margin = rawRange > 0 ? Math.max(1, rawRange * 0.12) : 1;
+  const min = rawRange > 0 ? rawMin - margin : rawMin;
+  const max = rawRange > 0 ? rawMax + margin : rawMax;
   const valueRange = Math.max(1, max - min);
   const dated = history.map((item) => xsClubEvolutionSnapshotDateV1(item)?.getTime() ?? null);
   const validTimes = dated.filter((time): time is number => Number.isFinite(time));
@@ -449,7 +476,9 @@ function xsClubEvolutionBuildChartPointsV1(
     const rawX = canUseTimeScale && dateMs !== null
       ? xMin + ((dateMs - minTime) / timeRange) * innerWidth
       : fallbackX;
-    const y = pad + (1 - ((item.clubValueEur - min) / valueRange)) * (plotHeight - pad * 2);
+    const y = rawRange <= 0
+      ? plotHeight / 2
+      : pad + (1 - ((item.clubValueEur - min) / valueRange)) * (plotHeight - pad * 2);
     return {
       item,
       key: xsClubEvolutionSnapshotKeyV1(item),
@@ -463,49 +492,37 @@ function xsClubEvolutionBuildChartPointsV1(
   return { points, min, max, minTime, maxTime };
 }
 
-function xsClubEvolutionBuildSmoothCurveV1(points: ClubEvolutionChartPointV1[]): Array<{ x: number; y: number }> {
-  if (points.length <= 1) return points.map((point) => ({ x: point.x, y: point.y }));
-  const sorted = points.slice().sort((a, b) => a.x - b.x || a.index - b.index);
-  const slopes = sorted.map((point, index) => {
-    const previous = sorted[index - 1];
-    const next = sorted[index + 1];
-    if (!previous && next) return (next.y - point.y) / Math.max(1, next.x - point.x);
-    if (previous && !next) return (point.y - previous.y) / Math.max(1, point.x - previous.x);
-    if (!previous || !next) return 0;
-    const left = (point.y - previous.y) / Math.max(1, point.x - previous.x);
-    const right = (next.y - point.y) / Math.max(1, next.x - point.x);
-    if (left * right <= 0) return 0;
-    const magnitude = Math.min(Math.abs(left), Math.abs(right));
-    return Math.sign(left + right) * magnitude;
-  });
-
-  const curve: Array<{ x: number; y: number }> = [{ x: sorted[0].x, y: sorted[0].y }];
-  for (let index = 0; index < sorted.length - 1; index += 1) {
-    const start = sorted[index];
-    const end = sorted[index + 1];
-    const dx = Math.max(1, end.x - start.x);
-    const samples = Math.max(2, Math.min(14, Math.ceil(dx / 14)));
-    for (let step = 1; step <= samples; step += 1) {
-      const t = step / samples;
-      const t2 = t * t;
-      const t3 = t2 * t;
-      const h00 = 2 * t3 - 3 * t2 + 1;
-      const h10 = t3 - 2 * t2 + t;
-      const h01 = -2 * t3 + 3 * t2;
-      const h11 = t3 - t2;
-      const rawY = h00 * start.y + h10 * dx * slopes[index] + h01 * end.y + h11 * dx * slopes[index + 1];
-      curve.push({
-        x: start.x + dx * t,
-        y: xsClampFinancialChartV1(rawY, Math.min(start.y, end.y), Math.max(start.y, end.y)),
-      });
-    }
-  }
-  return curve;
-}
-
 function xsClubEvolutionNearestChartPointV1(points: ClubEvolutionChartPointV1[], x: number): ClubEvolutionChartPointV1 | null {
   if (!points.length || !Number.isFinite(x)) return null;
   return points.reduce((best, point) => (Math.abs(point.x - x) < Math.abs(best.x - x) ? point : best), points[0]);
+}
+
+function xsClubEvolutionShouldConnectChartPointsV1(previous: ClubEvolutionChartPointV1, next: ClubEvolutionChartPointV1): boolean {
+  if (!previous.dateMs || !next.dateMs) return true;
+  const gapMs = Math.abs(next.dateMs - previous.dateMs);
+  return gapMs <= XS_CLUB_EVOLUTION_GRAPH_GAP_DAYS_V1 * 24 * 60 * 60 * 1000;
+}
+
+function xsClubEvolutionConnectedSegmentsV1(points: ClubEvolutionChartPointV1[]): Array<{ previous: ClubEvolutionChartPointV1; next: ClubEvolutionChartPointV1 }> {
+  const segments: Array<{ previous: ClubEvolutionChartPointV1; next: ClubEvolutionChartPointV1 }> = [];
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1];
+    const next = points[index];
+    if (xsClubEvolutionShouldConnectChartPointsV1(previous, next)) segments.push({ previous, next });
+  }
+  return segments;
+}
+
+function xsClubEvolutionGapMarkersV1(points: ClubEvolutionChartPointV1[]): Array<{ id: string; x: number }> {
+  const gaps: Array<{ id: string; x: number }> = [];
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1];
+    const next = points[index];
+    if (!xsClubEvolutionShouldConnectChartPointsV1(previous, next)) {
+      gaps.push({ id: `${previous.key}-${next.key}`, x: (previous.x + next.x) / 2 });
+    }
+  }
+  return gaps;
 }
 
 async function xsEvolutionAuditFetchJsonV1<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -658,6 +675,7 @@ async function readRewardEventsV1(deviceId: string | null): Promise<ClubRewardHi
     competition: item?.competition ? String(item.competition) : null,
     division: item?.division ? String(item.division) : null,
     rewardType: item?.rewardType ? String(item.rewardType) : null,
+    rewardTotalEur: metricNumber(item?.rewardTotalEur),
     rewardTotalText: item?.rewardTotalText ? String(item.rewardTotalText) : null,
     rewardCashText: item?.rewardCashText ? String(item.rewardCashText) : null,
     rewardEthText: item?.rewardEthText ? String(item.rewardEthText) : null,
@@ -678,6 +696,7 @@ async function readTransactionEventsV1(deviceId: string | null): Promise<ClubTra
     transactionType: item?.transactionType ? String(item.transactionType) : null,
     playerName: item?.playerName ? String(item.playerName) : null,
     cardSlug: item?.cardSlug ? String(item.cardSlug) : null,
+    amountEur: metricNumber(item?.amountEur),
     amountText: item?.amountText ? String(item.amountText) : null,
     transactionDate: item?.transactionDate ? String(item.transactionDate) : null,
   }));
@@ -705,7 +724,8 @@ function ChartLine({
     () => xsClubEvolutionBuildChartPointsV1(chartHistory, plotWidth, plotHeight, pad),
     [chartHistory, plotWidth]
   );
-  const curvePoints = useMemo(() => xsClubEvolutionBuildSmoothCurveV1(points), [points]);
+  const connectedSegments = useMemo(() => xsClubEvolutionConnectedSegmentsV1(points), [points]);
+  const gapMarkers = useMemo(() => xsClubEvolutionGapMarkersV1(points), [points]);
   const selectedIndexFromKey = selectedKey
     ? points.findIndex((point) => point.key === selectedKey)
     : -1;
@@ -777,21 +797,20 @@ function ChartLine({
           <View pointerEvents="none" style={styles.chartGlow} />
           <Text pointerEvents="none" style={[styles.chartAxisValue, { top: pad - 12 }]}>{formatEuro(max)}</Text>
           <Text pointerEvents="none" style={[styles.chartAxisValue, { top: plotHeight - pad - 6 }]}>{formatEuro(min)}</Text>
-          {curvePoints.map((point, index) => {
-            const next = curvePoints[index + 1];
-            const width = next ? Math.max(2, next.x - point.x + 2) : 3;
-            const height = Math.max(1, plotHeight - pad - point.y);
+          {connectedSegments.map(({ previous, next }, index) => {
+            const width = Math.max(2, next.x - previous.x + 2);
+            const height = Math.max(1, plotHeight - pad - Math.min(previous.y, next.y));
             return (
               <LinearGradient
-                key={`area-${index}-${Math.round(point.x)}-${Math.round(point.y)}`}
+                key={`area-${index}-${previous.key}-${next.key}`}
                 pointerEvents="none"
                 colors={["rgba(255,49,72,0.26)", "rgba(255,49,72,0.08)", "rgba(255,49,72,0)"]}
                 locations={[0, 0.48, 1]}
                 style={[
                   styles.chartAreaColumn,
                   {
-                    left: point.x,
-                    top: point.y,
+                    left: previous.x,
+                    top: Math.min(previous.y, next.y),
                     width,
                     height,
                   },
@@ -799,16 +818,15 @@ function ChartLine({
               />
             );
           })}
-          {curvePoints.slice(1).map((point, index) => {
-            const previous = curvePoints[index];
-            const dx = point.x - previous.x;
-            const dy = point.y - previous.y;
+          {connectedSegments.map(({ previous, next }, index) => {
+            const dx = next.x - previous.x;
+            const dy = next.y - previous.y;
             const length = Math.sqrt(dx * dx + dy * dy);
             if (length < 0.5) return null;
             const angle = `${Math.atan2(dy, dx)}rad`;
             return (
               <LinearGradient
-                key={`curve-segment-${index}-${Math.round(point.x)}-${Math.round(point.y)}`}
+                key={`curve-segment-${index}-${previous.key}-${next.key}`}
                 pointerEvents="none"
                 colors={["#FF273E", "#FF5B4B"]}
                 start={{ x: 0, y: 0 }}
@@ -825,6 +843,11 @@ function ChartLine({
               />
             );
           })}
+          {gapMarkers.map((gap) => (
+            <View key={`gap-${gap.id}`} pointerEvents="none" style={[styles.chartGapMarker, { left: gap.x - 16 }]}>
+              <Text style={styles.chartGapText}>•••</Text>
+            </View>
+          ))}
           {selected ? <View pointerEvents="none" style={[styles.chartCursor, { left: selected.x }]} /> : null}
           {financialDots.map(({ event, index, x, lane }) => (
             <View
@@ -878,10 +901,15 @@ function formatSlugLabel(value?: string | null): string {
 }
 
 function rewardEventTitleV1(item: ClubRewardHistoryItem): string {
-  return item.gameWeekLabel || item.competition || item.rewardType || "Game Week";
+  if (item.gameWeekLabel) return item.gameWeekLabel;
+  if (item.competition) return item.competition;
+  if (item.rewardType === "TokenMonetaryReward" || item.rewardType === "REWARD") return "Récompense Sorare";
+  if (item.rewardType) return "Récompense Sorare";
+  return "Récompense Sorare";
 }
 
 function rewardEventValueV1(item: ClubRewardHistoryItem): string {
+  if (item.rewardTotalEur !== null && item.rewardTotalEur !== undefined) return formatPreciseEuroV1(item.rewardTotalEur);
   if (item.rewardTotalText && item.rewardTotalText !== "À connecter") return item.rewardTotalText;
   if (item.rewardCardPlayerName) return `Carte gagnée : ${item.rewardCardPlayerName}`;
   if (item.rewardCashText && item.rewardCashText !== "À connecter") return item.rewardCashText;
@@ -891,13 +919,71 @@ function rewardEventValueV1(item: ClubRewardHistoryItem): string {
 
 function transactionEventTitleV1(item: ClubTransactionHistoryItem): string {
   const name = item.playerName || item.cardSlug || "Carte Sorare";
-  return item.transactionType === "sell" ? `Vente ${name}` : `Achat ${name}`;
+  if (item.transactionType === "sell") return `Vente ${name}`;
+  if (item.transactionType === "buy") return `Achat ${name}`;
+  return `Mouvement Sorare ${name}`;
 }
 
 function transactionEventValueV1(item: ClubTransactionHistoryItem): string {
+  if (item.amountEur !== null && item.amountEur !== undefined) {
+    const sign = item.transactionType === "sell" ? 1 : item.transactionType === "buy" ? -1 : 0;
+    return sign ? formatSignedPreciseEuroV1(sign * item.amountEur) : formatPreciseEuroV1(item.amountEur);
+  }
   const value = item.amountText || "À connecter";
   if (value === "À connecter") return value;
   return item.transactionType === "sell" ? `+${value}` : `-${value}`;
+}
+
+function xsClubEvolutionFinancialEventDetailV1(event: ClubFinancialTimelineEvent): string {
+  if (event.kind === "buy") return event.count && event.count > 1 ? `${event.count} achats Sorare regroupés` : "Achat Sorare";
+  if (event.kind === "sell") return event.count && event.count > 1 ? `${event.count} ventes Sorare regroupées` : "Vente Sorare";
+  if (event.kind === "reward") return event.count && event.count > 1 ? `${event.count} récompenses Sorare regroupées` : "Récompense Sorare";
+  return event.detail;
+}
+
+function xsClubEvolutionGroupTimelineEventsV1(events: ClubFinancialTimelineEvent[]): ClubFinancialTimelineEvent[] {
+  const groups = new Map<string, ClubFinancialTimelineEvent[]>();
+  const tenMinutesMs = 10 * 60 * 1000;
+  events.forEach((event) => {
+    if (!Number.isFinite(event.dateMs)) return;
+    const date = new Date(event.dateMs);
+    const day = date.toISOString().slice(0, 10);
+    const bucket = Math.floor(event.dateMs / tenMinutesMs);
+    const key = `${event.kind}-${day}-${bucket}`;
+    const current = groups.get(key) || [];
+    current.push(event);
+    groups.set(key, current);
+  });
+
+  return Array.from(groups.values())
+    .map((items) => {
+      const sorted = items.slice().sort((a, b) => b.dateMs - a.dateMs);
+      const first = sorted[0];
+      if (!first || sorted.length <= 1) return first;
+      const amounts = sorted
+        .map((item) => item.amountEur)
+        .filter((value): value is number => value !== null && value !== undefined && Number.isFinite(value));
+      const total = amounts.length ? amounts.reduce((sum, value) => sum + value, 0) : null;
+      const signedTotal = total === null ? null : first.kind === "buy" ? -total : total;
+      const title = first.kind === "reward"
+        ? `${sorted.length} récompenses Sorare`
+        : first.kind === "sell"
+          ? `${sorted.length} ventes Sorare`
+          : `${sorted.length} achats Sorare`;
+      return {
+        ...first,
+        id: `group-${first.kind}-${first.dateMs}-${sorted.length}`,
+        title,
+        detail: xsClubEvolutionFinancialEventDetailV1({ ...first, count: sorted.length }),
+        value: signedTotal === null ? first.value : formatSignedPreciseEuroV1(signedTotal),
+        positive: first.kind !== "buy",
+        amountEur: total,
+        count: sorted.length,
+        members: sorted,
+      };
+    })
+    .filter((event): event is ClubFinancialTimelineEvent => !!event)
+    .sort((a, b) => b.dateMs - a.dateMs);
 }
 
 function xsClubEvolutionBuildFinancialEventsV1(
@@ -917,6 +1003,7 @@ function xsClubEvolutionBuildFinancialEventsV1(
       value: transactionEventValueV1(item),
       detail: isSell ? "Vente Sorare" : "Achat Sorare",
       positive: isSell,
+      amountEur: item.amountEur,
     }];
   });
 
@@ -930,8 +1017,9 @@ function xsClubEvolutionBuildFinancialEventsV1(
       dateMs: date.getTime(),
       title: rewardEventTitleV1(item),
       value: rewardEventValueV1(item),
-      detail: item.competition || item.division || item.rewardType || "Récompense Sorare",
+      detail: item.competition || item.division || "Récompense Sorare",
       positive: true,
+      amountEur: item.rewardTotalEur,
     }];
   });
 
@@ -988,6 +1076,10 @@ export default function ClubEvolutionScreen() {
     () => xsClubEvolutionFilterFinancialEventsByPeriodV1(financialTimelineEvents, history, selectedPeriod),
     [financialTimelineEvents, history, selectedPeriod]
   );
+  const groupedPeriodFinancialEvents = useMemo(
+    () => xsClubEvolutionGroupTimelineEventsV1(periodFinancialEvents),
+    [periodFinancialEvents]
+  );
   const defaultSelectedSnapshot = periodHistory[periodHistory.length - 1] || null;
   const defaultSelectedKey = defaultSelectedSnapshot ? xsClubEvolutionSnapshotKeyV1(defaultSelectedSnapshot) : "";
 
@@ -1002,12 +1094,12 @@ export default function ClubEvolutionScreen() {
     : defaultSelectedSnapshot;
   const activeSelectedKey = activeSelectedSnapshot ? xsClubEvolutionSnapshotKeyV1(activeSelectedSnapshot) : null;
   const selectedPointDelta = useMemo(
-    () => xsClubEvolutionDeltaForSelectedPointV1(history, activeSelectedSnapshot),
-    [activeSelectedSnapshot, history]
+    () => xsClubEvolutionDeltaForSelectedPointV1(periodHistory, activeSelectedSnapshot),
+    [activeSelectedSnapshot, periodHistory]
   );
   const selectedValueEvents = useMemo(
-    () => xsClubEvolutionEventsForSelectedPointV1(history, activeSelectedSnapshot),
-    [activeSelectedSnapshot, history]
+    () => xsClubEvolutionEventsForSelectedPointV1(periodHistory, activeSelectedSnapshot),
+    [activeSelectedSnapshot, periodHistory]
   );
 
   const summary = useMemo(() => {
@@ -1094,7 +1186,7 @@ export default function ClubEvolutionScreen() {
             <>
               <ChartLine
                 history={periodHistory}
-                financialEvents={periodFinancialEvents}
+                financialEvents={groupedPeriodFinancialEvents}
                 selectedKey={activeSelectedKey}
                 onSelect={setSelectedSnapshot}
               />
@@ -1111,8 +1203,8 @@ export default function ClubEvolutionScreen() {
                   <Text style={styles.financialTimelineTitle}>Timeline Sorare</Text>
                   <Text style={styles.financialTimelineCount}>{periodFinancialEvents.length} événement(s)</Text>
                 </View>
-                {periodFinancialEvents.length ? (
-                  periodFinancialEvents.slice(0, 6).map((event) => (
+                {groupedPeriodFinancialEvents.length ? (
+                  groupedPeriodFinancialEvents.slice(0, 6).map((event) => (
                     <View key={`chart-event-${event.id}`} style={styles.financialTimelineRow}>
                       <View style={[
                         styles.financialTimelineIcon,
@@ -1127,7 +1219,7 @@ export default function ClubEvolutionScreen() {
                       <View style={styles.financialTimelineBody}>
                         <Text style={styles.financialTimelineDate}>{xsClubEvolutionTimelineDateLabelV1(event.date)}</Text>
                         <Text style={styles.financialTimelineName} numberOfLines={1}>{event.title}</Text>
-                        <Text style={styles.muted}>{event.detail}</Text>
+                        <Text style={styles.muted}>{xsClubEvolutionFinancialEventDetailV1(event)}</Text>
                       </View>
                       <Text style={event.positive ? styles.positive : styles.negative}>{event.value}</Text>
                     </View>
@@ -1232,12 +1324,12 @@ export default function ClubEvolutionScreen() {
             <Text style={styles.cardTitle}>Événements financiers</Text>
             <Ionicons name="trophy" size={18} color="#FF3148" />
           </View>
-          {periodFinancialEvents.length ? (
-            periodFinancialEvents.slice(0, 12).map((event) => (
+          {groupedPeriodFinancialEvents.length ? (
+            groupedPeriodFinancialEvents.slice(0, 12).map((event) => (
               <View key={`financial-row-${event.id}`} style={styles.historyRow}>
                 <View>
                   <Text style={styles.historyLabel}>{event.title}</Text>
-                  <Text style={styles.muted}>{xsClubEvolutionTimelineDateLabelV1(event.date)} · {event.detail}</Text>
+                  <Text style={styles.muted}>{xsClubEvolutionTimelineDateLabelV1(event.date)} · {xsClubEvolutionFinancialEventDetailV1(event)}</Text>
                 </View>
                 <Text style={event.positive ? styles.positive : styles.negative}>{event.value}</Text>
               </View>
@@ -1316,6 +1408,8 @@ const styles = StyleSheet.create({
   chartGlow: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(255,49,72,0.035)", borderRadius: 12 },
   chartAreaColumn: { position: "absolute", borderTopLeftRadius: 999, borderTopRightRadius: 999 },
   chartCurveSegment: { height: 3.5, borderRadius: 999, position: "absolute", shadowColor: "#FF3148", shadowOpacity: 0.42, shadowRadius: 7, elevation: 2 },
+  chartGapMarker: { position: "absolute", bottom: 20, width: 32, minHeight: 16, alignItems: "center", justifyContent: "center", borderRadius: 999, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: 1, borderColor: "rgba(255,255,255,0.10)" },
+  chartGapText: { color: "rgba(255,255,255,0.36)", fontSize: 11, fontWeight: "900", letterSpacing: 0 },
   chartCursor: { position: "absolute", top: 14, bottom: 22, width: 1, backgroundColor: "rgba(255,255,255,0.28)" },
   chartAxisValue: { position: "absolute", right: 4, color: "rgba(255,255,255,0.35)", fontSize: 10, fontWeight: "900" },
   lineSegment: { height: 3, borderRadius: 999, position: "absolute" },
