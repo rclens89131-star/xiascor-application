@@ -11,6 +11,7 @@
 /* XS_CLUB_EVOLUTION_GRAPH_TIMELINE_SAFE_FIX_V1 */
 /* XS_CLUB_EVOLUTION_COMPLETE_VALUE_HISTORY_SAFE_FIX_V1 */
 /* XS_CLUB_EVOLUTION_GRAPH_REDESIGN_SAFE_V1 */
+/* XS_CLUB_EVOLUTION_BALANCED_X_SPACING_SAFE_FIX_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -510,18 +511,14 @@ function xsClubEvolutionBuildChartPointsV1(
   const validTimes = dated.filter((time): time is number => Number.isFinite(time));
   const minTime = validTimes.length ? Math.min(...validTimes) : 0;
   const maxTime = validTimes.length ? Math.max(...validTimes) : minTime;
-  const timeRange = Math.max(1, maxTime - minTime);
-  const canUseTimeScale = validTimes.length >= 2 && maxTime > minTime;
-  const xMin = pad;
-  const xMax = Math.max(pad, plotWidth - pad);
+  const xPad = xsClampFinancialChartV1(plotWidth * 0.055, 18, 24);
+  const xMin = xPad;
+  const xMax = Math.max(xPad, plotWidth - xPad);
   const innerWidth = Math.max(1, xMax - xMin);
 
   const points = history.map((item, index) => {
     const dateMs = dated[index];
-    const fallbackX = history.length <= 1 ? plotWidth / 2 : xMin + (innerWidth / (history.length - 1)) * index;
-    const rawX = canUseTimeScale && dateMs !== null
-      ? xMin + ((dateMs - minTime) / timeRange) * innerWidth
-      : fallbackX;
+    const rawX = history.length <= 1 ? plotWidth / 2 : xMin + (innerWidth / (history.length - 1)) * index;
     const y = rawRange <= 0
       ? plotHeight / 2
       : pad + (1 - ((item.clubValueEur - min) / valueRange)) * (plotHeight - pad * 2);
@@ -536,6 +533,34 @@ function xsClubEvolutionBuildChartPointsV1(
   });
 
   return { points, min, max, minTime, maxTime };
+}
+
+function xsClubEvolutionEventXForBalancedChartV1(
+  eventMs: number,
+  points: ClubEvolutionChartPointV1[]
+): number | null {
+  const datedPoints = points
+    .filter((point) => point.dateMs !== null && Number.isFinite(point.dateMs))
+    .sort((a, b) => (a.dateMs as number) - (b.dateMs as number));
+  if (!datedPoints.length || !Number.isFinite(eventMs)) return null;
+  const first = datedPoints[0];
+  const last = datedPoints[datedPoints.length - 1];
+  if (eventMs <= (first.dateMs as number)) return first.x;
+  if (eventMs >= (last.dateMs as number)) return last.x;
+
+  for (let index = 1; index < datedPoints.length; index += 1) {
+    const previous = datedPoints[index - 1];
+    const next = datedPoints[index];
+    const previousTime = previous.dateMs as number;
+    const nextTime = next.dateMs as number;
+    if (eventMs <= nextTime) {
+      const ratio = nextTime === previousTime
+        ? 0
+        : xsClampFinancialChartV1((eventMs - previousTime) / Math.max(1, nextTime - previousTime), 0, 1);
+      return previous.x + (next.x - previous.x) * ratio;
+    }
+  }
+  return last.x;
 }
 
 function xsClubEvolutionNearestChartPointV1(points: ClubEvolutionChartPointV1[], x: number): ClubEvolutionChartPointV1 | null {
@@ -797,13 +822,13 @@ function ChartLine({
     })
     .slice(0, 40)
     .map((event, index) => {
-      const x = points.length && minTime !== maxTime
-        ? pad + ((event.dateMs - minTime) / Math.max(1, maxTime - minTime)) * (plotWidth - pad * 2)
-        : points[index % Math.max(1, points.length)]?.x ?? plotWidth / 2;
+      const x = xsClubEvolutionEventXForBalancedChartV1(event.dateMs, points)
+        ?? points[index % Math.max(1, points.length)]?.x
+        ?? plotWidth / 2;
       return {
         event,
         index,
-        x: xsClampFinancialChartV1(x, pad, plotWidth - pad),
+        x: xsClampFinancialChartV1(x, 0, plotWidth),
         lane: index % 3,
       };
     });
