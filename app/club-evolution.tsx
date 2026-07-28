@@ -9,6 +9,7 @@
 /* XS_CLUB_EVOLUTION_RANGE_GRAPH_FIX_V1 */
 /* XS_CLUB_EVOLUTION_FINANCIAL_CHART_V1 */
 /* XS_CLUB_EVOLUTION_GRAPH_TIMELINE_SAFE_FIX_V1 */
+/* XS_CLUB_EVOLUTION_COMPLETE_VALUE_HISTORY_SAFE_FIX_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -213,6 +214,12 @@ function xsClubEvolutionDateLabelV1(item: ClubValueHistorySnapshot, includeTime:
   return `${datePart} ${timePart}`;
 }
 
+function xsClubEvolutionFullDateLabelV1(item: ClubValueHistorySnapshot): string {
+  const date = xsClubEvolutionSnapshotDateV1(item);
+  if (!date) return "—";
+  return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
 function xsClubEvolutionSecondaryLabelV1(item: ClubValueHistorySnapshot): string | null {
   if (!item.label || /^session\s+\d+$/i.test(item.label)) return null;
   return item.label;
@@ -240,6 +247,42 @@ function xsClubEvolutionSourceLabelV1(source?: string | null): string {
   if (source === "auto_snapshot") return "Snapshot automatique";
   if (source === "local_snapshot") return "Snapshot local";
   return "Snapshot de valeur";
+}
+
+function xsClubEvolutionFiniteMetricV1(value?: number | null): number | null {
+  return value !== null && value !== undefined && Number.isFinite(value) ? value : null;
+}
+
+function xsClubEvolutionSnapshotCompleteV1(item: ClubValueHistorySnapshot): boolean {
+  const unpricedCards = xsClubEvolutionFiniteMetricV1(item.unpricedCards);
+  if (unpricedCards !== null) return unpricedCards <= 0;
+
+  const pricedCards = xsClubEvolutionFiniteMetricV1(item.pricedCards);
+  const cardCount = xsClubEvolutionFiniteMetricV1(item.cardCount);
+  if (pricedCards !== null && cardCount !== null && cardCount > 0) return pricedCards >= cardCount;
+
+  const coveragePct = xsClubEvolutionFiniteMetricV1(item.coveragePct);
+  if (coveragePct !== null) return coveragePct >= 100;
+
+  return false;
+}
+
+function xsClubEvolutionCompleteValueHistoryV1(history: ClubValueHistorySnapshot[]): ClubValueHistorySnapshot[] {
+  return xsClubEvolutionChartHistoryV1(history).filter(xsClubEvolutionSnapshotCompleteV1);
+}
+
+function xsClubEvolutionIncompleteInitializationCountV1(
+  history: ClubValueHistorySnapshot[],
+  completeHistory: ClubValueHistorySnapshot[]
+): number {
+  const firstComplete = completeHistory[0];
+  const firstCompleteDate = firstComplete ? xsClubEvolutionSnapshotDateV1(firstComplete) : null;
+  if (!firstCompleteDate) return 0;
+  const firstCompleteTime = firstCompleteDate.getTime();
+  return history.filter((item) => {
+    const date = xsClubEvolutionSnapshotDateV1(item);
+    return !!date && date.getTime() < firstCompleteTime && !xsClubEvolutionSnapshotCompleteV1(item);
+  }).length;
 }
 
 function xsClubEvolutionFilterHistoryByPeriodV1(
@@ -456,9 +499,11 @@ function xsClubEvolutionBuildChartPointsV1(
   const rawMin = values.length ? Math.min(...values) : 0;
   const rawMax = values.length ? Math.max(...values, 1) : 1;
   const rawRange = rawMax - rawMin;
-  const margin = rawRange > 0 ? Math.max(1, rawRange * 0.12) : 1;
-  const min = rawRange > 0 ? rawMin - margin : rawMin;
-  const max = rawRange > 0 ? rawMax + margin : rawMax;
+  const padding = rawRange > 0
+    ? xsClampFinancialChartV1(rawRange * 0.08, 0.5, 5)
+    : Math.max(1, Math.abs(rawMin) * 0.01);
+  const min = Math.max(0, rawMin - padding);
+  const max = rawMax + padding;
   const valueRange = Math.max(1, max - min);
   const dated = history.map((item) => xsClubEvolutionSnapshotDateV1(item)?.getTime() ?? null);
   const validTimes = dated.filter((time): time is number => Number.isFinite(time));
@@ -856,7 +901,7 @@ function ChartLine({
               style={[
                 styles.financialDot,
                 event.kind === "buy" ? styles.financialDotBuy : event.kind === "sell" ? styles.financialDotSell : styles.financialDotReward,
-                { left: x - 4, top: plotHeight - 27 - lane * 10 },
+                { left: x - 3, top: plotHeight - 24 - lane * 9 },
               ]}
             />
           ))}
@@ -1067,14 +1112,24 @@ export default function ClubEvolutionScreen() {
     () => xsClubEvolutionBuildFinancialEventsV1(transactionEvents, rewardEvents),
     [rewardEvents, transactionEvents]
   );
+  const completeValueHistory = useMemo(
+    () => xsClubEvolutionCompleteValueHistoryV1(history),
+    [history]
+  );
+  const incompleteInitializationCount = useMemo(
+    () => xsClubEvolutionIncompleteInitializationCountV1(history, completeValueHistory),
+    [completeValueHistory, history]
+  );
+  const firstCompleteSnapshot = completeValueHistory[0] || null;
+  const firstCompleteDateLabel = firstCompleteSnapshot ? xsClubEvolutionFullDateLabelV1(firstCompleteSnapshot) : null;
   const periodWindow = useMemo(
-    () => xsClubEvolutionFilterHistoryByPeriodV1(history, selectedPeriod, financialTimelineEvents),
-    [financialTimelineEvents, history, selectedPeriod]
+    () => xsClubEvolutionFilterHistoryByPeriodV1(completeValueHistory, selectedPeriod, financialTimelineEvents),
+    [completeValueHistory, financialTimelineEvents, selectedPeriod]
   );
   const periodHistory = periodWindow.items;
   const periodFinancialEvents = useMemo(
-    () => xsClubEvolutionFilterFinancialEventsByPeriodV1(financialTimelineEvents, history, selectedPeriod),
-    [financialTimelineEvents, history, selectedPeriod]
+    () => xsClubEvolutionFilterFinancialEventsByPeriodV1(financialTimelineEvents, completeValueHistory, selectedPeriod),
+    [completeValueHistory, financialTimelineEvents, selectedPeriod]
   );
   const groupedPeriodFinancialEvents = useMemo(
     () => xsClubEvolutionGroupTimelineEventsV1(periodFinancialEvents),
@@ -1105,7 +1160,7 @@ export default function ClubEvolutionScreen() {
   const summary = useMemo(() => {
     const first = periodHistory[0] || null;
     const periodLast = periodHistory[periodHistory.length - 1] || null;
-    const last = history[history.length - 1] || periodLast;
+    const last = completeValueHistory[completeValueHistory.length - 1] || history[history.length - 1] || periodLast;
     const variation = first && periodLast ? periodLast.clubValueEur - first.clubValueEur : 0;
     const coverage = last?.coveragePct !== null && last?.coveragePct !== undefined
       ? Math.round(last.coveragePct)
@@ -1116,7 +1171,7 @@ export default function ClubEvolutionScreen() {
       ? Math.max(0, last.cardCount - (last.pricedCards || 0))
       : null;
     return { first, last, periodLast, variation, coverage, remainingCards };
-  }, [history, periodHistory]);
+  }, [completeValueHistory, history, periodHistory]);
 
   const financeReport = useMemo(() => {
     const variationText = formatSignedEuro(summary.variation);
@@ -1193,9 +1248,18 @@ export default function ClubEvolutionScreen() {
               {periodWindow.fallbackUsed ? (
                 <Text style={styles.chartHint}>{"Pas encore assez d'historique sur cette période. Dernier point connu affiché."}</Text>
               ) : periodWindow.sameAsFullRange && selectedPeriod !== "all" ? (
-                <Text style={styles.chartHint}>Même valeur affichée : seulement {periodHistory.length} snapshot(s) de valeur disponibles dans cette période.</Text>
-              ) : history.length === 1 ? (
+                <Text style={styles.chartHint}>
+                  {firstCompleteDateLabel
+                    ? `L'historique financier complet disponible commence le ${firstCompleteDateLabel}.`
+                    : `Seulement ${periodHistory.length} snapshot(s) financier(s) complet(s) sont disponibles sur cette période.`}
+                </Text>
+              ) : periodHistory.length === 1 ? (
+                <Text style={styles.chartHint}>Un seul snapshot financier complet est disponible sur cette période.</Text>
+              ) : completeValueHistory.length === 1 ? (
                 <Text style={styles.chartHint}>{"L'historique commence aujourd'hui. La courbe gagnera en précision après plusieurs snapshots."}</Text>
+              ) : null}
+              {incompleteInitializationCount > 0 ? (
+                <Text style={styles.chartHint}>{"Les premiers snapshots correspondent à l'initialisation de la couverture marché et sont exclus de la performance."}</Text>
               ) : null}
               <Text style={styles.chartHint}>Valeur marché : snapshots Xiascor. Achats/ventes/rewards : historique Sorare disponible.</Text>
               <View style={styles.financialTimelineBox}>
@@ -1238,7 +1302,7 @@ export default function ClubEvolutionScreen() {
                   <View style={styles.selectedPointRight}>
                     <Text style={styles.selectedPointValue}>{activeSelectedSnapshot.clubValueText || formatEuro(activeSelectedSnapshot.clubValueEur)}</Text>
                     <Text style={[styles.selectedPointDelta, selectedPointDelta === null || selectedPointDelta >= 0 ? styles.positive : styles.negative]}>
-                      {selectedPointDelta === null ? "Premier point de l'historique" : `${formatSignedEuro(selectedPointDelta)} depuis le point précédent`}
+                      {selectedPointDelta === null ? "Premier point de l'historique financier" : `${formatSignedEuro(selectedPointDelta)} depuis le point précédent`}
                     </Text>
                   </View>
                 </View>
@@ -1246,12 +1310,12 @@ export default function ClubEvolutionScreen() {
             </>
           ) : periodWindow.noSnapshotsInRange && periodFinancialEvents.length ? (
             <View style={styles.loadingBox}>
-              <Text style={styles.mutedCenter}>Aucun snapshot de valeur sur cette période. Événements Sorare disponibles ci-dessous.</Text>
+              <Text style={styles.mutedCenter}>Aucun snapshot financier complet sur cette période. Événements Sorare disponibles ci-dessous.</Text>
               <Text style={styles.chartHint}>Valeur marché : snapshots Xiascor. Achats/ventes/rewards : historique Sorare disponible.</Text>
             </View>
           ) : (
             <View style={styles.loadingBox}>
-              <Text style={styles.muted}>Aucun historique disponible</Text>
+              <Text style={styles.muted}>Aucun historique financier complet disponible</Text>
             </View>
           )}
         </View>
@@ -1415,7 +1479,7 @@ const styles = StyleSheet.create({
   lineSegment: { height: 3, borderRadius: 999, position: "absolute" },
   linePoint: { width: 12, height: 12, borderRadius: 6, position: "absolute", backgroundColor: "#FF3148", borderWidth: 2, borderColor: "#140407", shadowColor: "#FF3148", shadowOpacity: 0.3, shadowRadius: 5, elevation: 2 },
   linePointSelected: { backgroundColor: "#FFFFFF", borderColor: "#FF3148", transform: [{ scale: 1.32 }], shadowOpacity: 0.76, shadowRadius: 9, elevation: 4 },
-  financialDot: { width: 8, height: 8, borderRadius: 4, position: "absolute", borderWidth: 1, borderColor: "rgba(255,255,255,0.78)", shadowColor: "#000000", shadowOpacity: 0.24, shadowRadius: 3, elevation: 2 },
+  financialDot: { width: 6, height: 6, borderRadius: 3, position: "absolute", borderWidth: 1, borderColor: "rgba(255,255,255,0.86)", shadowColor: "#000000", shadowOpacity: 0.24, shadowRadius: 3, elevation: 2 },
   financialDotBuy: { backgroundColor: "#FF4D61" },
   financialDotSell: { backgroundColor: "#2FE66B" },
   financialDotReward: { backgroundColor: "#F7B733" },
