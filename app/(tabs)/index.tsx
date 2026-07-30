@@ -6,11 +6,12 @@
 /* XS_BOARD_OBJECTIVES_V1 */
 /* XS_HOME_AUDIT_FIX_V1 */
 /* XS_HOME_NEWS_BUTTON_V1 */
+/* XS_HOME_LIVING_FRONTEND_BINDINGS_V1 */
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import React, { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -23,7 +24,7 @@ const OAUTH_DEVICE_ID_KEY = "xs_device_id";
 const CLUB_VALUE_HISTORY_KEY = "club_value_history";
 const XS_HOME_AUDIT_FIX_CLOUD_BASE_V1 = "https://xiascor-backend-tssdy62zqa-ez.a.run.app";
 
-type HomeAlertItem = { icon: string; tone: "green" | "gold" | "red"; text: string };
+type HomeAlertItem = { icon: string; tone: "green" | "gold" | "amber" | "red" | "neutral"; text: string };
 type HomeGoalItem = { label: string; done: boolean };
 type HomeTrainingSummary = {
   averageForm: number | null;
@@ -83,6 +84,7 @@ type MarketOpportunitiesPayload = {
 type BoardObjectivesPayload = {
   ok?: boolean;
   clubValueText?: string | null;
+  currentValueText?: string | null;
   targetValueEur?: number | null;
   targetValueText?: string | null;
   progressPct?: number | null;
@@ -91,6 +93,72 @@ type BoardObjectivesPayload = {
   pricedCards?: number | null;
   status?: "ahead" | "on_track" | "needs_reinforcement" | "unavailable" | string | null;
   message?: string | null;
+};
+
+type HomeNotificationItem = {
+  id: string;
+  type?: string | null;
+  title?: string | null;
+  message?: string | null;
+  severity?: "success" | "warning" | "info" | "error" | string | null;
+  createdAt?: string | null;
+  readAt?: string | null;
+  relatedScreen?: string | null;
+  relatedEntityId?: string | null;
+};
+
+type HomeDashboardPayload = {
+  ok?: boolean;
+  generatedAt?: string | null;
+  dataDate?: string | null;
+  deviceId?: string | null;
+  userSlug?: string | null;
+  clubValue?: {
+    currentEur?: number | null;
+    currentText?: string | null;
+    variationEur?: number | null;
+    variationText?: string | null;
+    cardCount?: number | null;
+    pricedCards?: number | null;
+    unpricedCards?: number | null;
+    coveragePct?: number | null;
+  } | null;
+  clubEvolution?: {
+    historyCount?: number | null;
+    completeHistoryCount?: number | null;
+    sevenDays?: { variationText?: string | null; direction?: string | null } | null;
+    thirtyDays?: { variationText?: string | null; direction?: string | null } | null;
+  } | null;
+  squad?: {
+    total?: number | null;
+    recentBuys?: number | null;
+    recentSales?: number | null;
+    squadDeltaSinceLastSnapshot?: number | null;
+  } | null;
+  morningMeeting?: {
+    alerts?: HomeAlertItem[];
+    summary?: string | null;
+  } | null;
+  cardsToWatch?: Array<{
+    playerName?: string | null;
+    valueChangeText?: string | null;
+    reasonText?: string | null;
+    reasonCode?: string | null;
+  }>;
+  marketOpportunities?: MarketOpportunity[];
+  boardObjective?: BoardObjectivesPayload | null;
+  notifications?: HomeNotificationItem[];
+  notificationSummary?: {
+    unreadCount?: number | null;
+    total?: number | null;
+  } | null;
+  nextGameWeek?: HomeGameWeekSummary | null;
+  dailyAdvice?: {
+    title?: string | null;
+    text?: string | null;
+    severity?: string | null;
+  } | null;
+  partialErrors?: Array<{ source?: string | null; error?: string | null }>;
 };
 
 type ClubValueHistorySnapshot = {
@@ -586,6 +654,22 @@ async function fetchHomeBoardObjectivesV1(deviceId: string): Promise<BoardObject
   }
 }
 
+async function fetchHomeDashboardV1(deviceId: string): Promise<HomeDashboardPayload | null> {
+  // XS_HOME_LIVING_FRONTEND_BINDINGS_V1: one living Home payload first, legacy endpoints as fallback.
+  try {
+    const qs = new URLSearchParams();
+    if (deviceId) qs.set("deviceId", deviceId);
+    const payload = await xsHomeAuditClubFetchV1<HomeDashboardPayload>(
+      `/home/dashboard?${qs.toString()}`,
+      {},
+      (value) => value && value.ok !== false && Boolean(value.clubValue || value.squad || value.morningMeeting)
+    );
+    return payload && payload.ok !== false ? payload : null;
+  } catch {
+    return null;
+  }
+}
+
 function SectionCard({ children, style }: { children: React.ReactNode; style?: any }) {
   return <View style={[styles.card, style]}>{children}</View>;
 }
@@ -654,7 +738,7 @@ function buildHomeGoalsV1(metrics: ClubMetrics, board: BoardObjectivesPayload | 
 }
 
 function AlertLine({ item }: { item: HomeAlertItem }) {
-  const color = item.tone === "green" ? "#2FE66B" : item.tone === "gold" ? "#FFD43B" : "#FF3148";
+  const color = item.tone === "green" ? "#2FE66B" : item.tone === "gold" || item.tone === "amber" ? "#FFD43B" : item.tone === "neutral" ? "rgba(255,255,255,0.72)" : "#FF3148";
   return (
     <View style={styles.alertLine}>
       <Ionicons name={item.icon as any} size={17} color={color} />
@@ -679,6 +763,12 @@ export default function HomeScreen() {
   const [marketOpportunitiesLoading, setMarketOpportunitiesLoading] = useState(false);
   const [boardObjectives, setBoardObjectives] = useState<BoardObjectivesPayload | null>(null);
   const [boardObjectivesLoading, setBoardObjectivesLoading] = useState(false);
+  const [homeLoading, setHomeLoading] = useState(true);
+  const [homeRefreshing, setHomeRefreshing] = useState(false);
+  const [homeUpdatedAt, setHomeUpdatedAt] = useState<string | null>(null);
+  const [homePartialErrors, setHomePartialErrors] = useState<HomeDashboardPayload["partialErrors"]>([]);
+  const [homeMorningAlerts, setHomeMorningAlerts] = useState<HomeAlertItem[] | null>(null);
+  const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
   const [gameWeekSummary, setGameWeekSummary] = useState<HomeGameWeekSummary>({
     label: "Données indisponibles",
     rarity: "—",
@@ -687,98 +777,127 @@ export default function HomeScreen() {
     projectionLabel: "À générer",
   });
 
-  useEffect(() => {
-    let mounted = true;
-    async function loadClubMetrics() {
-      try {
-        const deviceId = await readHomeDeviceIdV1();
-        if (!deviceId || !mounted) return;
-        const endpointMetrics = await fetchHomeClubMetricsEndpointV1(deviceId);
-        const payload = await myCardsList(deviceId, 80);
-        if (!mounted) return;
-        setClubMetrics(endpointMetrics || extractClubMetricsV1(payload));
-        setTrainingSummary(extractHomeTrainingSummaryV1(payload));
-        setGameWeekSummary(extractHomeGameWeekSummaryV1(payload));
-      } catch {
-        if (mounted) {
-          setClubMetrics({ clubValue: null, squadCount: null, weeklyDelta: null });
-          setTrainingSummary({ averageForm: null, inForm: null, neutral: null, declining: null, counted: 0 });
-          setGameWeekSummary({
-            label: "Données indisponibles",
-            rarity: "—",
-            eligibleCount: null,
-            state: "indisponible",
-            projectionLabel: "À générer",
-          });
+  const loadHomeDashboard = useCallback(async (mode: "initial" | "refresh" | "focus" = "initial", isCancelled: () => boolean = () => false) => {
+    const isRefresh = mode === "refresh";
+    try {
+      if (isRefresh) setHomeRefreshing(true);
+      if (mode === "initial") setHomeLoading(true);
+      setDirectorLoading(true);
+      setBoardObjectivesLoading(true);
+      setMarketOpportunitiesLoading(true);
+
+      const deviceId = await readHomeDeviceIdV1();
+      if (!deviceId || isCancelled()) return;
+
+      const dashboard = await fetchHomeDashboardV1(deviceId);
+      if (dashboard && !isCancelled()) {
+        const value = dashboard.clubValue || {};
+        const squad = dashboard.squad || {};
+        const cardCount = metricNumber(value.cardCount ?? squad.total);
+        const pricedCards = metricNumber(value.pricedCards);
+        setClubMetrics({
+          clubValue: metricNumber(value.currentEur),
+          squadCount: cardCount,
+          weeklyDelta: metricNumber(value.variationEur),
+          clubValueText: value.currentText || null,
+          weeklyDeltaText: value.variationText || null,
+          evolutionText: value.variationText || dashboard.clubEvolution?.sevenDays?.variationText || null,
+          pricedCards,
+          coveragePct: metricNumber(value.coveragePct),
+          historyCount: metricNumber(dashboard.clubEvolution?.historyCount),
+        });
+        const watch = Array.isArray(dashboard.cardsToWatch) ? dashboard.cardsToWatch[0] : null;
+        setDirectorReport({
+          clubValueText: value.currentText || "Donnée indisponible",
+          variationText: value.variationText || "Donnée indisponible",
+          coveragePct: metricNumber(value.coveragePct),
+          pricedCards,
+          cardCount,
+          unpricedCards: metricNumber(value.unpricedCards),
+          bestPerformer: watch ? { playerName: watch.playerName || null, valueText: watch.valueChangeText || null } : null,
+          watchPlayer: watch ? { playerName: watch.playerName || null, valueText: watch.reasonText || null } : null,
+          summary: dashboard.morningMeeting?.summary || dashboard.dailyAdvice?.text || null,
+        });
+        setBoardObjectives(dashboard.boardObjective || null);
+        setMarketOpportunities(Array.isArray(dashboard.marketOpportunities) ? dashboard.marketOpportunities.slice(0, 3) : []);
+        setHomeMorningAlerts(Array.isArray(dashboard.morningMeeting?.alerts) ? dashboard.morningMeeting.alerts.slice(0, 6) : null);
+        setNotificationUnreadCount(metricNumber(dashboard.notificationSummary?.unreadCount) ?? 0);
+        setHomePartialErrors(Array.isArray(dashboard.partialErrors) ? dashboard.partialErrors : []);
+        setHomeUpdatedAt(dashboard.generatedAt || new Date().toISOString());
+        if (dashboard.nextGameWeek && dashboard.nextGameWeek.label && dashboard.nextGameWeek.label !== "À connecter") {
+          setGameWeekSummary(dashboard.nextGameWeek);
         }
       }
+
+      let cardsPayload: any = null;
+      try {
+        cardsPayload = await myCardsList(deviceId, 80);
+      } catch {}
+
+      if (cardsPayload && !isCancelled()) {
+        setTrainingSummary(extractHomeTrainingSummaryV1(cardsPayload));
+        const fromCards = extractHomeGameWeekSummaryV1(cardsPayload);
+        if (!dashboard?.nextGameWeek || dashboard.nextGameWeek.label === "À connecter") {
+          setGameWeekSummary(fromCards);
+        }
+        if (!dashboard) setClubMetrics(extractClubMetricsV1(cardsPayload));
+      }
+
+      if (!dashboard && !isCancelled()) {
+        const [endpointMetrics, report, board, opportunities] = await Promise.all([
+          fetchHomeClubMetricsEndpointV1(deviceId),
+          fetchHomeDirectorReportV1(deviceId),
+          fetchHomeBoardObjectivesV1(deviceId),
+          fetchHomeMarketOpportunitiesV1(),
+        ]);
+        if (isCancelled()) return;
+        if (endpointMetrics) setClubMetrics(endpointMetrics);
+        setDirectorReport(report);
+        setBoardObjectives(board);
+        setMarketOpportunities(opportunities);
+        setHomePartialErrors([{ source: "home_dashboard", error: "Endpoint agrégé indisponible, fallback legacy utilisé." }]);
+        setHomeUpdatedAt(new Date().toISOString());
+      }
+    } catch {
+      if (!isCancelled() && mode === "initial") {
+        setClubMetrics({ clubValue: null, squadCount: null, weeklyDelta: null });
+        setTrainingSummary({ averageForm: null, inForm: null, neutral: null, declining: null, counted: 0 });
+        setGameWeekSummary({
+          label: "Données indisponibles",
+          rarity: "—",
+          eligibleCount: null,
+          state: "indisponible",
+          projectionLabel: "À générer",
+        });
+      }
+    } finally {
+      if (!isCancelled()) {
+        setHomeLoading(false);
+        setHomeRefreshing(false);
+        setDirectorLoading(false);
+        setBoardObjectivesLoading(false);
+        setMarketOpportunitiesLoading(false);
+      }
     }
-    loadClubMetrics();
-    return () => {
-      mounted = false;
-    };
   }, []);
 
   useEffect(() => {
-    let mounted = true;
-    async function loadDirectorReport() {
-      try {
-        setDirectorLoading(true);
-        const deviceId = await readHomeDeviceIdV1();
-        if (!deviceId || !mounted) return;
-        const report = await fetchHomeDirectorReportV1(deviceId);
-        if (mounted) setDirectorReport(report);
-      } catch {
-        if (mounted) setDirectorReport(null);
-      } finally {
-        if (mounted) setDirectorLoading(false);
-      }
-    }
-    loadDirectorReport();
+    let cancelled = false;
+    loadHomeDashboard("initial", () => cancelled);
     return () => {
-      mounted = false;
+      cancelled = true;
     };
-  }, []);
+  }, [loadHomeDashboard]);
 
-  useEffect(() => {
-    let mounted = true;
-    async function loadBoardObjectives() {
-      try {
-        setBoardObjectivesLoading(true);
-        const deviceId = await readHomeDeviceIdV1();
-        if (!deviceId || !mounted) return;
-        const payload = await fetchHomeBoardObjectivesV1(deviceId);
-        if (mounted) setBoardObjectives(payload);
-      } catch {
-        if (mounted) setBoardObjectives(null);
-      } finally {
-        if (mounted) setBoardObjectivesLoading(false);
+  useFocusEffect(
+    useCallback(() => {
+      const last = homeUpdatedAt ? new Date(homeUpdatedAt).getTime() : 0;
+      if (!last || Date.now() - last > 5 * 60 * 1000) {
+        loadHomeDashboard("focus");
       }
-    }
-    loadBoardObjectives();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let mounted = true;
-    async function loadMarketOpportunities() {
-      try {
-        setMarketOpportunitiesLoading(true);
-        const opportunities = await fetchHomeMarketOpportunitiesV1();
-        if (mounted) setMarketOpportunities(opportunities);
-      } catch {
-        if (mounted) setMarketOpportunities([]);
-      } finally {
-        if (mounted) setMarketOpportunitiesLoading(false);
-      }
-    }
-    loadMarketOpportunities();
-    return () => {
-      mounted = false;
-    };
-  }, []);
+      return undefined;
+    }, [homeUpdatedAt, loadHomeDashboard])
+  );
 
   const clubStats = useMemo(
     () => [
@@ -791,20 +910,39 @@ export default function HomeScreen() {
   );
   const gameWeekProgress = Math.min(100, Math.round((((gameWeekSummary.eligibleCount ?? 0) || 0) / 5) * 100));
   const boardProgress = Math.max(0, Math.min(100, Math.round(Number(boardObjectives?.progressPct ?? 0))));
-  const morningAlerts = useMemo(() => buildHomeMorningAlertsV1(clubMetrics, directorReport, gameWeekSummary), [clubMetrics, directorReport, gameWeekSummary]);
+  const morningAlerts = useMemo(
+    () => homeMorningAlerts && homeMorningAlerts.length ? homeMorningAlerts : buildHomeMorningAlertsV1(clubMetrics, directorReport, gameWeekSummary),
+    [clubMetrics, directorReport, gameWeekSummary, homeMorningAlerts]
+  );
   const clubNews = useMemo(() => buildHomeNewsV1(clubMetrics, directorReport, gameWeekSummary, marketOpportunities), [clubMetrics, directorReport, gameWeekSummary, marketOpportunities]);
   const seasonGoals = useMemo(() => buildHomeGoalsV1(clubMetrics, boardObjectives, gameWeekSummary), [clubMetrics, boardObjectives, gameWeekSummary]);
   const topMarketOpportunity = marketOpportunities[0] || null;
+  const updatedLabel = homeUpdatedAt ? new Date(homeUpdatedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : null;
+  const onRefreshHome = useCallback(() => {
+    loadHomeDashboard("refresh");
+  }, [loadHomeDashboard]);
 
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={homeRefreshing} onRefresh={onRefreshHome} tintColor="#FF3148" />}
+      >
         <View style={styles.topBar}>
           <View>
             <Text style={styles.screenTitle}>Accueil</Text>
-            <Text style={styles.subtitle}>Bureau du président</Text>
+            <Text style={styles.subtitle}>Bureau du président{updatedLabel ? ` · MAJ ${updatedLabel}` : ""}</Text>
           </View>
           <View style={styles.headerActions}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Actualiser le tableau de bord"
+              onPress={onRefreshHome}
+              style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+            >
+              <Ionicons name={homeLoading ? "hourglass-outline" : "refresh"} size={18} color="#FFFFFF" />
+            </Pressable>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Ouvrir les actualités foot"
@@ -814,14 +952,27 @@ export default function HomeScreen() {
               <Ionicons name="newspaper-outline" size={16} color="#FFFFFF" />
               <Text style={styles.newsButtonText}>Actualités</Text>
             </Pressable>
-            <View style={styles.bellWrap}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Ouvrir les notifications"
+              onPress={() => router.push("/notifications")}
+              style={({ pressed }) => [styles.bellWrap, pressed && styles.pressed]}
+            >
               <Ionicons name="notifications-outline" size={24} color="#FFFFFF" />
-              <View style={styles.bellBadge}>
-                <Text style={styles.bellBadgeText}>3</Text>
-              </View>
-            </View>
+              {notificationUnreadCount > 0 ? (
+                <View style={styles.bellBadge}>
+                  <Text style={styles.bellBadgeText}>{notificationUnreadCount > 9 ? "9+" : notificationUnreadCount}</Text>
+                </View>
+              ) : null}
+            </Pressable>
           </View>
         </View>
+        {homePartialErrors && homePartialErrors.length ? (
+          <View style={styles.partialNotice}>
+            <Ionicons name="information-circle-outline" size={16} color="#FFD43B" />
+            <Text style={styles.partialNoticeText}>Données partielles : certains modules se mettent à jour progressivement.</Text>
+          </View>
+        ) : null}
 
         <LinearGradient colors={["#4A060E", "#13070A", "#07070A"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
           <View style={styles.heroGlow} />
@@ -1131,6 +1282,33 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexDirection: "row",
     gap: 10,
+  },
+  iconButton: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderColor: "rgba(255,255,255,0.14)",
+    borderRadius: 18,
+    borderWidth: 1,
+    height: 38,
+    justifyContent: "center",
+    width: 38,
+  },
+  partialNotice: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,212,59,0.10)",
+    borderColor: "rgba(255,212,59,0.22)",
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  partialNoticeText: {
+    color: "rgba(255,255,255,0.72)",
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "800",
   },
   newsButton: {
     alignItems: "center",
