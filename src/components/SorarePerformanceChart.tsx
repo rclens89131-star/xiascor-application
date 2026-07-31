@@ -33,6 +33,7 @@ export default function SorarePerformanceChart({
 }: Props) {
   const values = Array.isArray(recentScores) ? recentScores : [];
   const max = 100;
+  const [failedLogoUrls, setFailedLogoUrls] = React.useState<Record<string, true>>({});
 
   return (
     <View style={{ marginTop: 10 }}>
@@ -47,7 +48,9 @@ export default function SorarePerformanceChart({
           const h = v <= 0 ? 34 : 24 + Math.round((v / max) * 136); // 14..100 approx
           const bg = xsScoreColor(v);
 
-          const logo = opponentLogoUrls?.[idx] ?? null;
+          const rawLogo = opponentLogoUrls?.[idx] ?? null;
+          const logo = typeof rawLogo === "string" && /^https?:\/\//i.test(rawLogo.trim()) ? rawLogo.trim() : "";
+          const showLogo = Boolean(logo && !failedLogoUrls[logo]);
           const short = (opponentShort?.[idx] ?? "").toString().trim();
 
           return (
@@ -61,11 +64,15 @@ export default function SorarePerformanceChart({
 
               {/* Opponent logo (or placeholder) */}
               <View style={{ height: 26, marginTop: 6, alignItems: "center", justifyContent: "center" }}>
-                {logo ? (
+                {showLogo ? (
                   <Image
                     source={{ uri: logo }}
                     style={{ width: 22, height: 22, borderRadius: 11 }}
                     resizeMode="contain"
+                    onError={() => {
+                      /* XS_PLAYER_CHART_CLUB_LOGO_FIX_V1: broken images fall back to the existing club abbreviation. */
+                      setFailedLogoUrls((prev) => (prev[logo] ? prev : { ...prev, [logo]: true }));
+                    }}
                   />
                 ) : (
                   <Text style={{ color: "#9ca3af", fontSize: 11, fontWeight: "800" }}>

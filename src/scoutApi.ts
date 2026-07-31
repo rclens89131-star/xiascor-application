@@ -951,6 +951,28 @@ export async function publicPlayerPerformance(
         return null;
       };
 
+      const pickOpponentLogoUrl = (item: any): string | null => {
+        /* XS_PLAYER_CHART_CLUB_LOGO_FIX_V1: keep chart logos compatible with all backend aliases. */
+        const candidates = [
+          item?.clubLogoUrl,
+          item?.clubLogo,
+          item?.teamLogo,
+          item?.logoUrl,
+          item?.clubPictureUrl,
+          item?.opponentLogoUrl,
+          item?.opponentLogo,
+          item?.opponentPictureUrl,
+          item?.opponent?.pictureUrl,
+          item?.opponent?.avatarUrl,
+          item?.opponent?.logoUrl,
+        ];
+        for (const value of candidates) {
+          const url = typeof value === "string" ? value.trim() : "";
+          if (/^https?:\/\//i.test(url)) return url;
+        }
+        return null;
+      };
+
       const normalized = rawItems
         .map((item: any) => {
           const score = toFiniteScore(item);
@@ -968,12 +990,7 @@ export async function publicPlayerPerformance(
             ).trim();
           // XS_FIX_L5_TABLE_OPPONENT_MAPPING_V2 END
 
-          const opponentLogoUrl =
-            item?.opponentLogoUrl ??
-            item?.opponent?.pictureUrl ??
-            item?.opponent?.avatarUrl ??
-            item?.opponent?.logoUrl ??
-            null;
+          const opponentLogoUrl = pickOpponentLogoUrl(item);
 
           return {
             score,
