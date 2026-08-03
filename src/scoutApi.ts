@@ -76,7 +76,20 @@ export type RecruterOffer = {
     bestValueRatio?: boolean | null;
   } | null;
   l10?: number | null;
-  averages?: { l10?: number | null; [key: string]: any } | null;
+  averages?: { l5?: number | null; l10?: number | null; l15?: number | null; l40?: number | null; [key: string]: any } | null;
+  performanceHistoryCount?: number | null;
+  performanceValidScoresCount?: number | null;
+  performanceUpdatedAt?: string | null;
+  lastPerformanceAt?: string | null;
+  hasPerformanceGraph?: boolean | null;
+  performanceCoverage?: {
+    status?: "COMPLETE" | "PARTIAL" | "NO_PERFORMANCE_DATA" | string | null;
+    matchesCount?: number | null;
+    validScoresCount?: number | null;
+    dnpCount?: number | null;
+    lastMatchAt?: string | null;
+    updatedAt?: string | null;
+  } | null;
   raw?: any;
 };
 
@@ -106,6 +119,25 @@ export type RecruterPlayer = {
   offerCount?: number | null;
   offersCount?: number | null;
   leagues?: string[] | null;
+  l5?: number | null;
+  l10?: number | null;
+  l15?: number | null;
+  l40?: number | null;
+  averages?: { l5?: number | null; l10?: number | null; l15?: number | null; l40?: number | null; [key: string]: any } | null;
+  performanceHistoryCount?: number | null;
+  performanceValidScoresCount?: number | null;
+  performanceUpdatedAt?: string | null;
+  lastPerformanceAt?: string | null;
+  hasPerformanceGraph?: boolean | null;
+  performanceCoverage?: {
+    marker?: string | null;
+    status?: "COMPLETE" | "PARTIAL" | "NO_PERFORMANCE_DATA" | string | null;
+    matchesCount?: number | null;
+    validScoresCount?: number | null;
+    dnpCount?: number | null;
+    lastMatchAt?: string | null;
+    updatedAt?: string | null;
+  } | null;
 };
 
 export type RecruterSaleStatus = "unknown" | "for_sale" | "no_sale";

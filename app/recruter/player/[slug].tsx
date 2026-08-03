@@ -5,7 +5,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { apiFetch } from "../../../src/api";
 import SorarePerformanceChart from "../../../src/components/SorarePerformanceChart";
-import { publicPlayerPerformance, recruterPlayerCards, recruterSaleStatus, type PublicPlayerPerformance, type RecruterOffer, type RecruterPlayer } from "../../../src/scoutApi";
+import { recruterPlayerCards, recruterSaleStatus, type PublicPlayerPerformance, type RecruterOffer, type RecruterPlayer } from "../../../src/scoutApi";
 
 // XS_FRONT_RECRUTER_PLAYERS_INDEX_V1
 // XS_RECRUTER_PREMIUM_UI_REFERENCE_V1: premium Recruter detail UI aligned with the reference screen.
@@ -23,6 +23,7 @@ import { publicPlayerPerformance, recruterPlayerCards, recruterSaleStatus, type 
 // XS_RECRUTER_SMART_SALE_CARDS_V1: sale rows expose real bonus/power/XP when available and only show smart badges from real data.
 // XS_RECRUTER_SMART_COMPARE_V1: sale rows show at most two intra-player comparison badges from backend compareFlags.
 // XS_RECRUTER_DETAIL_MEMORY_CACHE_SAFE_V1: short session cache for already fetched Recruter detail payloads.
+// XS_RECRUTER_GRAPH_COMPLETE_HISTORY_V1: detail stats use the prepared history/player-chart payload as single performance source.
 function text(v: unknown, fallback = "") {
   const s = String(v ?? "").trim();
   return s || fallback;
@@ -156,7 +157,6 @@ type RecruterDetailMemoryCacheEntryV1 = {
 };
 const xsRecruterDetailMemoryCacheV1 = new Map<string, RecruterDetailMemoryCacheEntryV1>();
 
-const XS_RECRUTER_PERF_FALLBACK_BASE_V1 = "https://xiascor-backend-tssdy62zqa-ez.a.run.app";
 const XS_RECRUTER_PLAYER_PLACEHOLDER_V1 = "https://frontend-assets.sorare.com/placeholders/player-v2.png";
 const XS_RECRUTER_HEADSHOT_LOGGED_V1 = new Set<string>();
 
@@ -355,6 +355,27 @@ function normalizeRecruterHistoryPayloadV1(payload: any): RecruterHistoryPayload
   };
 }
 
+function publicPerformanceFromRecruterHistoryV1(slug: string, payload: RecruterHistoryPayloadV1): PublicPlayerPerformance {
+  const items = Array.isArray(payload?.items) ? payload.items : [];
+  const scores = items
+    .map((row: any) => scoreFromRowV1(row))
+    .filter((score: number) => Number.isFinite(score));
+  const averages = payload?.averages || {};
+  return {
+    playerSlug: slug,
+    playerName: payload?.playerName || null,
+    l5: Number.isFinite(Number(averages.l5)) ? Number(averages.l5) : null,
+    l10: Number.isFinite(Number(averages.l10)) ? Number(averages.l10) : null,
+    l15: Number.isFinite(Number(averages.l15)) ? Number(averages.l15) : null,
+    l40: Number.isFinite(Number(averages.l40)) ? Number(averages.l40) : null,
+    recentScores: scores.slice(0, 5),
+    historyChart: items,
+    items,
+    updatedAt: (payload as any)?.updatedAt || items[0]?.updatedAt || null,
+    status: items.length ? "COMPLETE_OR_PARTIAL" : "NO_PERFORMANCE_DATA",
+  } as PublicPlayerPerformance;
+}
+
 async function fetchRecruterHistoryForCoachV1(slug: string): Promise<RecruterHistoryPayloadV1> {
   // XS_RECRUTER_PERFORMANCE_DATA_WIRING_FIX_V1: Recruter needs a robust performance source, not an empty Cloud history fallback.
   const playerSlug = String(slug || "").trim().toLowerCase();
@@ -365,35 +386,18 @@ async function fetchRecruterHistoryForCoachV1(slug: string): Promise<RecruterHis
       await apiFetch<RecruterHistoryPayloadV1>(`/history/player-chart/${encodeURIComponent(playerSlug)}?limit=${XS_RECRUTER_HISTORY_INITIAL_LIMIT_V1}`)
     );
     if (hasRecruterHistoryDataV1(direct)) {
-      console.log("[XS_RECRUTER_PERFORMANCE_DATA_WIRING_FIX_V1]", {
-        slug: playerSlug,
-        source: "history-player-chart",
-        averages: direct.averages,
-        itemsCount: direct.items?.length || 0,
-      });
       return direct;
     }
-  } catch (e: any) {
-    console.log("[XS_RECRUTER_PERFORMANCE_DATA_WIRING_FIX_V1]", {
-      slug: playerSlug,
-      source: "history-player-chart",
-      error: String(e?.message || e),
-    });
+  } catch {
+    // Keep the detail screen read-only when the prepared history endpoint is unavailable.
   }
-
-  const base = XS_RECRUTER_PERF_FALLBACK_BASE_V1.replace(/\/+$/, "");
-  const url = `${base}/public-player-performance?slug=${encodeURIComponent(playerSlug)}&limit=${XS_RECRUTER_HISTORY_INITIAL_LIMIT_V1}`;
-  const response = await fetch(url, { headers: { accept: "application/json" } });
-  const json = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(json?.error || json?.message || `HTTP ${response.status}`);
-  const fallback = normalizeRecruterHistoryPayloadV1(json);
-  console.log("[XS_RECRUTER_PERFORMANCE_DATA_WIRING_FIX_V1]", {
-    slug: playerSlug,
-    source: "public-player-performance",
-    averages: fallback.averages,
-    itemsCount: fallback.items?.length || 0,
-  });
-  return fallback;
+  return {
+    playerSlug,
+    items: [],
+    averages: { l5: null, l10: null, l15: null, l40: null },
+    source: "prepared_history_empty",
+    coverage: { status: "NO_PERFORMANCE_DATA", matchesCount: 0 },
+  } as RecruterHistoryPayloadV1;
 }
 
 function pickScoresV1(perf: PublicPlayerPerformance | null, historyItems?: any[] | null) {
@@ -996,18 +1000,19 @@ export default function RecruterPlayerCardsScreen() {
       setCoachError(null);
       const teamName = text(player?.clubName || player?.activeClub?.name || items[0]?.clubName);
       const statusPath = `/player/status/${encodeURIComponent(playerSlug)}${teamName ? `?teamName=${encodeURIComponent(teamName)}` : ""}`;
-      const [perfRes, historyRes, matchRes, statusRes] = await Promise.allSettled([
-        publicPlayerPerformance(playerSlug, { limit: XS_RECRUTER_HISTORY_INITIAL_LIMIT_V1 }),
+      const [historyRes, matchRes, statusRes] = await Promise.allSettled([
         fetchRecruterHistoryForCoachV1(playerSlug),
         apiFetch<RecruterCoachContextV1>(`/player/next-match-context/${encodeURIComponent(playerSlug)}`),
         apiFetch<RecruterPlayerStatusV1>(statusPath),
       ]);
 
-      if (perfRes.status === "fulfilled") setCoachPerf(perfRes.value);
-      if (historyRes.status === "fulfilled") setCoachHistory(historyRes.value);
+      if (historyRes.status === "fulfilled") {
+        setCoachHistory(historyRes.value);
+        setCoachPerf(publicPerformanceFromRecruterHistoryV1(playerSlug, historyRes.value));
+      }
       if (matchRes.status === "fulfilled") setCoachMatchContext(matchRes.value);
       if (statusRes.status === "fulfilled") setCoachPlayerStatus(statusRes.value);
-      if (perfRes.status === "rejected" && historyRes.status === "rejected" && matchRes.status === "rejected" && statusRes.status === "rejected") {
+      if (historyRes.status === "rejected" && matchRes.status === "rejected" && statusRes.status === "rejected") {
         setCoachError("Analyse coach indisponible pour ce joueur.");
       }
     } catch (e: any) {

@@ -32,6 +32,7 @@ import {
 // XS_RECRUTER_LIST_L10_BADGE_V1: Recruter list score badges display official L10 when provided by the list payload.
 // XS_RECRUTER_LIST_PERF_SAFE_V1: defer expensive list filtering while typing and tune FlatList rendering window.
 // XS_RECRUTER_IMAGE_PREFETCH_SAFE_V1: warm only nearby Recruter images already present in memory.
+// XS_RECRUTER_PERFORMANCE_COVERAGE_STATUS_V1: list exposes prepared performance coverage without fake zero scores.
 const XS_RECRUTER_FRONT_LEAGUE_INDEX_DEFAULT_V1 = "ligue-1-fr";
 const XS_RECRUTER_IMAGE_PREFETCH_LIMIT_V1 = 12;
 const xsRecruterPrefetchedImageUrlsV1 = new Set<string>();
@@ -177,6 +178,20 @@ function scoreColor(score: number | null) {
   if (score >= 55) return "#22C55E";
   if (score >= 45) return "#FACC15";
   return "#EF4444";
+}
+
+function recruterPerformanceStatusLabelV1(item: RecruterPlayer) {
+  const row: any = item || {};
+  const status = String(row.performanceCoverage?.status || row.coverageStatus || "").trim().toUpperCase();
+  const updatedAt = text(row.performanceCoverage?.updatedAt || row.performanceUpdatedAt || row.lastPerformanceAt);
+  const matchCount = Number(row.performanceCoverage?.matchesCount ?? row.performanceHistoryCount ?? 0);
+  const updatedLabel = updatedAt
+    ? `MAJ ${new Date(updatedAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })}`
+    : "";
+  if (status === "NO_PERFORMANCE_DATA") return "Pas encore de données";
+  if (status === "PARTIAL") return [matchCount ? `${matchCount} match(s)` : "Historique partiel", updatedLabel].filter(Boolean).join(" · ");
+  if (status === "COMPLETE") return ["Historique complet", updatedLabel].filter(Boolean).join(" · ");
+  return updatedLabel || (matchCount ? `${matchCount} match(s)` : "Données à synchroniser");
 }
 
 function saleBadge(player: RecruterPlayer) {
@@ -809,6 +824,9 @@ export default function RecruiterTabScreen() {
                     <Text style={{ color: scoreColor(score), fontSize: 21, fontWeight: "900" }}>{score == null ? "—" : score}</Text>
                     <Text style={{ color: "#C6CDD7", fontSize: 11, textAlign: "center" }}>L10</Text>
                   </View>
+                  <Text style={{ color: "#8B95A4", fontSize: 11, marginTop: 6, textAlign: "center" }} numberOfLines={1}>
+                    {recruterPerformanceStatusLabelV1(item)}
+                  </Text>
                 </LinearGradient>
               </TouchableOpacity>
             );
@@ -881,6 +899,7 @@ export default function RecruiterTabScreen() {
                     <View style={{ alignSelf: "flex-start", backgroundColor: badge.background, borderColor: badge.border, borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 }}>
                       <Text style={{ color: badge.color, fontWeight: "900", fontSize: 12 }}>{badge.label}</Text>
                     </View>
+                    <Text style={{ color: "#7C8797", fontSize: 12 }} numberOfLines={1}>{recruterPerformanceStatusLabelV1(item)}</Text>
                   </View>
                   <View style={{ alignItems: "center", gap: 8 }}>
                     <Ionicons name="heart-outline" size={23} color="#F8FAFC" />
