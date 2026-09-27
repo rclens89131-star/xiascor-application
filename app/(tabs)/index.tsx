@@ -373,7 +373,7 @@ async function readClubValueBackendHistoryV1(deviceId: string | null): Promise<C
     const items = Array.isArray(payload?.items) ? payload.items : [];
     return items
       .map(normalizeClubValueBackendHistoryItemV1)
-      .filter((item) => item.createdAt && Number.isFinite(item.clubValueEur));
+      .filter((item: ClubValueHistorySnapshot) => item.createdAt && Number.isFinite(item.clubValueEur));
   } catch {
     return [];
   }
@@ -533,7 +533,7 @@ function extractClubMetricsV1(payload: any): ClubMetrics {
       )
     )
     .filter((value: number | null): value is number => value !== null && value > 0);
-  const clubValue = directValue ?? (cardValues.length ? cardValues.reduce((sum, value) => sum + value, 0) : null);
+  const clubValue = directValue ?? (cardValues.length ? cardValues.reduce((sum: number, value: number) => sum + value, 0) : null);
   const weeklyDelta = firstMetricNumber(
     payload?.weeklyDelta,
     payload?.weeklyDeltaEur,
@@ -571,13 +571,13 @@ function extractHomeTrainingSummaryV1(payload: any): HomeTrainingSummary {
     })
     .filter((value: number | null): value is number => value !== null && Number.isFinite(value));
   const averageForm = l5Values.length
-    ? Math.round(l5Values.reduce((sum, value) => sum + value, 0) / l5Values.length)
+    ? Math.round(l5Values.reduce((sum: number, value: number) => sum + value, 0) / l5Values.length)
     : null;
   return {
     averageForm,
-    inForm: trendRows.length ? trendRows.filter((value) => value >= 5).length : null,
-    neutral: trendRows.length ? trendRows.filter((value) => value > -5 && value < 5).length : null,
-    declining: trendRows.length ? trendRows.filter((value) => value <= -5).length : null,
+    inForm: trendRows.length ? trendRows.filter((value: number) => value >= 5).length : null,
+    neutral: trendRows.length ? trendRows.filter((value: number) => value > -5 && value < 5).length : null,
+    declining: trendRows.length ? trendRows.filter((value: number) => value <= -5).length : null,
     counted: l5Values.length,
   };
 }

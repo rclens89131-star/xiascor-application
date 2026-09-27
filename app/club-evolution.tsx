@@ -838,7 +838,7 @@ async function readBackendHistoryV1(deviceId: string | null): Promise<ClubValueH
   const items = Array.isArray(payload?.items) ? payload.items : [];
   return items
     .map(normalizeBackendHistoryItemV1)
-    .filter((item) => item.createdAt && Number.isFinite(item.clubValueEur));
+    .filter((item: ClubValueHistorySnapshot) => item.createdAt && Number.isFinite(item.clubValueEur));
 }
 
 async function createBackendSnapshotV1(deviceId: string | null): Promise<void> {
@@ -1653,8 +1653,8 @@ const styles = StyleSheet.create({
   periodButtonTextActive: { color: "#FFFFFF" },
   reportText: { color: "rgba(255,255,255,0.78)", fontSize: 14, fontWeight: "700", lineHeight: 21 },
   chart: { minHeight: 338, borderRadius: 16, overflow: "hidden", backgroundColor: "rgba(5,6,9,0.92)", borderWidth: 1, borderColor: "rgba(255,49,72,0.18)" },
-  chartBackdrop: { ...StyleSheet.absoluteFillObject },
-  chartGrid: { ...StyleSheet.absoluteFillObject, borderTopWidth: 1, borderBottomWidth: 1, borderColor: "rgba(255,255,255,0.045)" },
+  chartBackdrop: { ...StyleSheet.absoluteFill },
+  chartGrid: { ...StyleSheet.absoluteFill, borderTopWidth: 1, borderBottomWidth: 1, borderColor: "rgba(255,255,255,0.045)" },
   lineHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12, padding: 16, paddingBottom: 4 },
   chartValueLarge: { color: "#FFFFFF", fontSize: 28, fontWeight: "900" },
   chartMetaPill: { alignItems: "flex-end", gap: 3, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 10, backgroundColor: "rgba(255,255,255,0.045)", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" },
@@ -1662,7 +1662,7 @@ const styles = StyleSheet.create({
   chartMetaSubText: { color: "rgba(255,255,255,0.42)", fontSize: 10, fontWeight: "800" },
   linePlotOuter: { width: "100%", paddingHorizontal: 16, paddingBottom: 14 },
   linePlot: { marginTop: 8, position: "relative", width: "100%", overflow: "hidden", borderRadius: 14, backgroundColor: "rgba(2,3,6,0.42)" },
-  chartGlow: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(255,49,72,0.025)", borderRadius: 14 },
+  chartGlow: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(255,49,72,0.025)", borderRadius: 14 },
   chartHorizontalLine: { position: "absolute", left: 0, right: 0, height: 1, backgroundColor: "rgba(255,255,255,0.075)" },
   chartHorizontalLineSoft: { backgroundColor: "rgba(255,255,255,0.045)" },
   chartAreaColumn: { position: "absolute", borderTopLeftRadius: 999, borderTopRightRadius: 999, opacity: 0.92 },

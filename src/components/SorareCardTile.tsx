@@ -46,7 +46,7 @@ function xsScoreColorV1(score: any): XsScoreToneV1 {
 }
 
 function xsAvgV1(scores: Array<number | null | undefined>): number | null {
-  const values = scores.filter((n) => Number.isFinite(n));
+  const values = scores.filter((n): n is number => typeof n === "number" && Number.isFinite(n));
   if (!values.length) return null;
   return Math.round(values.reduce((a, b) => a + b, 0) / values.length);
 }

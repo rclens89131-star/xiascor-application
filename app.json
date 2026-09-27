@@ -8,7 +8,9 @@
       "expo-font",
       "expo-router",
       "expo-image",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-splash-screen",
+      "expo-status-bar"
     ]
   }
 }

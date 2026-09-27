@@ -40,7 +40,7 @@ function avgOf(arr: any[]): number | null {
   if (!Array.isArray(arr)) return null;
   const nums = arr
     .map((x: any) => xsHistoryScoreFromItemV1(x))
-    .filter((n: number) => Number.isFinite(n) && n > 0);
+    .filter((n): n is number => typeof n === "number" && Number.isFinite(n) && n > 0);
   if (!nums.length) return null;
   return Math.round(nums.reduce((a: number, b: number) => a + b, 0) / nums.length);
   /* XS_DNT_ZERO_NOT_COUNTED_V1_END */
@@ -2424,7 +2424,7 @@ function xsBuildAccumulatedCoachDecisionV1(
     cleanSheets: xsRadarWeightedMetricV1(weightedWindows, "cleanSheets", activeMetrics.cleanSheets),
     duels: xsRadarWeightedMetricV1(weightedWindows, "duels", activeMetrics.duels),
     l5: l5Overall ?? activeMetrics.l5,
-    L10: L10Overall ?? null, // XS_FIX_L10_HISTORYCHART_UNDEFINED_V1
+    L10: L10Overall ?? undefined, // XS_FIX_L10_HISTORYCHART_UNDEFINED_V1
     l40: l40Overall ?? activeMetrics.l40,
     overall: accumulatedOverall,
     confidenceScore: confidenceForDecision.score,
