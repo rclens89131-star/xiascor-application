@@ -11,7 +11,7 @@ import { useRouter } from "expo-router";
 import { xsCardNavSet } from "../_lib/cardNavCache";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PerfL5Widget from "../../src/components/PerfL5Widget";
-import { ActivityIndicator, FlatList, Image, Pressable, SafeAreaView, Text, View, useWindowDimensions, Dimensions, Alert } from "react-native";
+import { ActivityIndicator, AppState, FlatList, Image, Pressable, SafeAreaView, Text, View, useWindowDimensions, Dimensions, Alert } from "react-native";
 import { theme } from "../../src/theme";
 import { myCardsList, myCardsSync, publicPlayerPerformance, syncMyCardsHistoryBatch, type PageInfo } from "../../src/scoutApi";
 import { useAppStore } from "../../src/store/useAppStore";
@@ -24,6 +24,14 @@ import { useAppStore } from "../../src/store/useAppStore";
 const XS_GRID_PADDING = 16;
 const XS_GRID_GAP = 12;
 const XS_TILE_WIDTH = Math.floor((Dimensions.get("window").width - (XS_GRID_PADDING * 2) - XS_GRID_GAP) / 2);
+
+function xsCollectionNeedsRefreshV1(value: unknown, maxHours = 24): boolean {
+  // XS_ACCOUNT_COLLECTION_SYNC_ENGINE_V1: app-open safety refresh without pretending stale data is current.
+  if (!value) return true;
+  const ts = new Date(String(value)).getTime();
+  if (!Number.isFinite(ts)) return true;
+  return Date.now() - ts > maxHours * 60 * 60 * 1000;
+}
 
   // XS_NAV_CARDID_FALLBACK_V1
   function xsGetCardNavParams(card: any){
@@ -582,6 +590,7 @@ const [historySyncStatus, setHistorySyncStatus] = useState(""); // XS_MYCARDS_FA
   /* XS_UI_LAST_SYNC_LABEL_V1 */
 const [lastSync, setLastSync] = useState<string>("");
 const loadingMoreRef = useRef(false);
+const staleCollectionRefreshRef = useRef(false);
 const ensureDeviceId = useCallback(async () => {
   // XS_PREFER_OAUTH_DEVICEID_V2 — prefer OAuth deviceId (xs_device_id) when available
 const oauthId = (await AsyncStorage.getItem(OAUTH_DEVICE_ID_KEY)) || "";
@@ -613,6 +622,25 @@ const res = await xsApplyMyCardsLocalCacheSafeV1(id, resRaw); /* XS_MYCARDS_LOCA
       setItems(cards);
       setGallery(cards as any);
       setPageInfo(res.pageInfo);
+      const fetchedAt = String((res as any)?.meta?.fetchedAt || "");
+      if (xsCollectionNeedsRefreshV1(fetchedAt) && !staleCollectionRefreshRef.current) {
+        staleCollectionRefreshRef.current = true;
+        setHistorySyncStatus("Collection à actualiser...");
+        void myCardsSync(id, { first: 50, maxPages: 80, maxCards: 20000, sleepMs: 250 }).then(async () => {
+          const freshRaw = await myCardsList(id, 50);
+          const fresh = await xsApplyMyCardsLocalCacheSafeV1(id, freshRaw);
+          const freshCards = Array.isArray((fresh as any)?.cards) ? (fresh as any).cards : [];
+          try { setLastSync(String((fresh as any)?.meta?.fetchedAt || "")); } catch {}
+          setItems(freshCards);
+          setGallery(freshCards as any);
+          setPageInfo((fresh as any)?.pageInfo);
+          setHistorySyncStatus("Collection actualisée");
+        }).catch((refreshErr: any) => {
+          setHistorySyncStatus(refreshErr?.message || "Collection à actualiser : reconnecte Sorare si nécessaire");
+        }).finally(() => {
+          staleCollectionRefreshRef.current = false;
+        });
+      }
     } catch (e: any) {
       setError(e?.message || "Erreur chargement");
     } finally {
@@ -700,6 +728,12 @@ const onSync = useCallback(async () => {
 
   useEffect(() => {
     loadInitial();
+  }, [loadInitial]);
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") void loadInitial();
+    });
+    return () => sub.remove();
   }, [loadInitial]);
 const { width } = useWindowDimensions();
 const layout = useMemo(() => {

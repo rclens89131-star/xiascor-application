@@ -702,7 +702,16 @@ export async function myCardsSync(deviceId: string, opts?: MyCardsSyncOpts){
   const r = await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) });
   const j = await r.json().catch(()=>null);
   if(!r.ok) throw new Error((j && (j.error || j.message)) ? String(j.error || j.message) : `HTTP ${r.status}`);
-  return j as { ok: boolean; count?: number; cachePath?: string; meta?: MyCardsMeta };
+  // XS_ACCOUNT_COLLECTION_SYNC_ENGINE_V1: ok=true means the request was handled; syncOk/syncStatus tell whether Sorare collection sync really succeeded.
+  if (j && j.syncOk === false) {
+    const status = String(j.syncStatus || "").trim();
+    const reason = String(j.error || j.stoppedReason || "").trim();
+    const message = j.needsRelink
+      ? "Connexion Sorare à renouveler"
+      : (status ? `Synchronisation collection ${status}` : "Synchronisation collection incomplète");
+    throw new Error(reason ? `${message} : ${reason}` : message);
+  }
+  return j as { ok: boolean; syncOk?: boolean; syncStatus?: string; count?: number; cachePath?: string; meta?: MyCardsMeta };
 }
 /* XS_MY_CARDS_API_V1_END */
 
