@@ -6,7 +6,9 @@
     "scheme": "soraredash",
     "plugins": [
       "expo-font",
-      "expo-router"
+      "expo-router",
+      "expo-image",
+      "expo-web-browser"
     ]
   }
 }
