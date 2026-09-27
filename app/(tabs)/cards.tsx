@@ -675,12 +675,17 @@ const onSync = useCallback(async () => {
           const synced = Number(json?.synced ?? json?.historySync?.synced ?? 0) || 0;
           const skipped = Number(json?.skippedFresh ?? json?.historySync?.skippedFresh ?? 0) || 0;
           const failed = Number(json?.failed ?? json?.historySync?.failed ?? 0) || 0;
-          if (json?.ok && (synced > 0 || skipped > 0 || failed === 0)) {
+          const syncOk = json?.syncOk !== false && json?.historySync?.syncOk !== false; // XS_HISTORY_SYNC_STATUS_FRONTEND_V1
+          const syncStatus = String(json?.syncStatus ?? json?.historySync?.syncStatus ?? "").trim(); // XS_HISTORY_SYNC_STATUS_FRONTEND_V1
+          const partial = json?.partial === true || json?.historySync?.partial === true || syncStatus === "partial"; // XS_HISTORY_SYNC_STATUS_FRONTEND_V1
+          if (json?.ok && syncOk && (synced > 0 || skipped > 0 || failed === 0)) {
             setHistorySyncStatus(`Performances mises à jour : ${synced} joueurs · ${skipped} déjà à jour`);
+          } else if (json?.ok && partial && synced > 0) {
+            setHistorySyncStatus(`Performances partiellement mises à jour : ${synced} joueurs · ${failed} en attente`);
           } else {
             setHistorySyncStatus("Performances en attente : mise à jour différée");
           }
-          console.log("[XS_MYCARDS_FAST_HISTORY_BACKGROUND_V1 XS_AUTO_FORCE_RECENT_HISTORY_SYNC_V1] done", { synced, skipped, failed, ok: !!json?.ok });
+          console.log("[XS_MYCARDS_FAST_HISTORY_BACKGROUND_V1 XS_AUTO_FORCE_RECENT_HISTORY_SYNC_V1] done", { synced, skipped, failed, ok: !!json?.ok, syncOk, syncStatus }); // XS_HISTORY_SYNC_STATUS_FRONTEND_V1
         }).catch((e: any) => {
           setHistorySyncStatus("Performances en attente : mise à jour différée");
           console.log("[XS_MYCARDS_FAST_HISTORY_BACKGROUND_V1 XS_AUTO_FORCE_RECENT_HISTORY_SYNC_V1] warning", String(e?.message || e));
