@@ -4,24 +4,18 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 
 const DEVICE_KEY = "xs_device_id";
+const DEVICE_KEY_V1 = "xs_device_id_v1";
 const LINKED_KEY = "xs_linked_v1";
 
 function makeDeviceId() {
   return "dev_" + Date.now() + "_" + Math.random().toString(36).slice(2, 10);
 }
 
-type MeResponse = {
-  ok?: boolean;
+type DeviceStatusResponse = {
+  linked?: boolean;
   userSlug?: string;
   nickname?: string;
   error?: string;
-};
-
-type AuthStatusResponse = {
-  hasAuth?: boolean;
-  hasOAuthToken?: boolean;
-  scope?: string | null;
-  created_at?: number | null;
 };
 
 export default function SorareLoginScreen() {
@@ -57,21 +51,24 @@ useEffect(() => {
   const [debug, setDebug] = useState("");
 
   const loginUrl = useMemo(() => {
-    return AUTH_BASE_URL.replace(/\/+$/, "") + "/auth/sorare"; // XS_OAUTH_CLOUDRUN_LOGIN_V2
-  }, [AUTH_BASE_URL]);
+    if (!deviceId) return "";
+    const qs = new URLSearchParams({ deviceId });
+    return AUTH_BASE_URL.replace(/\/+$/, "") + "/auth/sorare-device/login?" + qs.toString(); // XS_LOGIN_DEVICE_OAUTH_FIX_V1
+  }, [AUTH_BASE_URL, deviceId]);
 
   useEffect(() => {
     let alive = true;
 
     (async () => {
       try {
-        const existing = await AsyncStorage.getItem(DEVICE_KEY);
+        const existing = (await AsyncStorage.getItem(DEVICE_KEY)) || (await AsyncStorage.getItem(DEVICE_KEY_V1));
         if (existing) {
+          await AsyncStorage.multiSet([[DEVICE_KEY, existing], [DEVICE_KEY_V1, existing]]);
           if (alive) setDeviceId(existing);
           return;
         }
         const nextId = makeDeviceId();
-        await AsyncStorage.setItem(DEVICE_KEY, nextId);
+        await AsyncStorage.multiSet([[DEVICE_KEY, nextId], [DEVICE_KEY_V1, nextId]]);
         if (alive) setDeviceId(nextId);
       } catch (e: any) {
         if (alive) {
@@ -88,15 +85,15 @@ return () => {
     const safeBase = AUTH_BASE_URL.replace(/\/+$/, ""); // XS_OAUTH_STATUS_BASE_V1
     setBusySync(true);
     try {
-      const meRes = await fetch(safeBase + "/me?deviceId=" + encodeURIComponent(id), {
+      const statusRes = await fetch(safeBase + "/auth/device-status?deviceId=" + encodeURIComponent(id), {
         headers: { accept: "application/json" },
       });
-      const meJson: MeResponse = await meRes.json().catch(() => ({}));
-      if (!meRes.ok || !meJson?.ok) {
-        throw new Error(String(meJson?.error || ("HTTP " + meRes.status)));
+      const statusJson: DeviceStatusResponse = await statusRes.json().catch(() => ({}));
+      if (!statusRes.ok || !statusJson?.linked) {
+        throw new Error(String(statusJson?.error || ("HTTP " + statusRes.status)));
       }
 
-      setStatusText("✅ Connecté: " + String(meJson.nickname || meJson.userSlug || "ok"));
+      setStatusText("✅ Connecté: " + String(statusJson.nickname || statusJson.userSlug || "ok"));
 
       const syncRes = await fetch(
         safeBase + "/my-cards/sync?deviceId=" + encodeURIComponent(id),
@@ -112,6 +109,7 @@ return () => {
         throw new Error("sync failed: " + String(syncJson?.error || ("HTTP " + syncRes.status)));
       }
 
+      await AsyncStorage.multiSet([[DEVICE_KEY, id], [DEVICE_KEY_V1, id]]);
       await AsyncStorage.setItem(LINKED_KEY, "1");
       setDebug("sync ok | count=" + String(syncJson?.count ?? "?"));
       router.replace("/(tabs)");
@@ -128,14 +126,14 @@ return () => {
       if (!deviceId) return;
       try {
         const safeBase = AUTH_BASE_URL.replace(/\/+$/, ""); // XS_OAUTH_STATUS_BASE_V1
-        const res = await fetch(safeBase + "/auth/sorare/status", {
+        const res = await fetch(safeBase + "/auth/device-status?deviceId=" + encodeURIComponent(deviceId), {
           headers: { accept: "application/json" },
         });
-        const json: AuthStatusResponse = await res.json().catch(() => ({}));
+        const json: DeviceStatusResponse = await res.json().catch(() => ({}));
 
         if (!alive) return;
 
-        if (json?.hasOAuthToken) {
+        if (json?.linked) {
           setStatusText("OAuth OK — synchronisation en cours...");
           if (!busySync) {
             await refreshMeAndSync(deviceId);
